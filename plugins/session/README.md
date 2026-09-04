@@ -284,6 +284,34 @@ one file read each. No cold read of a big history ever happens.
 Main session, native `/compact` versus the file: see "Compact prices" below; the skill
 uses the cheaper one.
 
+## Open question: 1-hour cache for forks and subagents
+
+`subagentPromptCacheTtl` stays at the default 5 minutes for now. A fork that waits or
+generates for more than 5 minutes in one call loses its cache, and a long fork (more
+than 20 content blocks after the fork point) then also misses the parent prefix, so
+the whole context is rewritten at the 5m price (measured 2026-09-04: three fable forks
+rewrote 229K, 377K and 251K, ≈ $10.7 together). The 1h TTL would avoid that at the
+price of every subagent write costing 1h instead of 5m rates (fable $20 instead of
+$12.50 per MTok; 24 h of subagents on 2026-09-04: misses ≈ $17 versus ≈ $18 extra for
+1h, a wash). Decision rule: run `tools/cache-loss.py <hours>` from this repo now and
+then; when the miss losses exceed the extra 1h cost over a representative period,
+set `subagentPromptCacheTtl: "1h"` in `~/.claude/settings.json`. Until then the fork
+rules above (short waits, background for long commands) are the mitigation.
+
+## Waiting on the user
+
+A pending AskUserQuestion, permission prompt or plan approval blocks the turn; cron
+pings queue and fire only after the turn ends. A user away for over an hour therefore
+loses the 1h cache of that session. `askUserQuestionTimeout` (`"60s" | "5m" | "10m" |
+"never"`, default never, `~/.claude/settings.json`) auto-continues an unanswered
+AskUserQuestion with whatever was selected; it does not cover permission prompts or
+plan approval. Rule for the model (global instructions): ask only when the answer
+changes the work; put the recommended option first; when the question auto-continues
+without an answer, take the recommended option for a reversible choice, and for a
+decision that must be the user's end the turn with the question written out instead of
+leaving a dialog open, so the pings keep the cache alive. Avoid plan mode in a session
+that may sit unattended.
+
 ## Compact prices
 
 - Warm compact (cache alive): the compact call reads the whole context at the cache-read
