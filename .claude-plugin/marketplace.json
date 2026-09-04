@@ -13,7 +13,7 @@
       "name": "session",
       "source": "./plugins/session",
       "description": "Session modes as user-invocable skills: single (one session), forks (main + fork subagents), team (tmux teammates picked by model+effort, light/full), team-forks, team-compact (park a team in files and restore it). README holds the cache and compact reference.",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "keywords": [
         "session",
         "modes",

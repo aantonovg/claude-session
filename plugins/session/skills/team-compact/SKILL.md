@@ -47,14 +47,19 @@ output only; nothing re-reads a big history.
    sub-mode: light | full
    class: <1-5>
    main: model <id>, effort <level>, file main.md
+   defaults: model <id>, effortLevel <level>   # account defaults before the pane pins
    teammates:
    - name: <name>; roles: <roles>; model: <full id>; effort: <level>; file: <name>.md
    ...
    ```
 
-6. **Stop.** Delete the `ping` cron of this session (`CronList`, then `CronDelete`).
+6. **Stop.** Delete any `ping` cron of this session (`CronList`, then `CronDelete`).
    Ask each teammate to shut down (send `{"type": "shutdown_request"}`) and confirm they
-   are gone with `ListAgents`.
+   are gone with `ListAgents`. Then put the account defaults back: the `/model` and
+   `/effort` lines typed into teammate panes were saved into `~/.claude/settings.json`;
+   restore the values recorded at spawn time (they are in `team.md` under `defaults:`)
+   with `jq '.model = "<model>" | .effortLevel = "<effort>"' ~/.claude/settings.json > tmp && mv tmp ~/.claude/settings.json`,
+   and say so in the report.
 
 7. **Report.** One line to the user: the directory, the number of files, and the way
    back: tomorrow start a fresh session in the same directory and run

@@ -104,9 +104,19 @@ One `Agent` call per teammate, all in one message:
 
 ### 3b. Pin model and effort in every pane (new team and restore)
 
+Before the first pin, read the account defaults and keep them for the restore step:
+`jq -r '[.model, .effortLevel] | @tsv' ~/.claude/settings.json`. Every `/model` and
+`/effort` typed into a pane is also saved by Claude Code as the account default for
+new sessions, so the values must be put back when the team is parked
+(`session:team-compact` does it) or, if the session ends without parking, by hand.
+An agent file's `effort:` does not reach a tmux teammate (the model pin does), so the
+pane command is the only way to run a teammate on a different effort.
+
 Effort is not an `Agent` parameter either. A teammate starts with the main session's
 own effort, so only a teammate whose effort differs needs `tmux send-keys -t <pane_id>
-"/effort <level>" Enter`, sent together with the `/model` line above. Panes: the
+"/effort <level>" Enter`, then, after 2 seconds, a second `tmux send-keys -t <pane_id>
+Enter` to confirm the "switching re-reads the history" dialog; sent together with the
+`/model` line above. Panes: the
 teammates sit in the main session's tmux window; `tmux list-panes -F '#{pane_id}
 #{pane_index}'` lists them (the main session is `$TMUX_PANE`; titles are identical,
 never search by title; teammate panes show no status line, so read the command's
