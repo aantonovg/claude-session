@@ -1,5 +1,8 @@
 {
   "name": "claude-session",
+  "owner": {
+    "name": "Aleksandr Antonov"
+  },
   "metadata": {
     "description": "Session modes for the main Claude Code session: single, forks, team, team-forks, team-compact.",
     "version": "1.0.0",
@@ -11,7 +14,14 @@
       "source": "./plugins/session",
       "description": "Session modes as user-invocable skills: single (one session), forks (main + fork subagents), team (tmux teammates picked by model+effort, light/full), team-forks, team-compact (park a team in files and restore it). README holds the cache and compact reference.",
       "version": "0.2.0",
-      "keywords": ["session", "modes", "cache", "forks", "teammates", "team-compact"]
+      "keywords": [
+        "session",
+        "modes",
+        "cache",
+        "forks",
+        "teammates",
+        "team-compact"
+      ]
     }
   ]
 }
