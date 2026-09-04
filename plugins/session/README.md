@@ -301,7 +301,9 @@ rules above (short waits, background for long commands) are the mitigation.
 ## Waiting on the user
 
 A pending AskUserQuestion, permission prompt or plan approval blocks the turn; cron
-pings queue and fire only after the turn ends. A user away for over an hour therefore
+pings do not fire at all while it waits (measured 2026-09-04, sonnet, `*/2` cron: three
+windows passed with no API call during a pending question and during a pending plan
+approval; one queued ping was delivered the moment the dialog closed). A user away for over an hour therefore
 loses the 1h cache of that session. `askUserQuestionTimeout` (`"60s" | "5m" | "10m" |
 "never"`, default never, `~/.claude/settings.json`) auto-continues an unanswered
 AskUserQuestion with whatever was selected; it does not cover permission prompts or
