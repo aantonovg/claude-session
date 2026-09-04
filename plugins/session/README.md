@@ -12,6 +12,7 @@ skills: read it before changing any of them.
 | `session:team` | main + tmux teammates (light: one per model+effort; full: one per role) | teammates only |
 | `session:team-forks` | team where main and teammates use forks for volume | teammates + forks |
 | `session:team-compact` | fold a running team into files; `team` / `team-forks` restore from them | - |
+| `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
 
 Deferred, not in the plugin yet: peers (mode 4, started by hand), delegate (mode 6, plain
 subagents with role agents), workflow (mode 7) and workflow over a team (mode 8), codex.
@@ -314,7 +315,10 @@ changes the work; put the recommended option first; when the question auto-conti
 without an answer, take the recommended option for a reversible choice, and for a
 decision that must be the user's end the turn with the question written out instead of
 leaving a dialog open, so the pings keep the cache alive. Avoid plan mode in a session
-that may sit unattended.
+that may sit unattended. `session:ask` is the non-blocking form: a questions document
+opened in Plannotator with `run_in_background`; the session continues and is woken by
+the submitted feedback (a background completion re-invokes the main session as a
+normal cached turn, unlike a fork).
 
 ## Verified 2026-09-04 on the VM (opus-low main, sonnet[1m] teammate, real ticket)
 
