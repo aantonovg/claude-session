@@ -48,11 +48,13 @@ not ask about class or sub-mode again.
 
 ### 2. Class and sub-mode (new team only)
 
-Read the selection map: `~/.claude/session-map.md` (per-account file: the class × role
-table, the default main model, and the full model ids). If the file is missing, use
-the fallback table at the end of this skill and tell the user the file is missing. Ask
-the user for the task class 1-5 if it is not in the invocation, or propose one with a
-one-line reason. Take the row of the map for that class. Then ask
+Read the selection map: `~/.claude/session-map.md` (per-account file: one class × role
+table per pairing, the default pairing, the default main model, the full model ids
+with their allowed efforts). Use the default pairing unless the user named another
+one at invocation (`pairing opus-opus`). If the file is missing, use the fallback
+table at the end of this skill and tell the user the file is missing. Ask the user
+for the task class 1-5 if it is not in the invocation, or propose one with a one-line
+reason. Take the row of the chosen pairing's table for that class. Then ask
 with `AskUserQuestion` (always both options, even when the user already named one; a
 missing task description is asked as free text, never as a one-option menu):
 
