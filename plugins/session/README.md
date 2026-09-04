@@ -330,18 +330,18 @@ prefix and wrote 1-4K, zero cache misses anywhere. Cost ≈ $7. A subagent Bash 
 hook (user-prefs `fork-bash-guard.sh`) now caps fork Bash timeouts at 170 s; Claude Code
 itself already blocks literal long `sleep` calls.
 
-## Open item: teammate context jump on a 200K model
+## Teammate start size and MCP tool schemas
 
-Measured 2026-09-04 on the VM (enterprise account, sonnet teammate not pinned to
-`[1m]` because the tmux pin was denied by the auto classifier): two sonnet-low teammates
-started at ~86K and jumped to ~209K on their second turn after loading three corporate
-skills (~26KB of text, which does not explain the jump); on a 200K window auto-compact
-then thrashed and every fork they spawned failed with "prompt too long". Test 3 showed the
-restored teammate already at ~212K right after READY, before any stage, so the
-skills are not the cause; what the first turn reads (workspace CLAUDE.md, MCP schemas,
-memory) is still to be diagnosed. Mitigations in the skill: the `[1m]` pin is mandatory
-before stages (the skill stops if the pin is denied), teammates load only named skills
-and send big reads to forks. On the VM the tmux commands now have allow rules.
+Measured 2026-09-04 on the VM (34 org MCP connectors): a sonnet teammate went from 86K
+after its first turn to 212K on the second, before any work. The +94K is the tool
+block: the connectors finish connecting after the teammate's first turn and their full
+tool schemas are appended without deferral, because the teammate's tool-search "auto"
+decision was taken while the tool count was still small. The main session, started
+with tool search already active, keeps names only (~30K). Fix: `export
+ENABLE_TOOL_SEARCH=true` in the shell environment of every `claude` process (VM and
+Mac `~/.zshenv`); the teammate then shows a `deferred_tools_delta` attachment and stays
+near 90K. On a 200K model the unfixed jump caused auto-compact thrashing and "prompt
+too long" in the teammate's forks.
 
 ## Compact prices
 
