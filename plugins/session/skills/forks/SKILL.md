@@ -20,6 +20,10 @@ session's model and effort, there is no mixing.
 3. Reply with one line: "Forks mode on, ping cron <id>; forks only." The cron id must
    be in that line.
 
+If the skill is invoked with the argument `pool` (`/session:forks pool`), skip step 1
+entirely: never create a cron, the pool daemon keeps the session warm; the reply line is then
+"Forks mode on (pool); forks only."
+
 ## When to fork
 
 Hand a job to a fork when it needs 3 or more tool calls in total (every Read, Edit,

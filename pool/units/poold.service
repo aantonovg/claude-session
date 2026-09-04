@@ -1,0 +1,16 @@
+# systemd user unit for the claude-session pool daemon (VM / Linux).
+# Installed by pool/install.sh into ~/.config/systemd/user/poold.service.
+[Unit]
+Description=claude-session pool daemon (poold)
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env python3 @REPO@/pool/poold.py run
+WorkingDirectory=@REPO@
+Environment=PATH=@HOME@/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

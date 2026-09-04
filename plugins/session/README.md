@@ -12,6 +12,9 @@ skills: read it before changing any of them.
 | `session:team` | main + tmux teammates (light: one per model+effort; full: one per role) | teammates only |
 | `session:team-forks` | team where main and teammates use forks for volume | teammates + forks |
 | `session:team-compact` | fold a running team into files; `team` / `team-forks` restore from them | - |
+| `session:workflow` | plain workflows with lean stage agents (`stage-author/reviewer/executor/researcher`, 12K start instead of 35K), convergence gate | lean workflow agents + forks for recon |
+| `session:pool-workflow` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` | pool-proxy agents + forks |
+| `session:pool` / `session:pool-stop` | show or start the pool by hand / park it | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
 
 Default for day-to-day work (decided 2026-09-04 after the tests): `session:forks`. One
@@ -21,6 +24,9 @@ and then a workflow over peers (mode 8 with peer sessions instead of teammates: 
 workflow script is the visible pipeline, each `agent()` a cheap proxy that hands its
 stage to a warm peer by role/model and returns a result file; the pieces were measured
 today: SendMessage + file handoff, peers wake with their cache, proxy stage ≈ $0.07-0.15).
+
+Mode 9 (`session:pool-workflow`) is the workflow-over-peers target above, built on a
+separate daemon (`pool/poold.py`) instead of teammates; see "Mode 9 — Pool".
 
 Deferred, not in the plugin yet: peers (mode 4, started by hand), delegate (mode 6, plain
 subagents with role agents), workflow (mode 7) and workflow over a team (mode 8), codex.
@@ -244,6 +250,11 @@ context, so a 10-15 agent cycle pays 10-15 starts.
   agents from the journal instead of re-running them. There is no reuse of an agent across
   stages: the price of the mode is the start overhead, the gain is structure.
 - Setup: `/loop 30m ping` in the main session; class and pairing in `meta.name` as usual.
+- Lean stage agents (`session:workflow`, 2026-09-04): the plugin ships `stage-author`,
+  `stage-reviewer`, `stage-executor`, `stage-researcher` with reduced tool sets and no
+  model pin. Measured first turn: 12K written for a lean agent against 35K for the default
+  workflow agent (23.6K of it the built-in tool schemas). The skill adds the convergence
+  gate (review severity below medium ends the cycles) and the tool-output caps.
 
 ## Mode 8 — Workflow over a crew (proxy agents)
 
@@ -284,6 +295,165 @@ Not in the script API yet: no `agent()` option to target a teammate directly, an
 workflows cannot spawn forks of the main session or of a teammate (no feature request
 found in anthropics/claude-code as of 2026-09-04).
 
+## Mode 9 — Pool (`session:pool-workflow`, `session:pool`, `session:pool-stop`)
+
+Mode 8 without a team: a separate daemon (`poold`) runs a pool of plain `claude`
+sessions in tmux windows, one per model+effort combo or per role, and keeps them warm.
+A workflow script drives the stages; each `agent()` is a `pool-proxy` (haiku, Bash
+only) that hands a task file to a worker through `poolctl` and returns the result file.
+No lead, no teammates, no notifications: the worker writes a file, the proxy waits for
+it, the main session reads it.
+
+Idea in one line: the workflow keeps its visible pipeline, review loops and resume; the
+tool-call volume runs in warm 1-hour contexts instead of cold 35-50K agent starts.
+
+### Pieces
+
+| piece | where | what |
+|---|---|---|
+| `poold` | `pool/poold.py`, HTTP `127.0.0.1:19540` | registry, tmux spawn, task queue, policies, admin page |
+| `poolctl` | `pool/poolctl` | CLI over the HTTP API: `ensure`, `submit`, `wait`, `status`, `park`, `resume`, `compact` |
+| `pool-proxy` | `plugins/session/agents/pool-proxy.md` | haiku agent: `submit` + `wait` rounds, returns `POOL RESULT FILE` + `LAST LINE` |
+| skills | `pool-workflow` (mode), `pool` (show/ensure), `pool-stop` (park) | thin wrappers, all through `poolctl` |
+| state | `~/.claude/pool/<key>/` | `pool.json`, `tasks/`, `results/`, `park/`, `last-turn/` |
+
+Pools: `shared/<sha1(cwd)[:12]>`, one per project, the default; `dedicated/<session id>`
+for one owner session on the user's word (parked 10 minutes after the owner exits).
+Worker names are combos (`opus-low`) or roles (`reviewer=opus-medium`), unique per pool
+(`opus-low-2`).
+
+### Protocol
+
+1. Spawn: `tmux new-window -t pool-<key> -n <name> -c <cwd> "zsh -lic 'claude --model
+   \"<full id>\" --effort <lvl> --session-id <uuid>'"`. Interactive login shell so the
+   `~/.zshrc` exports (MCP tokens) load; `[1m]` quoted or zsh globbing fails. Model and
+   effort by flags only: `settings.json` is not touched (probe 5).
+2. Briefing, typed once: worker name, pool key, combo, roles, forks mode, the task line
+   format, the result dir, `ping` → `pong`, no `/model` `/effort` `/compact` or crons.
+   The daemon re-sends the protocol line after every `/compact` (probe 3: after a compact
+   the worker answered `t2 done.` instead of `DONE t2`).
+3. Task: `poolctl submit` copies the file to `tasks/` and types `POOL TASK <id> <path>`;
+   the worker writes `results/<id>.md`, last line `DONE` or `BLOCKED: …`, and replies
+   `DONE <id>`. `poolctl wait <id> --timeout 150` long-polls for the file.
+4. Proxy: header only (`POOL:`, `POOL WORKER:`, `POOL TASK FILE:`, optional `POOL MAX
+   WAIT:`), identical across a run so proxies share the cached prefix; `submit` then
+   `wait` rounds under the 170 s Bash guard; answer = two lines or `BLOCKED:`.
+5. Task file names carry a content hash: a workflow `resume` replays `agent()` calls
+   with an unchanged prompt from the journal.
+
+### Daemon policies (not the model's job)
+
+- Keep-warm: `ping` typed 45-50 minutes after the worker's last turn (mark from the
+  worker's Stop hook from the plugin in `last-turn/`, fallback JSONL mtime); one cache read per hour.
+  A worker that missed the window is `cold`: not pinged; on the next `ensure` it is
+  woken if its context is under 100K, otherwise parked and replaced.
+- Day end: `/compact` typed to every warm worker an hour before midnight, pings stop
+  until the next `ensure` (flag `--reset-at-day-end` clears instead).
+- Busy: one task at a time per worker, others queue; `ensure` offers `<name>-2` when
+  the queue is longer than one.
+- Limit: 15 workers per account by default.
+- Context ceiling: an idle warm worker whose context passed the family ceiling
+  (opus 120K, fable 200K, sonnet and haiku 300K, `compact_above_tokens`) gets a warm
+  `/compact` plus the protocol reminder, at most once per 30 minutes. Cache reads are
+  paid on every turn (opus $0.5/MTok), so a 150-200K opus fixer costs more per turn
+  than a fresh 60K one.
+- Forks mode: after the briefing the daemon types `/session:forks pool` into the
+  pane (the `pool` argument skips the ping cron) and re-sends the forks rules after
+  every compact. The briefing sentence alone was ignored (benchmark: four workers,
+  zero forks). `poolctl ensure --no-forks` disables it.
+
+### Cost model
+
+- Worker turns are cache reads in the 1h bucket (probe 2 below); a stage costs its new
+  tokens plus one read of the worker context, not a 35-50K start.
+- Proxy: haiku start ≈ $0.07 on the first proxy, less for the next ones (shared prefix);
+  the wait rounds are tiny turns.
+- Keep-warm: one read of the worker context per hour, ≈ $0.05-0.10 per worker; ten
+  workers ≈ $5-10 per day. Compact at day end ≈ $0.1-0.5 per worker while warm.
+
+### Install
+
+Daemon: `python3 pool/poold.py run` (foreground) or the units in `pool/units/`
+(`com.claude-session.poold.plist` for the Mac LaunchAgent, `poold.service` for the VM
+systemd user unit; step 5 of the plan, not written yet). CLI: symlink `pool/poolctl`
+into `~/.local/bin`. Plugin 0.5.0 ships the agent, the three skills and the Stop hook
+`hooks/pool-last-turn.sh` (registered by the plugin; it exits at once in sessions
+without `POOL_LAST_TURN_DIR`, so no `settings.json` change is needed). On the VM the
+admin page is reached with `ssh -L 19541:localhost:19540 claude-vm`.
+
+### Measured 2026-09-04 (probes, sonnet-low worker in a detached tmux on the Mac)
+
+| probe | result |
+|---|---|
+| 1 `--session-id` worker in tmux, `send-keys` task | PASS: task line is a normal turn, `results/t1.md` and `t2.md` with `DONE`, JSONL under `~/.claude/projects/<encoded cwd>/<uuid>.jsonl` |
+| 2 cache after a `send-keys` task | PASS: briefing wrote 58K into the 1h bucket; task turns read 58-59K and wrote 0.1-0.3K each; after `/compact` the next turn read the 42.7K static prefix and wrote the 12K summary |
+| 3 `/compact` typed into the pane, `ping` | PASS: no dialog (`Compacted`), `ping` → `pong`; protocol detail degraded after compact (re-brief needed) |
+| 5 `--model claude-sonnet-5[1m] --effort low` flags | PASS: pane shows `Sonnet 5 with low effort`, status `sonnet:low`; `settings.json` unchanged |
+
+### Benchmark 2026-09-04 (c3 "Orbit Dodge" browser game, 13 stages, fable-opus row)
+
+Same spec and stages through the pool (haiku proxies + four warm workers fable-low,
+opus-medium, opus-low, sonnet-low) and as a plain workflow (one cold agent per stage).
+
+Four runs of the same 13 stages (the second and fourth are reruns with one change):
+
+| metric | plain (5m TTL) | plain (1h TTL) | pool | pool + forks |
+|---|---|---|---|---|
+| $ for the task | 5.00 | 6.42 | 4.20 (+1.98 one-time worker startup) | 6.54 (+1.81 startup) |
+| uncached tokens (input + cache writes) | 453K | 389K | 269K | 366K |
+| cache writes by workers | — | — | 88K, all in the 1h bucket | 58K 1h + 306K 5m (forks) |
+| output tokens | 9.6K | — | 31K | 25K |
+| cache misses | 0 | 0 | 0 | 0 |
+| wall time | 10.0 min | 10.8 min | 10.1 min | 15.6 min |
+| tests passing at the end | 41 | 23 | 17 | 37 |
+| review depth, cycles 1/2/3 (lines) | 55 / 54 / 52 | 55 / 48 / 43 | 31 / 12 / 1 | 51 / 54 / 53 |
+
+What the four runs say:
+
+- The ~20K static prefix (system prompt, CLAUDE.md, tools) is already shared between
+  agents of one model and effort under the 5m TTL: the second and later agents read it
+  and write ~10K of their own. The 1h TTL reused nothing more and paid 1.6x per write,
+  so `subagentPromptCacheTtl` stays at 5m (closed, see below).
+- The 5m writes are the agents' own tool output (files read, test output, diffs).
+  They do not depend on the TTL. The cost floor of a workflow is therefore about
+  "tool-output tokens consumed × write price + the per-turn rereads of the growing
+  context"; the only way down is less tool output per stage and fewer turns.
+- The pool pays off only when there is a big shared project context that every cold
+  agent would otherwise re-read (a corporate repo with 100K+ of orientation). On a
+  greenfield task the shared prefix is just the briefing and the pool is a wash.
+- Forks inside the workers restore the review quality (37 tests, deep reviews in all
+  three cycles) but cost more on small contexts: every fork rereads the worker's
+  50-60K prefix on each of its turns and writes its own suffix at the 5m price.
+
+Two workflow rules that follow from the cost floor (in `session:pool-workflow`, and
+valid for plain workflows too): a convergence gate (a review with no medium or high
+findings ends the cycles; the fix and check stages of that cycle are skipped) and
+tool-output caps in task files (reviewers get `git diff` since the previous stage,
+not whole files; checkers return PASS/FAIL lines and the tail of failing output).
+
+Three lessons, now built in:
+
+1. Opus is the most expensive family per cache read ($0.5/MTok): its fixer read
+   150-200K on every one of 32 turns. Hence the per-family context ceiling above.
+2. The workers used no forks at all, so their sessions grew and every write landed in
+   the 1h bucket (twice the 5m price). Hence `/session:forks pool` at spawn.
+3. Proxies plus result files doubled the output: workers answered in the pane and
+   copied deliverables into the result file. Hence the result convention (status,
+   paths, at most 5 lines; deliverables in project files; nothing in the pane but
+   tool calls and `DONE <id>`). tmux capture is not a substitute: pane text is broken
+   and unstable, and `claude -p` carries the usage penalty.
+
+The warm reviewer went shallow after cycle 1 (same context reviewing the same code
+three times); the quality loss came from there, not from the models. `claude --resume
+<id> --fork-session` does not share the parent's cache (probe: first turn read only
+the 26.6K static prefix and rewrote 51.6K in the 1h bucket, then stable), so forked
+sessions are no answer; in-session forks (Agent tool) are.
+
+Gotchas: a new cwd shows the trust-folder dialog (Down + Enter accepts), so the daemon
+handles it or the dir is trusted first; the subagent Bash guard also matches a long
+literal wait written inside a tmux command string. Probes 4 (haiku proxy start size,
+role discipline, shared prefix) and 6 (last-turn hook) run with steps 2-3 of the plan.
+
 ## Team compact (`session:team-compact`) and restore
 
 Teammates are tied to the main session: when it exits, is killed, or the tmux server
@@ -312,19 +482,17 @@ one file read each. No cold read of a big history ever happens.
 Main session, native `/compact` versus the file: see "Compact prices" below; the skill
 uses the cheaper one.
 
-## Open question: 1-hour cache for forks and subagents
+## Closed: 1-hour cache for forks and subagents
 
-`subagentPromptCacheTtl` stays at the default 5 minutes for now. A fork that waits or
-generates for more than 5 minutes in one call loses its cache, and a long fork (more
-than 20 content blocks after the fork point) then also misses the parent prefix, so
-the whole context is rewritten at the 5m price (measured 2026-09-04: three fable forks
-rewrote 229K, 377K and 251K, ≈ $10.7 together). The 1h TTL would avoid that at the
-price of every subagent write costing 1h instead of 5m rates (fable $20 instead of
-$12.50 per MTok; 24 h of subagents on 2026-09-04: misses ≈ $17 versus ≈ $18 extra for
-1h, a wash). Decision rule: run `tools/cache-loss.py <hours>` from this repo now and
-then; when the miss losses exceed the extra 1h cost over a representative period,
-set `subagentPromptCacheTtl: "1h"` in `~/.claude/settings.json`. Until then the fork
-rules above (short waits, background for long commands) are the mitigation.
+`subagentPromptCacheTtl` stays at the default 5 minutes (decided 2026-09-04 after the
+benchmark rerun above: the 1h TTL made the same workflow 28% more expensive and reused
+nothing that 5m did not already reuse). A fork that waits or generates for more than
+5 minutes in one call still loses its cache, and a long fork (more than 20 content
+blocks after the fork point) then also misses the parent prefix (measured: three fable
+forks rewrote 229K, 377K and 251K, ≈ $10.7 together). The mitigation is the fork rules
+(short waits, background for long commands, the Bash guard hook), not the TTL.
+`tools/cache-loss.py <hours>` stays as the audit tool; revisit only if the miss losses
+it reports grow well past the extra 1h cost over a representative week.
 
 ## Waiting on the user
 

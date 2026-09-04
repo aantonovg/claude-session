@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""poolctl: command-line client for the poold daemon.
+
+Every subcommand is one HTTP call to http://127.0.0.1:19540 (override with
+--port or POOLD_PORT). Output is a short text table; add --json (before or after
+the subcommand) for the raw answer.
+
+    poolctl ensure  --need opus-low,sonnet-low[,reviewer=opus-medium] [--pool shared|dedicated] [--cwd DIR] [--owner SESSION] [--reset-at-day-end] [--no-forks] [--extra-args FLAGS]
+    poolctl submit  --worker NAME --file TASK.md [--pool ...] [--cwd DIR]
+    poolctl wait    TASK_ID [--timeout 150] [--key KEY] [--cwd DIR]
+    poolctl status  [--pool ...] [--cwd DIR] [--key KEY]
+    poolctl park    [--workers a,b] [--pool ...]
+    poolctl resume  [--workers a,b] [--pool ...]
+    poolctl compact [--workers a,b] [--pool ...]
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+DEFAULT_PORT = int(os.environ.get("POOLD_PORT", "19540"))
+
+
+def call(port, method, path, payload=None, timeout=200):
+    url = f"http://127.0.0.1:{port}{path}"
+    data = json.dumps(payload or {}).encode() if method == "POST" else None
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        try:
+            body = json.load(exc)
+        except ValueError:
+            body = {"error": exc.reason}
+        msg = f"poolctl: {body.get('error', exc.reason)}"
+        if exc.code == 409 and body.get("status"):
+            # Worker limit: show what is running so the caller can park something.
+            for pool in body["status"]["pools"]:
+                msg += f"\npool {pool['key']}\n" + fmt_workers(pool["workers"])
+        sys.exit(msg)
+    except urllib.error.URLError as exc:
+        sys.exit(f"poolctl: cannot reach poold on port {port} ({exc.reason}); start it with `poold.py run`")
+
+
+def pool_args(a):
+    d = {"pool": a.pool}
+    if getattr(a, "cwd", None):
+        d["cwd"] = os.path.realpath(a.cwd)
+    if getattr(a, "owner", None):
+        d["owner"] = a.owner
+    if getattr(a, "key", None):
+        d["key"] = a.key
+    return d
+
+
+def fmt_cost(w):
+    c = w.get("cost") or {}
+    if not c:
+        return f"{w.get('cost_today', 0):.2f}"
+    return "/".join(f"{c.get(k, 0):.2f}" for k in ("read", "w1h", "w5m", "input", "output")) + f"={c.get('total', 0):.2f}"
+
+
+def fmt_workers(workers):
+    rows = [("name", "combo", "state", "ctx", "idle", "queue", "forks", "$ rd/w1h/w5m/in/out=total", "session", "current", "")]
+    for w in workers:
+        idle = w.get("idle_min")
+        rows.append((
+            w["name"], w["combo"], w["state"],
+            f"{(w.get('ctx') or 0) / 1000:.0f}K",
+            "-" if idle is None else f"{idle:.0f}m",
+            str(w.get("queue_len", len(w.get("queue", [])))),
+            str(w.get("forks", 0)),
+            fmt_cost(w),
+            w["session_id"][:8], w.get("current") or "-",
+            f"suggest {w['suggest']}" if w.get("suggest") else "",
+        ))
+    return table(rows)
+
+
+def fmt_tasks(tasks):
+    rows = [("task", "worker", "state", "last line")]
+    for t in tasks:
+        rows.append((t["id"], t["worker"], t["state"], (t.get("last_line") or "-")[:60]))
+    return table(rows)
+
+
+def table(rows):
+    widths = [max(len(str(r[i])) for r in rows) for i in range(len(rows[0]))]
+    return "\n".join("  ".join(str(c).ljust(widths[i]) for i, c in enumerate(r)) for r in rows)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--port", type=int, default=DEFAULT_PORT)
+    ap.add_argument("--json", action="store_true", help="print the raw JSON answer")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    def common(p, cwd_default=True):
+        p.add_argument("--pool", choices=["shared", "dedicated"], default="shared")
+        p.add_argument("--cwd", default=os.getcwd() if cwd_default else None)
+        p.add_argument("--owner", help="owner session id (dedicated pools)")
+        p.add_argument("--key", help="explicit pool key, e.g. shared/abc123")
+
+    p = sub.add_parser("ensure", help="start missing workers, return the list")
+    p.add_argument("--need", required=True, help="opus-low,sonnet-low[,reviewer=opus-medium]")
+    p.add_argument("--no-forks", action="store_true",
+                   help="do not load the session:forks skill in new workers (default: load it)")
+    p.add_argument("--reset-at-day-end", action="store_true",
+                   help="at day end type /clear to the workers instead of /compact")
+    p.add_argument("--extra-args", default=None,
+                   help="extra claude flags for every worker of this pool (stored in the manifest)")
+    common(p)
+
+    p = sub.add_parser("submit", help="hand a task file to a worker")
+    p.add_argument("--worker", required=True)
+    p.add_argument("--file", required=True)
+    common(p)
+
+    p = sub.add_parser("wait", help="wait for a task result (long poll)")
+    p.add_argument("task")
+    p.add_argument("--timeout", type=float, default=150)
+    p.add_argument("--key", help="pool key (accepted for symmetry; tasks are looked up by id)")
+    p.add_argument("--cwd", help="pool cwd (accepted for symmetry; tasks are looked up by id)")
+
+    p = sub.add_parser("status", help="pools, workers and tasks")
+    common(p, cwd_default=False)
+    p.add_argument("--all", action="store_true", help="every pool, not only this cwd's")
+
+    for name, help_ in (("park", "fold workers into handoff files and close their windows"),
+                        ("resume", "bring parked workers back"),
+                        ("compact", "warm /compact for the workers")):
+        p = sub.add_parser(name, help=help_)
+        p.add_argument("--workers", help="comma-separated names (default: all)")
+        common(p)
+
+    # --json is global but may appear after the subcommand too.
+    for p in sub.choices.values():
+        p.add_argument("--json", action="store_true", dest="json", default=argparse.SUPPRESS)
+
+    a = ap.parse_args()
+
+    if a.cmd == "ensure":
+        payload = {**pool_args(a), "need": a.need}
+        if a.reset_at_day_end:
+            payload["reset_at_day_end"] = True
+        if a.extra_args is not None:
+            payload["extra_args"] = a.extra_args
+        if a.no_forks:
+            payload["forks"] = False
+        res = call(a.port, "POST", "/ensure", payload, timeout=600)
+        out = f"pool {res['key']} (tmux {res['tmux']})\n" + fmt_workers(res["workers"])
+    elif a.cmd == "submit":
+        res = call(a.port, "POST", "/submit",
+                   {**pool_args(a), "worker": a.worker, "file": os.path.realpath(a.file)})
+        out = res["task"]["id"]
+    elif a.cmd == "wait":
+        payload = {"task": a.task, "timeout": a.timeout}
+        if a.key:
+            payload["key"] = a.key
+        if a.cwd:
+            payload["cwd"] = os.path.realpath(a.cwd)
+        res = call(a.port, "POST", "/wait", payload, timeout=a.timeout + 30)
+        t = res["task"]
+        out = f"{res['state']} {t['result']}" + (f"\n{t['last_line']}" if t.get("last_line") else "")
+    elif a.cmd == "status":
+        key = a.key
+        if not key and not a.all and (a.cwd or a.owner):
+            # Resolve the key the same way the daemon does, via a status of all pools.
+            pass
+        res = call(a.port, "GET", "/status" + (f"?key={key}" if key else ""))
+        parts = []
+        for pool in res["pools"]:
+            if not a.all and a.cwd and pool.get("cwd") != os.path.realpath(a.cwd) and not key:
+                continue
+            owner = f"  owner={'alive' if pool.get('owner_alive') else 'gone'}" if pool.get("owner") else ""
+            parts.append(f"pool {pool['key']}  cwd={pool.get('cwd')}  tmux={pool['tmux']}{owner}")
+            parts.append(fmt_workers(pool["workers"]) if pool["workers"] else "  (no workers)")
+            if pool["tasks"]:
+                parts.append(fmt_tasks(pool["tasks"]))
+            parts.append("")
+        out = "\n".join(parts).rstrip() or "(no pools)"
+    else:
+        workers = a.workers.split(",") if a.workers else None
+        res = call(a.port, "POST", f"/{a.cmd}", {**pool_args(a), "workers": workers}, timeout=400)
+        key_ = {"park": "parked", "resume": "resumed", "compact": "compacted"}[a.cmd]
+        val = res[key_]
+        out = fmt_workers(val) if val and isinstance(val[0], dict) else ", ".join(val) or "(nothing)"
+
+    print(json.dumps(res, indent=2) if a.json else out)
+
+
+if __name__ == "__main__":
+    main()
