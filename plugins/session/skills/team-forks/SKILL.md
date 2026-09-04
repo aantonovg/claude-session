@@ -21,15 +21,16 @@ show the menu below.
 ### 0. Keep-warm cron, first tool call
 
 Before anything else: `CronCreate` with `cron: "*/30 * * * *"`, `prompt: "ping"`,
-`recurring: true`. Reply to every `ping` with one word. This happens in both branches
-below (new team and restore); do not ask the user for the task before step 1 is done.
+`recurring: true` (a `ToolSearch` to load the tool may come first; nothing else may).
+Reply to every `ping` with one word. This happens in both branches below (new team and
+restore); do not ask the user for the task before step 1 is done.
 
 ### 1. Restore or new team
 
 Second tool call, always, even if the user already described a task:
 
 ```
-ls -dt ~/.claude/projects/<encoded-cwd>/team-compact/*/ 2>/dev/null | head -10
+ls -dt ~/.claude/projects/<encoded-cwd>/team-compact/*/ 2>/dev/null | head -10 || true
 ```
 
 `<encoded-cwd>` is the current working directory with every `/` replaced by `-`
@@ -53,22 +54,25 @@ not ask about class or sub-mode again.
 The class decides how many teammates and which models, and the class is only known
 after looking at the task. So a new team starts in forks style: the main session
 explores the task through forks (`Agent`, `subagent_type: "fork"`; any job with 3+
-tool calls or 3K+ input goes to a fork; the fork prompt starts with "You are the fact
-researcher: …" and ends with a return format of at most N words, no dumps). Read the
-ticket, the code, the tests, the runbooks this way until the size of the work is clear.
-For a small task (a status check, a one-file fix) this recon may already answer it:
-then say so and let the user decide whether a team is needed at all.
+tool calls or 3K+ input goes to a fork, and every Jira, Confluence, GitLab or other
+MCP read is a fork regardless of count, because those results are large; the fork
+prompt starts with "You are the fact researcher: …" and ends with a return format of at
+most N words, no dumps). Read the ticket, the code, the tests, the runbooks this way
+until the size of the work is clear. Then ask with `AskUserQuestion`, always, with the
+proposed class and a one-line reason in the question text, three options: "No team,
+answer directly" (when the recon already answered a small task), "Light team",
+"Full team". The user's pick decides; never declare the outcome without asking.
 
-Then read the selection map: `~/.claude/session-map.md` (per-account file: one class × role
+If a team was chosen, read the selection map: `~/.claude/session-map.md` (per-account file: one class × role
 table per pairing, the default pairing, the default main model, the full model ids
 with their allowed efforts). Use the default pairing unless the user named another
 one at invocation (`pairing opus-opus`). If the file is missing, use the fallback
 table at the end of this skill and tell the user the file is missing. Propose the task
 class 1-5 with a one-line reason based on the recon (the user may have named one at
 invocation; confirm it against what the recon showed). Take the row of the chosen
-pairing's table for that class. Then ask
-with `AskUserQuestion` (always both options, even when the user already named one; a
-missing task description is asked as free text, never as a one-option menu):
+pairing's table for that class. The two
+sub-modes (the menu above already offered both; a missing task description is asked as
+free text, never as a one-option menu):
 
 - **light**: one teammate per unique model+effort combo of the row, minus the main
   session's own combo. The main session performs the roles of its own combo itself.
@@ -114,9 +118,10 @@ Model <model>, effort <effort>. Project: <cwd>. Task: <one-line goal>.
 Rules: keep your own context for coordination; run every job with 3+ tool calls or
 3K+ tokens of input (file sweeps, tests, searches, verification) in a fork
 (Agent tool, subagent_type "fork"; parallel forks in one message; the fork's prompt
-starts with its role and ends with a return format of at most N words, no dumps).
-Never spawn plain subagents or Workflow; never run /model, /effort or /compact
-yourself; on a permission denial stop and return BLOCKED: <action>.
+starts with its role and ends with a return format of at most N words, no dumps;
+every wait inside a fork stays under 3 minutes per call). Never spawn plain subagents
+or Workflow; never run /model, /effort or /compact yourself; on a permission denial
+stop and return BLOCKED: <action>.
 Create a keep-warm cron now: CronCreate cron "*/30 * * * *", prompt "ping", recurring.
 Reply READY and wait for tasks. Keep every later reply to DONE plus at most 5 lines.
 ```

@@ -56,6 +56,14 @@ cycles each); pick the 0-3 skills per stage from the skill-routing map.
 In plan mode forks must avoid Bash commands with `$var`, `$(…)` or loops (they trigger a
 permission prompt there); outside plan mode any Bash is fine.
 
+A fork's own context lives in the 5-minute cache and the clock runs from the start of
+each request, so a fork never waits synchronously for long: every Bash call, MCP call
+or poll loop inside a fork stays under about 3 minutes; longer work runs with
+`run_in_background` and is polled in short calls, or the wait moves to the main
+session. A cron created by a fork fires in the main session, not in the fork, so it
+cannot keep a fork warm. What expires is only the fork's own suffix; the parent prefix
+it inherited stays in the parent's 1-hour cache.
+
 ## Forbidden in this mode
 
 - No plain subagents (`general-purpose`, `Explore`, custom agent types), no named
