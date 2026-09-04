@@ -12,7 +12,8 @@ user answers when present, the answer arrives as a normal turn.
 
 ## When
 
-- An AskUserQuestion auto-continued without an answer (`askUserQuestionTimeout`).
+- An AskUserQuestion auto-continued without an answer (`askUserQuestionTimeout`):
+  always, even for a single question.
 - Two or more decisions are waiting and the user has not answered for a while.
 - The user said they are away, or the session runs unattended.
 
