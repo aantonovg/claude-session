@@ -130,9 +130,10 @@ keep their warmed context, so the second and later rounds are cheap.
 - Tool limits (2026-09-04): the `Agent` tool takes only model aliases (`opus`, `sonnet`,
   `fable`), no effort; the skill pins the 1M id and the effort by typing `/model` and
   `/effort` into the teammate's tmux pane. Teammate panes have no status line. tmux
-  teammates need an attached tmux client: in a detached test session spawns fail with
-  `respawn pane failed: fork failed: Device not configured` (attach a pty client
-  first). Every teammate reply lands in the main context: a full team of six on a
+  teammates do not need the session to run inside tmux: Claude Code opens a private
+  server (`tmux -L claude-swarm-<pid>`; `tmux ls` on the default server shows nothing).
+  Only a *detached test session on macOS* fails with `respawn pane failed: fork failed:
+  Device not configured` (attach a pty client first); Linux needs no client. Every teammate reply lands in the main context: a full team of six on a
   small task cost ≈ $10 (main $3.9 of it, 6.9M cache-read tokens from 8 exchanges),
   so replies are kept to "DONE + 5 lines".
 
