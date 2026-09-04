@@ -170,6 +170,20 @@ Inside full, two ways to cut the crew:
 
 ## Mode 4 — Peer sessions
 
+Next mode to build (decided 2026-09-04). Why: in team modes every teammate turn ends
+with an idle notification that costs the lead a full context read, so an opus lead
+with N teammates pays N × (lead read) per keep-warm cycle on top of the teammates'
+own reads. Peers have no lead in the protocol: each is a full session with its own
+cron, messages go through `SendMessage` to a local session (measured: the peer wakes
+with its cache intact), and nothing is relayed. Design to do: the coordinating
+session spawns peers itself (`tmux new-session -d "claude --model <id> --effort <x>"`
+plus a typed briefing, so model and effort are set at start and no account default
+changes), names them by role/combination, keeps a manifest like `team.md`, hands out
+stages by message, parks them with the same file protocol; check whether
+cross-session messages need approval in auto mode, and how a peer reports back
+without a lead notification (reply message, or a result file).
+
+
 3-5 independent sessions started by hand (tmux or `claude agents`), no main session, work
 passed between them with SendMessage / ListAgents ("other local Claude sessions on this
 machine").
