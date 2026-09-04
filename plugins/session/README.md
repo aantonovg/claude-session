@@ -312,6 +312,17 @@ decision that must be the user's end the turn with the question written out inst
 leaving a dialog open, so the pings keep the cache alive. Avoid plan mode in a session
 that may sit unattended.
 
+## Open item: teammate context jump on a 200K model
+
+Measured 2026-09-04 on the VM (enterprise account, sonnet teammate not pinned to
+`[1m]` because the tmux pin was denied by the auto classifier): two sonnet-low teammates
+started at ~86K and jumped to ~209K on their second turn after loading three corporate
+skills (~26KB of text, which does not explain the jump); on a 200K window auto-compact
+then thrashed and every fork they spawned failed with "prompt too long". Not diagnosed
+yet: what those skills pull in. Mitigations in the skill: the `[1m]` pin is mandatory
+before stages (the skill stops if the pin is denied), teammates load only named skills
+and send big reads to forks. On the VM the tmux commands now have allow rules.
+
 ## Compact prices
 
 - Warm compact (cache alive): the compact call reads the whole context at the cache-read

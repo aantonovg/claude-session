@@ -1,6 +1,6 @@
 {
   "name": "session",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Session modes for the main Claude Code session, one user-invocable skill per mode: single (one session, no agents), forks (main session + fork subagents), team (tmux teammates picked by model+effort, light/full sub-modes), team-forks (team + forks), team-compact (fold a team into files and restore it later from the team/team-forks start menu). README.md holds the whole reference: cache facts, compact prices, scores, handoff protocol.",
   "keywords": [
     "session",

@@ -124,13 +124,18 @@ or Workflow; never run /model, /effort or /compact yourself; on a permission den
 stop and return BLOCKED: <action>.
 Create a keep-warm cron now: CronCreate cron "*/30 * * * *", prompt "ping", recurring.
 Reply READY and wait for tasks. Keep every later reply to DONE plus at most 5 lines.
+Load only the skills a stage names; keep your own context small, big reads go to forks.
 ```
 
 ### 4. Go
 
 Step 3b is done for every teammate (one `tmux send-keys` with `/model <full id>` per
 pane, plus `/effort` where it differs) before the team is announced; a team announced
-without the pin lines in the transcript is a mistake. Every teammate creates its own cron (it is in the spawn message; check the READY
+without the pin lines in the transcript is a mistake. If the `tmux send-keys` call is
+denied (permission or classifier), stop: report the denial and the exact command to
+the user and do not dispatch stages, because an unpinned teammate may run on a 200K
+context and thrash on the first big read. The user can add an allow rule
+(`Bash(tmux send-keys *)`) or type the `/model` line into the pane. Every teammate creates its own cron (it is in the spawn message; check the READY
 reply mentions it). If a teammate cannot create crons, the main session's ping turn
 sends `SendMessage("ping")` to that teammate. Tell the user the team is up (names,
 models, efforts) and start the first stage.
@@ -141,13 +146,14 @@ models, efforts) and start the first stage.
   implementation → review → fast tests → fix; 1-3 cycles each, exit on a clean review.
   Technical stages (prep, commit, conflicts) go to the executor role without review.
 - Each stage is one `SendMessage(to: <name>, …)` to the teammate that owns the role.
-  `Agent` with an existing name is only for respawning a teammate that died, never for
-  sending work. In light, name the role in the message ("acting as code/test author:
+  `Agent` with an existing name spawns a second instance (`<name>-2`), so it is only
+  for replacing a teammate that died or thrashed, never for sending work. In light, name the role in the message ("acting as code/test author:
   …"). Review and fix are never done by the same teammate in full; in light they are by
   design different combos.
 - Every teammate reply lands in the main context, so ask for short replies: "reply
-  DONE plus at most 5 lines" (full details go to files or the task list). A teammate
-  idle notice with no content needs no reply and no comment.
+  DONE plus at most 5 lines" (full details go to files or the task list). Results
+  always travel in the reply body or in a named file; an idle notice carries nothing
+  and needs no reply.
 - Messages are self-contained: goal, files, acceptance criteria, the 0-3 skills to load
   (from the skill-routing map), the return format. Land messages carry repo, branch,
   expected changed files and a one-line summary.
