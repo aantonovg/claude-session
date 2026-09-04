@@ -315,14 +315,26 @@ decision that must be the user's end the turn with the question written out inst
 leaving a dialog open, so the pings keep the cache alive. Avoid plan mode in a session
 that may sit unattended.
 
+## Verified 2026-09-04 on the VM (opus-low main, sonnet[1m] teammate, real ticket)
+
+Restore from a compact, `/model claude-sonnet-5[1m]` pin through tmux (allow rules for
+`tmux send-keys/capture-pane/list-panes`), five stages by SendMessage, seven forks
+inside the teammate, `pong`, team-compact with a time-stamped dir: main 52 turns and
+the teammate 32 turns wrote only into the 1h bucket, every fork read the teammate's
+prefix and wrote 1-4K, zero cache misses anywhere. Cost ≈ $7. A subagent Bash guard
+hook (user-prefs `fork-bash-guard.sh`) now caps fork Bash timeouts at 170 s; Claude Code
+itself already blocks literal long `sleep` calls.
+
 ## Open item: teammate context jump on a 200K model
 
 Measured 2026-09-04 on the VM (enterprise account, sonnet teammate not pinned to
 `[1m]` because the tmux pin was denied by the auto classifier): two sonnet-low teammates
 started at ~86K and jumped to ~209K on their second turn after loading three corporate
 skills (~26KB of text, which does not explain the jump); on a 200K window auto-compact
-then thrashed and every fork they spawned failed with "prompt too long". Not diagnosed
-yet: what those skills pull in. Mitigations in the skill: the `[1m]` pin is mandatory
+then thrashed and every fork they spawned failed with "prompt too long". Test 3 showed the
+restored teammate already at ~212K right after READY, before any stage, so the
+skills are not the cause; what the first turn reads (workspace CLAUDE.md, MCP schemas,
+memory) is still to be diagnosed. Mitigations in the skill: the `[1m]` pin is mandatory
 before stages (the skill stops if the pin is denied), teammates load only named skills
 and send big reads to forks. On the VM the tmux commands now have allow rules.
 

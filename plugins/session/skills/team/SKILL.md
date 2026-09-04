@@ -43,7 +43,9 @@ If none, go straight to a new team.
 `<dir>/team.md`. Take mode, sub-mode, class and the teammate list (name, roles, model,
 effort, file) from it, spawn every teammate exactly as listed (step 3) with the start
 message "Read `<dir>/<name>.md` fully. Create a keep-warm cron now: CronCreate cron
-"*/30 * * * *", prompt "ping", recurring. Then reply READY and wait for tasks". After
+"*/30 * * * *", prompt "ping", recurring. Then reply READY and wait for tasks" followed
+by the same rules block as a fresh spawn (context small, named skills only, short
+replies, deliverables under the project, the fork-prompt skeleton in team-forks). After
 the READY replies do the pin step (step 3b) for every teammate, then go to step 4. Do
 not ask about class or sub-mode again.
 
@@ -119,6 +121,20 @@ on a permission denial stop and return BLOCKED: <action>.
 Create a keep-warm cron now: CronCreate cron "*/30 * * * *", prompt "ping", recurring.
 Reply READY and wait for tasks. Keep every later reply to DONE plus at most 5 lines.
 Load only the skills a stage names; keep your own context small, big reads go to forks.
+Deliverables (plans, reports) go under the project or the path the main session names,
+never into a scratchpad that dies with the session.
+```
+
+In mode team-forks the spawn message also carries this fork-prompt skeleton, which the
+teammate copies for every fork it spawns:
+
+```
+Every fork you spawn gets a prompt shaped exactly like this:
+  You are the <role>: <one-line goal>.
+  <task, files, acceptance criteria>
+  Return only <facts | diff summary | PASS/FAIL>, at most <N> words, no dumps.
+  Every wait under 3 minutes per call; long jobs run_in_background and are polled.
+  On a permission denial stop and return BLOCKED: <action>.
 ```
 
 ### 4. Go

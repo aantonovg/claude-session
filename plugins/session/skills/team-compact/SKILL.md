@@ -30,11 +30,16 @@ output only; nothing re-reads a big history.
    Wait for every `DONE`. A teammate that does not answer within a few minutes gets one
    reminder; if it still does not answer, note it as "no file" in `team.md`.
 
-3. **Main state.** Write `<dir>/main.md` with the same five sections about this session:
+3. **Deliverables.** Any plan, report or note the team produced that lives only in a
+   scratchpad or `$TMPDIR` is copied into `<dir>/` now (it dies with the session
+   otherwise); files already under the project stay where they are and are listed in
+   `main.md`.
+
+4. **Main state.** Write `<dir>/main.md` with the same five sections about this session:
    the task, where it stands, decisions, open items, files and commands. Under 300
    lines. This file is what a fresh session reads tomorrow instead of this history.
 
-4. **Manifest.** Write `<dir>/team.md`:
+5. **Manifest.** Write `<dir>/team.md`:
 
    ```
    # <one-line recap of the work>
@@ -47,11 +52,11 @@ output only; nothing re-reads a big history.
    ...
    ```
 
-5. **Stop.** Delete the `ping` cron of this session (`CronList`, then `CronDelete`).
+6. **Stop.** Delete the `ping` cron of this session (`CronList`, then `CronDelete`).
    Ask each teammate to shut down (send `{"type": "shutdown_request"}`) and confirm they
    are gone with `ListAgents`.
 
-6. **Report.** One line to the user: the directory, the number of files, and the way
+7. **Report.** One line to the user: the directory, the number of files, and the way
    back: tomorrow start a fresh session in the same directory and run
    `/session:team` (or `/session:team-forks`); the compact appears in the menu, or pass
    the directory as the argument.
