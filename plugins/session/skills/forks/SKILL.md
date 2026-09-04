@@ -61,7 +61,10 @@ each request, so a fork never waits synchronously for long: every Bash call, MCP
 or poll loop inside a fork stays under about 3 minutes; longer work runs with
 `run_in_background` and is polled in short calls, or the wait moves to the main
 session. A cron created by a fork fires in the main session, not in the fork, so it
-cannot keep a fork warm. What expires is only the fork's own suffix; the parent prefix
+cannot keep a fork warm. A fork must never end its turn with a `run_in_background`
+job still running: the completion re-invokes the fork, but that re-invocation is a
+full cache miss (measured: 409K rewritten, ≈ $5 on fable). Background jobs inside a
+fork are polled with short foreground calls until they finish, then the fork returns. What expires is only the fork's own suffix; the parent prefix
 it inherited stays in the parent's 1-hour cache.
 
 ## Forbidden in this mode
