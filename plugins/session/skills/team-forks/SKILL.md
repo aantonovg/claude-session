@@ -95,7 +95,7 @@ One `Agent` call per teammate, all in one message:
 - `name`: the combo (`opus-low`) or the role/domain (`reviewer`, `api`);
 - `model`: the `Agent` tool accepts only the aliases `opus`, `sonnet`, `fable`; pass
   the alias here and put the full id in the prompt. Right after the READY reply, pin
-  the variant in the pane: `tmux send-keys -t <pane_id> "/model <full id>" Enter`
+  the variant in the pane: `tmux -S <socket> send-keys -t <pane> "/model <full id>" Enter`
   (ids from `session-map.md`) and read the confirmation line with
   `tmux capture-pane -t <pane_id> -p`. Do this before the first task: the reset is
   cheap on an empty context;
@@ -116,11 +116,17 @@ Effort is not an `Agent` parameter either. A teammate starts with the main sessi
 own effort, so only a teammate whose effort differs needs `tmux send-keys -t <pane_id>
 "/effort <level>" Enter`, then, after 2 seconds, a second `tmux send-keys -t <pane_id>
 Enter` to confirm the "switching re-reads the history" dialog; sent together with the
-`/model` line above. Panes: the
-teammates sit in the main session's tmux window; `tmux list-panes -F '#{pane_id}
-#{pane_index}'` lists them (the main session is `$TMUX_PANE`; titles are identical,
-never search by title; teammate panes show no status line, so read the command's
-confirmation text instead).
+`/model` line above. Panes: a
+teammate is a separate `claude` process in a tmux server that Claude Code opens for
+the team, often a private one (`claude-swarm-<pid>`) that a plain `tmux list-panes -a`
+does not see. Never conclude "in-process" from an empty pane list. Find the pane
+through the process: `pgrep -f -- "--agent-name <name>"` gives the pid; its `TMUX`
+variable (Linux: `tr '\0' '\n' < /proc/<pid>/environ | grep ^TMUX=`; macOS:
+`ps eww -o args -p <pid> | tr ' ' '\n' | grep ^TMUX=`) is `<socket>,<server pid>,<n>`,
+and `TMUX_PANE` in the same environment is the pane id. Then address it as
+`tmux -S <socket> send-keys -t <pane> "..." Enter` and read the result with
+`tmux -S <socket> capture-pane -t <pane> -p` (the status line there shows
+`<model>:<effort> | <ctx>/1M`).
 
 Spawn message template:
 
