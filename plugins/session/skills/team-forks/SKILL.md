@@ -152,11 +152,13 @@ denied (permission or classifier), stop: report the denial and the exact command
 the user and do not dispatch stages, because an unpinned teammate may run on a 200K
 context and thrash on the first big read. The user can add an allow rule
 (`Bash(tmux send-keys *)`) or type the `/model` line into the pane. Every teammate creates its own cron (it is in the spawn message; check the READY
-reply mentions it). If a teammate cannot create crons, the main session's ping turn
-sends `SendMessage("ping")` to that teammate. Sizing fact: every teammate `pong`
-reaches the main session as a notification turn, one cache read of the main context
-per teammate per 30 minutes; keep the main context small, prefer light, and park an
-idle team with `session:team-compact` instead of keeping it warm for hours. Tell the user the team is up (names,
+reply mentions it). Every teammate `pong` reaches the main session as a notification
+turn, so once the team is up the main session's own cron is redundant: delete it
+(`CronDelete` the id from step 0); the teammates' notifications keep the main context
+warm. If a teammate cannot create crons, keep the main cron and let its ping turn send
+`SendMessage("ping")` to that teammate. Cost floor: one main-context read plus one
+teammate read per teammate per 30 minutes; keep the main context small, prefer light,
+and park an idle team with `session:team-compact` instead of keeping it warm for hours. Tell the user the team is up (names,
 models, efforts) and start the first stage.
 
 ## Working in this mode
