@@ -14,6 +14,14 @@ skills: read it before changing any of them.
 | `session:team-compact` | fold a running team into files; `team` / `team-forks` restore from them | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
 
+Default for day-to-day work (decided 2026-09-04 after the tests): `session:forks`. One
+context, no relay chatter, zero misses measured; team modes cost N notification turns
+per keep-warm cycle and hide the stage flow in messages. Next targets: peers (mode 4)
+and then a workflow over peers (mode 8 with peer sessions instead of teammates: the
+workflow script is the visible pipeline, each `agent()` a cheap proxy that hands its
+stage to a warm peer by role/model and returns a result file; the pieces were measured
+today: SendMessage + file handoff, peers wake with their cache, proxy stage ≈ $0.07-0.15).
+
 Deferred, not in the plugin yet: peers (mode 4, started by hand), delegate (mode 6, plain
 subagents with role agents), workflow (mode 7) and workflow over a team (mode 8), codex.
 
