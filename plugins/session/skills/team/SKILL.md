@@ -46,15 +46,25 @@ message "Read `<dir>/<name>.md` fully. Create a keep-warm cron now: CronCreate c
 the READY replies do the pin step (step 3b) for every teammate, then go to step 4. Do
 not ask about class or sub-mode again.
 
-### 2. Class and sub-mode (new team only)
+### 2. Recon first, then class and sub-mode (new team only)
 
-Read the selection map: `~/.claude/session-map.md` (per-account file: one class × role
+The class decides how many teammates and which models, and the class is only known
+after looking at the task. So a new team starts in forks style: the main session
+explores the task through forks (`Agent`, `subagent_type: "fork"`; any job with 3+
+tool calls or 3K+ input goes to a fork; the fork prompt starts with "You are the fact
+researcher: …" and ends with a return format of at most N words, no dumps). Read the
+ticket, the code, the tests, the runbooks this way until the size of the work is clear.
+For a small task (a status check, a one-file fix) this recon may already answer it:
+then say so and let the user decide whether a team is needed at all.
+
+Then read the selection map: `~/.claude/session-map.md` (per-account file: one class × role
 table per pairing, the default pairing, the default main model, the full model ids
 with their allowed efforts). Use the default pairing unless the user named another
 one at invocation (`pairing opus-opus`). If the file is missing, use the fallback
-table at the end of this skill and tell the user the file is missing. Ask the user
-for the task class 1-5 if it is not in the invocation, or propose one with a one-line
-reason. Take the row of the chosen pairing's table for that class. Then ask
+table at the end of this skill and tell the user the file is missing. Propose the task
+class 1-5 with a one-line reason based on the recon (the user may have named one at
+invocation; confirm it against what the recon showed). Take the row of the chosen
+pairing's table for that class. Then ask
 with `AskUserQuestion` (always both options, even when the user already named one; a
 missing task description is asked as free text, never as a one-option menu):
 
@@ -137,8 +147,9 @@ models, efforts) and start the first stage.
 
 ## Forbidden in this mode
 
-- No `subagent_type: "fork"`, no plain subagents, no `Workflow`, for the main session
-  and for the teammates.
+- No plain subagents and no `Workflow`, for the main session and for the teammates.
+  Forks are allowed only in the recon of step 2, before the team exists; once the team
+  is up, no forks either (that is mode team-forks).
 - No `/model`, `/effort` (after the initial setting), plugin changes or `/compact`
   mid-task. Parking the team for the night is `session:team-compact`, on the user's
   word.

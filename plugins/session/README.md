@@ -136,6 +136,8 @@ keep their warmed context, so the second and later rounds are cheap.
 
 ### Light and full, by role or by domain
 
+- A new team starts with recon in forks style (the class is only known after looking
+  at the task); the team is spawned once the class and sub-mode are agreed.
 - **Light**: one teammate per unique model+effort combo of the selection-map row for the
   task class, minus the main session's own combo (the main session does those roles
   itself). Class 3 with a fable-low main: main = reviewer, teammates `opus-medium`
