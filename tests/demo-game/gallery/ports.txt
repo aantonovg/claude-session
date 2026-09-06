@@ -14,3 +14,12 @@ p-fast-opus 8713
 p-sol-opus 8714
 p-sol-luna-opus 8715
 p-sol-terra-opus 8716
+c-opus-base 8717
+c-opus-luna 8718
+c-opus-astra 8719
+c-opus-plus-sol 8720
+c-opus-sol-terra 8721
+c-fable-base 8722
+c-opus-pipeline 8723
+c-opus-pipeline-lite 8724
+c-fable-pipeline 8725
