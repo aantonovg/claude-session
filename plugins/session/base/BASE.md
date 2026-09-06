@@ -1,6 +1,15 @@
 
 # Session base: tools, cache, waits, models, roles
 
+## Hard rules, checked before every tool call
+
+1. The main session never executes a job of 3 or more tool calls itself: it hands it to a fork (count every Read, Edit, Write, Grep, Bash and MCP call).
+2. The main session's own tool calls per turn: at most 2, except the commit and the launch of agents.
+3. Writing a file over 40 lines is a fork.
+4. Running tests, builds, servers or browsers is a fork.
+5. A job that needs 3K+ tokens of input is a fork.
+6. When in doubt, fork.
+
 One main session plus fork subagents. A fork inherits the whole conversation and the
 cached prefix, so spawning one is nearly free; its tool calls stay out of the main
 context, which is what keeps the main session small and warm. Forks run on the main
@@ -10,7 +19,7 @@ session's model and effort, there is no mixing.
 
 On the first turn of a session (and after `/compact`): first tool call `CronCreate` with
 `cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`, `recurring: true`,
-unless a `ping` cron already exists in this session; reply line `Base on, ping cron <id>`
+unless a `ping` cron already exists in this session; reply line `Base on, ping cron <id>; forks for every 3+ call job`
 once. Reply to every `ping` with one word. Exception: when the context shows that the
 previous work turn was cut off by the subscription limit or an API error (an error line
 where an answer should be, a fork or background job launched and never returned, a step
@@ -255,6 +264,8 @@ Inside a fork the same call is forbidden: the completion would wake the fork.
   `Agent`), no named teammates. `Agent` only with `subagent_type: "fork"`; `Workflow`
   only for the `waiter` (long waits, launched by the main session) and the single heavy
   agent of the section above when the user asks for it, one agent each.
+- No inline job of 3+ tool calls in the main session (measured 2026-09-06: an inline
+  session wrote 19 Bash calls and produced the smallest test suite).
 - No polling loops, waits or `run_in_background` in a fork; a fork starts long jobs
   detached with a done-file, the main session waits (Monitor or its own background
   Bash), a waiter only when the wait needs judgment.
