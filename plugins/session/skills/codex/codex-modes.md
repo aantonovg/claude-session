@@ -31,7 +31,7 @@ fill exactly those slots, never more.
 | stage | Claude default | executor axis luna / terra | heavy axis sol / astra | heavy axis +sol / +astra |
 |---|---|---|---|---|
 | 1 framing, ledger merges | forks | forks (write task files) | forks | forks |
-| 1 research waves | forks | `luna-high` (sonnet-low slots) / `terra-high` (opus-low slots, terra mode) for repo-only questions, luna writes `evidence/EB-<n>.md` and its ledger lines itself; MCP questions stay forks | unchanged | unchanged |
+| 1 research waves | forks | `luna-high` (sonnet-low slots) / `terra-high` (opus-low slots, terra mode) for repo-only questions, luna writes `evidence/EB-<n>.md` and its ledger lines itself; MCP reads are forks (cold agents and codex do not see the session's MCP servers) | unchanged | unchanged |
 | 2 critic (cold) | `stage-critic`, reviewer cell | unchanged | `sol-medium` / `astra-medium` instead | Claude critic + codex critic, merge fork |
 | 3 decision contract | fork | fork | fork | fork |
 | 3 decision review (full path only; standard = low fork check, fast none) | cold `stage-reviewer` | unchanged | `sol-high` / `astra-high` | paired, merge fork |
