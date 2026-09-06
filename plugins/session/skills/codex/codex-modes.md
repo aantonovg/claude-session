@@ -18,7 +18,7 @@ reserve quota, for a 0% main quota). `astra` → `gpt-6-astra` (mapped
 Executors are fixed at `high`: `luna-high` replaces sonnet-low, `terra-high` replaces opus-low
 (terra mode only). Heavy effort follows the stage's tool-call budget:
 
-| stage budget | heavy (sol / astra) | Claude analogue |
+| stage budget | heavy (`sol` mode: sol only; `astra` mode: astra only) | Claude analogue |
 |---|---|---|
 | at most 5 tool calls, pure reasoning over given files (critic) | `sol-medium`, `astra-medium` | opus-medium |
 | hardest document review (decision contract), a gate that must not fail silently, 3 tool calls | `sol-high`, `astra-high` | fable-medium / high |
@@ -133,8 +133,10 @@ output; reserve = luna; astra $10 / $1 / $50 per M input / cached / output, unof
 
 ## Dual review (`+sol`, `+astra`)
 
-Applies to document reviews only (critic, decision review); code is never dual-reviewed.
-Both reviewers get the same inputs and write separate files (`reviews/<stage>.md` and
+Applies to document reviews only (critic, decision review, upscale review); code is never
+dual-reviewed. The pair: the Claude upscale agent of the main session's model (opus or
+fable) and the codex agent of the mode's set at the same effort, in one `Workflow`
+(`parallel`); generation stays single on the Claude agent. Both reviewers get the same inputs and write separate files (`reviews/<stage>.md` and
 `reviews/<stage>-codex.md`). A merge fork writes `reviews/<stage>-triage.md`: findings in
 both, in one only, contradictions, with a verdict per contradiction taken from the files.
 The gate fails when either review has a high finding the triage did not refute with

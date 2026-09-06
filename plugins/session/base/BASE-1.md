@@ -49,6 +49,9 @@ commit, the report.
 - Read once, write once: all inputs in one command (`cat a b c` or one script), think
   once, write at once; never a gap over 3 minutes between two tool calls (the suffix
   expires at 5; measured: a review fork paused > 5 min before its Write, 53K rewritten).
+- A bulk job that does not need the chat context (repository research, a test or
+  verification layer, a code review of a finished diff) goes to a downscale agent
+  (section "Downscale and upscale of intelligence") instead of a fork.
 
 ## Fork prompt template
 
@@ -78,7 +81,10 @@ waiters, plain subagents) starts with the same prefix, then a space and the job
 `lo me hi xh mx`. Only a FORK launch sets `name` (the field the agents panel shows
 instead of the bare type); never set `name` on a waiter or any plain subagent: a named
 plain subagent is spawned as a mailbox teammate (measured 2026-09-06), a named fork
-stays a fork. A fork carries the main session's model and effort, a waiter is `son-lo`,
+stays a fork. A fork's prefix is the main session's own model and effort, copied one
+to one from the status line (`fable:low` → `fab-lo`, `opus:low` → `ops-lo`); a fork
+cannot run at another effort, so `ops-hi-` on a fork in a low session is an error. A
+waiter is `son-lo`,
 a codex-proxy label names the codex target (the haiku shim is implied). This replaces
 the older `<mod>:<eff>` form and the earlier suffix form.
 
@@ -99,15 +105,24 @@ completion re-invokes the fork, and that re-invocation is a full cache miss (mea
 409K rewritten, ≈ $5 on fable). What expires after 5 idle minutes is only the fork's own
 suffix; the parent prefix it inherited stays in the parent's 1-hour cache.
 
-## Heavy agent on request
+## Upscale agents
 
-Only on the user's explicit word ("high-ревью", "через sol", "сгенерируй через astra"),
-never on the session's own initiative, one cold lean agent does a point review or a
-point generation of one artifact: `session:stage-reviewer` for review,
-`session:stage-author` for generation, `codex-proxy` for sol / astra / terra (model and
-effort as the user named them, else the reviewer-debugger or author cell of the class
-row). Launched as a single-agent `Workflow` (`label: "ops-hi-review"`, `"sol-hi-generate"`), inputs passed by path, output written to a file, the main session receives
-the path and the last line. Budget stated in the prompt: at most 5 tool calls at medium,
-3 at high or xhigh, all inputs read in one call, one write; when the budget runs out the
-agent returns `partial` with what it has. In pipeline mode the launch gets a ledger row
-like any cold stage.
+Combos: `opus-medium`, `fable-medium` (at most 5 tool calls), `opus-high`, `fable-high`
+(at most 3 tool calls); `sol` or `astra` (the mode's set only) in the same slots when
+`session:codex` is on; `+sol` / `+astra` pair the Claude agent with the codex one at the
+same effort for review.
+Two jobs: (1) critique of one complex fact set given by path (research ledger,
+verification plan, decision contract): hypotheses of what may go wrong, no verification
+of them; (2) generation of a key document (verification plan from a research ledger,
+decision contract). The session launches them at its decision points on its own
+judgment; the user may also name one ("high-ревью", "через sol"). After an upscale
+critique a fork or a downscale agent checks the hypotheses. Agent types:
+`session:stage-reviewer` for critique, `session:stage-author` for generation,
+`codex-proxy` for sol / astra. Never tool-heavy code review, never implementation; code
+review only when the change is critical, the uncertainty is high and the whole change
+fits one diff (rare). Launched through `Workflow` (`label: "ops-hi-critique"`,
+`"fab-me-generate"`), inputs passed by path, output written to a file, the main session
+receives the path and the last line. Budget stated in the prompt: at most 5 tool calls
+at medium, 3 at high or xhigh, all inputs read in one call, one write; when the budget
+runs out the agent returns `partial` with what it has. In pipeline mode the launch gets
+a ledger row like any cold stage.

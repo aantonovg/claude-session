@@ -11,7 +11,7 @@ Those skills know nothing about codex. Only the agent running a job changes; job
 files and ledger stay as defined by the base or by the pipeline / review skill.
 
 A job is a fork job in the base, a stage in pipeline / review. The heavy axis replaces or
-pairs the base's "heavy agent on request" and, when pipeline / review is on, their critic
+pairs the base's "upscale agent" and, when pipeline / review is on, their critic
 and decision-review stages. The executor axis routes executor-kind fork jobs (repository
 research, harness, package edits, mechanical checks) to `luna-high` / `terra-high` in any
 session, and the pipeline / review executor stages when those are on.
@@ -20,13 +20,13 @@ session, and the pipeline / review executor stages when those are on.
 
 Two axes, multiplied:
 
-| heavy axis (critic, decision review, heavy agent on request: document critique only, never code review) | executor axis (repo research, harness, packages, mechanical checks) |
+| heavy axis (critic, decision review, upscale agent: document critique only, never code review) | executor axis (repo research, harness, packages, mechanical checks) |
 |---|---|
 | `none` — Claude agents / forks as in the base or pipeline | `none` — forks on the main model |
 | `sol` — replace with `sol-medium` / `sol-high` (5 / 3 tool calls) | `luna` — executor fork jobs → `luna-high` |
-| `astra` — replace with `sol-medium`, `sol-high`, `astra-medium` or `astra-high` | `terra` — as luna, plus opus-low-class executor jobs → `terra-high` |
-| `+sol` — keep the Claude agent, pair a sol agent (dual review) | |
-| `+astra` — pair one of the four heavy codex combos | |
+| `astra` — replace with `astra-medium` / `astra-high` (5 / 3 tool calls); sol not used | `terra` — as luna, plus opus-low-class executor jobs → `terra-high` |
+| `+sol` — dual review: keep the Claude upscale agent, pair `sol` at the same effort | |
+| `+astra` — dual review: keep the Claude upscale agent, pair `astra` at the same effort | |
 
 Names: single axis `luna`, `terra`, `sol`, `astra`, `+sol`, `+astra`; combos `<heavy>-<exec>`:
 `sol-luna`, `sol-terra`, `astra-luna`, `astra-terra`, `+sol-luna`, `+sol-terra`,
@@ -37,7 +37,7 @@ session; after `/session:pipeline` or `/session:review` when those are used.
 
 0. The base is present in every session; no check. If pipeline or review is on, the stage
    mapping of `codex-modes.md` applies; otherwise the base mapping applies: executor-kind
-   fork job → executor axis, heavy agent on request → heavy axis.
+   fork job → executor axis, upscale agent → heavy axis.
 1. Parse the argument. `<mode>` present → split at the `-` before `luna`/`terra`:
    `sol-luna` = heavy `sol`, exec `luna`; `sol` = heavy `sol`, exec `none`; `luna` = heavy
    `none`, exec `luna`. With an argument there is NO question to the user. Only without an
@@ -51,7 +51,7 @@ session; after `/session:pipeline` or `/session:review` when those are used.
 
    Q1b (only when Q1 chose codex), header «Какая codex-модель», question «Какой набор тяжёлых codex-моделей?»
    - «sol» — sol-medium / sol-high.
-   - «astra» — одна из sol-medium, sol-high, astra-medium, astra-high.
+   - «astra» — astra-medium / astra-high (sol не используется).
 
    Q2, header «Исполнители», question «Кем делать дешёвые исполнительские работы (исследование по репозиторию, тесты, проверки)?»
    - «Форки Claude (по умолчанию)» — как в базе.
@@ -114,10 +114,10 @@ forks around 6 terra packages cost $28 for $1.42 of terra; this rule removes the
 
 ## Rules
 
-- Heavy effort by job budget: critic (reasoning over given files) → `sol-medium` /
-  `astra-medium`; decision review (pipeline full path only; standard has a low fork
-  check, fast none) and the hardest document review on request → `sol-high` /
-  `astra-high`. Heavy models and any medium/high effort generate or critique documents
+- Heavy effort by job budget, within the mode's set only (`sol` mode: sol; `astra` mode:
+  astra): critic (reasoning over given files) → `<set>-medium`; decision review
+  (pipeline full path only; standard has a low fork check, fast none) and the hardest
+  document review or generation on request → `<set>-high`. Heavy models and any medium/high effort generate or critique documents
   only, within 5 tool calls at medium and 3 at high; they never review code or read the
   repository. There is no final review and no code review at all: in pipeline Gate F is a
   mechanical closure check by a low fork. A package without a formal verifier is authored
@@ -133,8 +133,13 @@ forks around 6 terra packages cost $28 for $1.42 of terra; this rule removes the
 - Codex jobs are Workflow calls like the base's cold agents and the pipeline's cold stages
   (critic, cold researcher, waiter); the pipeline's ban on other Workflow stages is lifted
   exactly for them, one agent per job.
-- Dual review (`+sol`, `+astra`): two review files, a merge fork writes the triage, a high
-  finding in either that the triage did not refute fails the gate. Rounds stay at 2.
+- Dual review (`+sol`, `+astra`): at every upscale REVIEW point the Claude upscale agent of
+  the main session's model (opus-medium / opus-high in an opus session, fable-medium /
+  fable-high in a fable session) and the codex agent of the same effort (sol-me with
+  opus-me, sol-hi with opus-hi; same for astra) run in ONE `Workflow` (`parallel`), two
+  review files, a merge fork writes the triage, a high finding in either that the triage
+  did not refute fails the gate. Rounds stay at 2. Upscale GENERATION stays single, on
+  the Claude agent.
 - Cost: `tools/pipeline-cost.py` joins codex rows with `~/.codex/proxy-usage.jsonl` by
   model + effort, then time window; give parallel codex jobs distinct labels.
 

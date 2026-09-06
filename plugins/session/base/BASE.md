@@ -50,6 +50,9 @@ commit, the report.
 - Read once, write once: all inputs in one command (`cat a b c` or one script), think
   once, write at once; never a gap over 3 minutes between two tool calls (the suffix
   expires at 5; measured: a review fork paused > 5 min before its Write, 53K rewritten).
+- A bulk job that does not need the chat context (repository research, a test or
+  verification layer, a code review of a finished diff) goes to a downscale agent
+  (section "Downscale and upscale of intelligence") instead of a fork.
 
 ## Fork prompt template
 
@@ -79,7 +82,10 @@ waiters, plain subagents) starts with the same prefix, then a space and the job
 `lo me hi xh mx`. Only a FORK launch sets `name` (the field the agents panel shows
 instead of the bare type); never set `name` on a waiter or any plain subagent: a named
 plain subagent is spawned as a mailbox teammate (measured 2026-09-06), a named fork
-stays a fork. A fork carries the main session's model and effort, a waiter is `son-lo`,
+stays a fork. A fork's prefix is the main session's own model and effort, copied one
+to one from the status line (`fable:low` → `fab-lo`, `opus:low` → `ops-lo`); a fork
+cannot run at another effort, so `ops-hi-` on a fork in a low session is an error. A
+waiter is `son-lo`,
 a codex-proxy label names the codex target (the haiku shim is implied). This replaces
 the older `<mod>:<eff>` form and the earlier suffix form.
 
@@ -100,18 +106,27 @@ completion re-invokes the fork, and that re-invocation is a full cache miss (mea
 409K rewritten, ≈ $5 on fable). What expires after 5 idle minutes is only the fork's own
 suffix; the parent prefix it inherited stays in the parent's 1-hour cache.
 
-## Heavy agent on request
+## Upscale agents
 
-Only on the user's explicit word ("high-ревью", "через sol", "сгенерируй через astra"),
-never on the session's own initiative, one cold lean agent does a point review or a
-point generation of one artifact: `session:stage-reviewer` for review,
-`session:stage-author` for generation, `codex-proxy` for sol / astra / terra (model and
-effort as the user named them, else the reviewer-debugger or author cell of the class
-row). Launched as a single-agent `Workflow` (`label: "ops-hi-review"`, `"sol-hi-generate"`), inputs passed by path, output written to a file, the main session receives
-the path and the last line. Budget stated in the prompt: at most 5 tool calls at medium,
-3 at high or xhigh, all inputs read in one call, one write; when the budget runs out the
-agent returns `partial` with what it has. In pipeline mode the launch gets a ledger row
-like any cold stage.
+Combos: `opus-medium`, `fable-medium` (at most 5 tool calls), `opus-high`, `fable-high`
+(at most 3 tool calls); `sol` or `astra` (the mode's set only) in the same slots when
+`session:codex` is on; `+sol` / `+astra` pair the Claude agent with the codex one at the
+same effort for review.
+Two jobs: (1) critique of one complex fact set given by path (research ledger,
+verification plan, decision contract): hypotheses of what may go wrong, no verification
+of them; (2) generation of a key document (verification plan from a research ledger,
+decision contract). The session launches them at its decision points on its own
+judgment; the user may also name one ("high-ревью", "через sol"). After an upscale
+critique a fork or a downscale agent checks the hypotheses. Agent types:
+`session:stage-reviewer` for critique, `session:stage-author` for generation,
+`codex-proxy` for sol / astra. Never tool-heavy code review, never implementation; code
+review only when the change is critical, the uncertainty is high and the whole change
+fits one diff (rare). Launched through `Workflow` (`label: "ops-hi-critique"`,
+`"fab-me-generate"`), inputs passed by path, output written to a file, the main session
+receives the path and the last line. Budget stated in the prompt: at most 5 tool calls
+at medium, 3 at high or xhigh, all inputs read in one call, one write; when the budget
+runs out the agent returns `partial` with what it has. In pipeline mode the launch gets
+a ledger row like any cold stage.
 
 <!-- part -->
 ## Downscale and upscale of intelligence
@@ -120,12 +135,15 @@ What to launch when:
 
 | need | launch | model, effort |
 |---|---|---|
-| context-aware work, the chat matters, strongest judgment short of a heavy agent | fork | main session model and effort |
-| fresh context, breadth or mechanical work, downscale | one-agent `Workflow`, lean agent | sonnet-low or opus-low from the session map |
-| point review or generation of a key document, upscale | heavy agent on request (section above) | medium or high, documents only, 5 / 3 tool calls |
-| codex heavy or executor axis | `session:codex` (on top of this base) | sol / astra, luna / terra |
+| context-aware work, the chat matters, strongest judgment of the set; cheap start, costlier execution | fork | main session model and effort |
+| downscale: bulk tool-heavy work (repository research, tests and the verification layer, code review), many tool calls per agent expected | `Workflow`, lean agent | `sonnet-low`; `opus-low` when the main session is fable or a review needs a fresh context; under `session:codex` `luna-high` replaces sonnet-low, `terra-high` replaces opus-low |
+| upscale: critique of one fact set or generation of a key document (section above) | `Workflow`, `session:stage-reviewer` / `session:stage-author` | `opus-medium`, `fable-medium` (5 tool calls); `opus-high`, `fable-high` (3 tool calls); sol / astra under `session:codex` |
 | long wait with judgment | waiter, one-agent `Workflow` | sonnet-low |
-| N independent cold agents | ONE `Workflow` (`parallel` / `pipeline`) | explicit per agent |
+
+Every downscale and upscale agent starts through `Workflow`: independent agents are
+batched into ONE workflow (`parallel`); a relay between steps (research → critique →
+check) is wired as `pipeline()` stages of the same workflow; every `agent()` carries
+explicit model and effort and the `<mod>-<eff>-` label.
 
 The rules below came verbatim from the August workflow mode (`session:workflow`, folded
 into this base 2026-09-06) and apply to every `Workflow` launched from any session.
@@ -243,7 +261,7 @@ return await agent("Wait until <condition>. Poll with <command shape> every ~120
 
 Exactly two. (1) `Agent` with `subagent_type: "fork"` for forks; nothing else goes
 through `Agent`. (2) `Workflow` for every cold agent: a single cold agent (waiter,
-critic, decision reviewer, cold researcher, heavy agent on request, codex-proxy) is a
+critic, decision reviewer, cold researcher, downscale or upscale agent, codex-proxy) is a
 one-agent workflow with explicit `agentType`, `model`, `effort` and the
 `<mod>-<eff>-<job>` label; N independent cold agents go into ONE workflow (`parallel`
 or `pipeline`), never N launches. No plain subagents. Measured 2026-09-06 with the same
@@ -286,8 +304,8 @@ Claude sources before the run.
 
 - No plain subagents at all (`general-purpose`, `Explore`, custom agent types through
   `Agent`), no named teammates. `Agent` only with `subagent_type: "fork"`; `Workflow`
-  only for the `waiter` (long waits, launched by the main session) and the single heavy
-  agent of the section above when the user asks for it, one agent each.
+  for every cold agent (downscale, upscale, waiter, codex-proxy), one class and one
+  pairing per workflow.
 - No inline job of 3+ tool calls in the main session (measured 2026-09-06: an inline
   session wrote 19 Bash calls and produced the smallest test suite).
 - No polling loops, waits or `run_in_background` in a fork; a fork starts long jobs
