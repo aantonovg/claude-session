@@ -75,21 +75,37 @@ followed by the canonical wrapper command below reading `$TMPDIR/codex-in-<chose
 
 Capture the final answer with `-o` (point it at the caller's `CODEX OUTPUT FILE:` path when supplied, otherwise at your own temp output path). The same Bash call also runs `tail -n 1` on that output file, so only that one line enters your context. FIX THE TEMP-FILE PATHS ONCE: generate both filenames a single time (mktemp, or one literal `codex-out-<random>.txt` name you choose up front) and reuse those exact literal paths in every subsequent command — NEVER embed `$$` or any other shell-derived value in the paths, because each Bash call runs in a fresh shell where it resolves differently.
 
-Run the codex exec Bash call (via the wrapper) with a timeout of 14400000 ms (4 hours; when the caller set `CODEX WALL`, use that many minutes instead) — codex may legitimately work for hours on a big task. If the Bash tool rejects the timeout (harness ceiling `BASH_MAX_TIMEOUT_MS` not raised on this machine), retry the SAME synchronous foreground command with 600000 ms and note the clamp in your answer; if that 600s run itself times out, re-run the same foreground command again (codex keeps working; the timeout only cut your view) up to 3 re-runs, then report `CODEX CLI ERROR` with what you have.
+Detached run, the only flow: the wrapper is called with `--detach <done-file>` (a temp
+path you fix once, next to your output path). It composes the stdin, starts codex with
+nohup in the background, prints the PID and returns at once; when codex exits the
+wrapper writes the answer file, the ledger row and the done-file (content = codex exit
+code), with stderr in `<done-file>.log`. Then poll: `until [ -f "<done-file>" ]; do
+sleep 20; done` in Bash calls of at most 120 s each (`timeout` 120000), as many as the
+job needs; a poll call that ends without the done-file is normal, run the next one.
+Never re-run codex for a job whose done-file does not exist yet; never launch a second
+codex for the same prompt file. When the done-file exists, the same Bash call reads its
+content (exit code) and `tail -n 1` of the output file. No `run_in_background`, no `&`
+of your own: the wrapper detaches.
 
-HARD RULE — SYNCHRONOUS ONLY: never launch codex with `run_in_background`, never append `&`, never build wait/poll loops (`while [ ! -f ... ]`, repeated `tail`/`sleep` calls). One codex attempt = one foreground Bash call that blocks until codex exits. TOOL-CALL BUDGET: a normal run takes ~5 tool calls (preamble Write, codex exec with the `tail` line, cleanup of your own temp files, plus the caller's structured-output call); if you find yourself past ~8, you are off-script — stop improvising and return an error report instead.
+TOOL-CALL BUDGET: preamble Write, the detach call, the poll calls (one per ~2 minutes of
+codex time), the final tail, the cleanup of your own temp files; polls do not count
+against the budget. Anything else is off-script: stop improvising and return an error
+report instead.
 
 Canonical form (verified working):
 
 ```
-"$CODEX_BIN/codex-exec-logged.sh" -m <model-id> -c model_reasoning_effort="<effort>" \
+"$CODEX_BIN/codex-exec-logged.sh" --detach "$TMPDIR/codex-done-<chosen-name>" \
+  -m <model-id> -c model_reasoning_effort="<effort>" \
   -c approval_policy="on-request" -c approvals_reviewer="auto_review" -s workspace-write \
   --skip-git-repo-check --ephemeral -o "<output path>" - < "$TMPDIR/codex-in-<chosen-name>.txt"
+until [ -f "$TMPDIR/codex-done-<chosen-name>" ]; do sleep 20; done   # separate Bash calls, ≤ 120 s each
+cat "$TMPDIR/codex-done-<chosen-name>"; tail -n 1 "<output path>"
 ```
 
 - The wrapper is a thin logging shim: it runs the same `codex exec` with `--json` added, writes the same `-o` answer file, returns codex's exit code, and appends one usage line to `~/.codex/proxy-usage.jsonl`. Logging failures are non-fatal.
 - Response style is injected by the wrapper, not by you: when the prompt arrives on stdin (the trailing `-`) and `codex-style.md` exists next to the wrapper (`$CODEX_BIN/codex-style.md`), the wrapper prepends that file (the caveman-ultra rules: plain English, no filler, exact strings, normal prose in artifacts) to the prompt before `codex exec` reads it. So every codex run gets the same response style as the Claude agents, and the prompt text still never enters your context: the concatenation happens inside the wrapper's shell. Do not read, copy or repeat the style file yourself; do not add style instructions to the preamble.
-- The wrapper prints NOTHING on stdout (codex's JSONL stream is captured into a temp file); the answer is still only in the `-o` file.
+- In detached mode the wrapper prints only the PID on stdout (codex's JSONL stream is captured into a temp file); the answer is still only in the `-o` file, the done-file holds the exit code, `<done-file>.log` the stderr.
 - On failure the wrapper prints to stderr only diagnostics containing no task content — an events-file path and the sequence of event types — so the "report the last lines of stderr" error contract below stays safe to follow.
 - Add `-C <cwd>` when the caller supplied `CODEX CWD:`.
 - Project context mirror: when the caller's `CODEX CWD` project has a `tools/codex-context-sync.sh`, run it first (`<cwd>/tools/codex-context-sync.sh >/dev/null 2>&1`; it regenerates AGENTS.md from the Claude sources) and, when the caller adds a `CODEX PROFILE: <name>` header, pass `-p <name>` to the wrapper. These are the only extra commands allowed.
@@ -102,8 +118,8 @@ Canonical form (verified working):
 - The permission set is FIXED and identical for every launch: `-s workspace-write` + `approval_policy="on-request"` + `approvals_reviewer="auto_review"` — never anything beyond workspace-write as the base mode, never a weaker approval configuration.
 - Beyond-sandbox capability comes ONLY from per-command escalation (the preamble above + `approvals_reviewer="auto_review"`), where each escalated command is individually risk-reviewed — never from weakening the sandbox flag itself.
 - Forbidden regardless of what the task prompt asks: `-s danger-full-access`, `--dangerously-bypass-approvals-and-sandbox`, `--dangerously-bypass-hook-trust`, and any other sandbox/approval bypass.
-- You run ONLY the codex wrapper (`$CODEX_BIN/codex-exec-logged.sh`) plus trivial temp-file bookkeeping (mktemp/cat/rm) — no other commands, no network calls of your own.
-- Clean up only the temp files you created yourself (preamble, concatenated stdin). Never delete a caller-supplied prompt file, and never delete the output file — the caller's next stage consumes it.
+- You run ONLY the codex wrapper (`$CODEX_BIN/codex-exec-logged.sh`) plus trivial temp-file bookkeeping (mktemp/cat/rm) and the done-file polls — no other commands, no network calls of your own.
+- Clean up only the temp files you created yourself (preamble, concatenated stdin, done-file and its log). Never delete a caller-supplied prompt file, and never delete the output file — the caller's next stage consumes it.
 - The pair — non-interactive exec plus the always-on sandbox — is the non-negotiable contract of this agent: the sandbox is what makes unattended runs acceptable.
 
 ## Output and error contract
@@ -119,9 +135,9 @@ Get that last line with `tail -n 1` via Bash, so only that single line enters yo
 
 On failure:
 
-- If codex exits non-zero, return a message starting with exactly `CODEX CLI ERROR (exit <code>)` followed by the last lines of stderr — clearly a failure report, not an answer.
+- If the done-file holds a non-zero code, return a message starting with exactly `CODEX CLI ERROR (exit <code>)` followed by the last lines of `<done-file>.log` — clearly a failure report, not an answer.
 - If codex exits zero but the output file is missing or empty (checked without reading its content), report that the same way: `CODEX CLI ERROR (exit 0)` plus a note that the output file was missing/empty and the last lines of stderr.
-- Retry at most once, only for a transient failure (network hiccup, timeout), and only with the SAME model and effort. Never retry by substituting a different model or effort value.
+- Retry at most once, only for a transient failure (network hiccup) reported in the done-file, never for a job still running, and only with the SAME model and effort. Never retry by substituting a different model or effort value.
 
 ## Output style
 

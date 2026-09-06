@@ -34,6 +34,19 @@
 
 set -euo pipefail
 
+# --detach <done-file>: run codex in the background. The wrapper composes the
+# stdin (style block + prompt) into a temp file, re-executes itself with nohup
+# in foreground mode reading that file, and returns at once with the PID on
+# stdout. The background run writes the -o answer file and the ledger row as
+# usual, then touches <done-file> (its content is the codex exit code). The
+# caller polls for the done-file; it never re-runs codex for a job that has no
+# done-file yet.
+detach_done=""
+if [[ "${1:-}" == "--detach" ]]; then
+  detach_done="${2:?--detach needs a done-file path}"
+  shift 2
+fi
+
 # mktemp template: the X's must be LAST — BSD mktemp does not substitute a
 # "...XXXXXX.jsonl" template, which would make parallel runs share one file.
 events="$(mktemp "${TMPDIR:-/tmp}/codex-events.XXXXXX")"
@@ -154,6 +167,24 @@ else
 fi
 if [[ "${CODEX_EXEC_DRY_RUN:-0}" == 1 ]]; then
   compose_stdin
+  exit 0
+fi
+if [[ -n "$detach_done" ]]; then
+  # Compose once here (style + prompt), then hand the composed file to a
+  # foreground child that runs codex; the child's stdin is that file, so the
+  # style prepend must not run twice: the child sees no style file.
+  rm -f "$detach_done"
+  stdin_file="$(mktemp "${TMPDIR:-/tmp}/codex-stdin.XXXXXX")"
+  compose_stdin >"$stdin_file"
+  detach_log="${detach_done}.log"
+  nohup bash -c '
+    done_file="$1"; stdin_file="$2"; wrapper="$3"; shift 3
+    rc=0
+    CODEX_STYLE_FILE=/nonexistent "$wrapper" "$@" <"$stdin_file" || rc=$?
+    rm -f "$stdin_file"
+    printf "%s\n" "$rc" >"$done_file"
+  ' _ "$detach_done" "$stdin_file" "${BASH_SOURCE[0]}" "$@" >"$detach_log" 2>&1 &
+  echo "$!"
   exit 0
 fi
 # stderr is intentionally NOT redirected: the caller's error contract reads it.

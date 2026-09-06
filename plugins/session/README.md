@@ -22,6 +22,8 @@ something) or `/session:review` (someone else's MR); then, optionally,
 
 ## Base as a skill (0.8.0)
 
+0.8.2: the base gains "Decision points" (when a downscale or upscale agent fires; minimum per code task: plan critique, closure review, test-suite job); the codex wrapper runs detached (`--detach <done-file>`), the shim polls the done-file, no second codex run for a job in flight.
+
 0.8.1: the start block loads deferred tools (`CronCreate` and the others the base names) with `ToolSearch` before the first call; the codex exchange directory outside a task dir is per session (`$TMPDIR/codex-<date>-<cwd basename>/codex/`).
 
 Cold agents get the output-style rules (plain English, caveman ultra) in their agent definition, section "Output style"; no SubagentStart hook.
