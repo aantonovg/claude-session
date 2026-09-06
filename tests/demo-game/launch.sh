@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # Launch one benchmark run of the demo game task in a tmux-driven Claude Code session.
 # Usage: launch.sh <run-name> <mode> <model-id> <effort> [extra-skill-line]
-#   mode    : session mode skill line, e.g. 'pipeline full' | 'workflow'
+#   mode    : session mode skill line, e.g. 'pipeline full' | 'none' (base only, no skill)
 #   model-id: e.g. claude-opus-5[1m] | claude-fable-5-1[1m]
 #   effort  : low | medium | high
 #   extra   : optional second skill sent as /session:<extra> after the mode, e.g. 'codex sol'
@@ -65,14 +65,21 @@ tmux send-keys -t "$tmux_name" "claude --plugin-dir $plugin_dir --model '$model'
 # ready = the input prompt line, after the trust dialog was answered
 wait_for '^❯ |shift\+tab to cycle|\? for shortcuts' 90 || exit 1
 sleep 2
-tmux send-keys -t "$tmux_name" "/session:$mode" Enter
-wait_for 'mode on' 90 || exit 1
+if [[ $mode != none ]]; then
+  # mode skill; the base (injected by the plugin's SessionStart hook) answers on this turn too
+  tmux send-keys -t "$tmux_name" "/session:$mode" Enter
+  wait_for 'mode on|Base on' 90 || exit 1
+fi
 if [[ -n $extra ]]; then
   tmux send-keys -t "$tmux_name" "/session:$extra" Enter
   wait_for 'codex|Codex' 90 || exit 1
 fi
 sleep 2
 tmux send-keys -t "$tmux_name" "Read prompt.md in this directory and do the task in full." Enter
+if [[ $mode == none ]]; then
+  # no mode skill: the base reply line must appear on this first turn
+  wait_for 'Base on, ping cron' 120 || exit 1
+fi
 
 echo "tmux session: $tmux_name"
 echo "run dir:      $run_dir"

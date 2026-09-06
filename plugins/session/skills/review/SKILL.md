@@ -1,20 +1,28 @@
 ---
 name: review
-description: Extra skill invoked right after session:pipeline for reviewing someone else's MR or PR; replaces the pipeline stages with a verification-first review (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path for an MR revisited after the author's replies or fixes. Never loaded alone.
+description: Skill for reviewing someone else's MR or PR; replaces the pipeline stages with a verification-first review (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path for an MR revisited after the author's replies or fixes. Reads skills/pipeline/core.md first; does not need session:pipeline.
 disable-model-invocation: true
 ---
 
 # Pipeline: review of someone else's work
 
-Loaded on top of `session:pipeline`, never alone. Task directory, ledger, fork rules,
-cost principle and forbidden list come from the pipeline; the stages below replace its
-stages 1-7, gates keep their letters. The review checks whether the author understood
+Loaded on top of the session base (injected at start). Task directory, ledger, cost principle, harness gate,
+cold researcher rule and the Sources/Oracles blocks come from `../pipeline/core.md` (read
+first); fork rules from the session base; the stages below mirror the pipeline's stages
+1-7, gates keep their letters. The review checks whether the author understood
 the task and whether the work is verified; findings come from runs, not from reading.
 
 ## Start (do this now)
 
-0. Pipeline mode must already be on (`/session:pipeline` was invoked). If it is not,
-   reply "session:review needs session:pipeline first" and stop.
+0. Read `../pipeline/core.md` first. Then the pipeline Start steps, done here:
+   1. The base already created the `ping` cron and answers pings; nothing to start here.
+      Limit restart: `core.md`, "Ping and limit restart".
+   2. Read `~/.claude/session-map.md` (fallback: `session-map.example.md` in the plugin,
+      fable-opus only). Pick the pairing row the user named, else the default pairing of
+      the account.
+   5. Create the task directory and register it, one command:
+      `D=~/.claude/projects/<encoded-cwd>/pipeline/<date>-<slug>; mkdir -p $D/evidence $D/reviews; P=$(dirname $(dirname $D)); echo $D > $P/pipeline/current; echo ${CLAUDE_SESSION_ID:-$(ls -t $P/*.jsonl | head -1 | xargs basename | sed 's/\.jsonl$//')} > $D/session`
+      (`<encoded-cwd>` = the cwd with every character outside `A-Za-z0-9-` replaced by `-`).
 1. Argument `lite`, `std`, `full` or `re` fixes the path. `re` is also the path when the
    MR already has threads by this user. Without an argument the path comes from the
    class; only when the class is unclear ask one question with `AskUserQuestion`,
@@ -30,22 +38,22 @@ the task and whether the work is verified; findings come from runs, not from rea
 
 ## Stages (replace pipeline stages 1-7)
 
-Harness gate (pipeline skill, same rule): before stage 1 one fork health-checks every
+Harness gate (`core.md`, same rule): before stage 1 one fork health-checks every
 MCP server, host, docker daemon, CLI binary and skill the review needs (codex axis on:
 `codex -p <profile> mcp list` too); any wanted tool unavailable → the `wanted,
 unavailable` lines go into the `Sources` block, one chat line per tool with the exact
 failure, and the turn ends; every following `ping` re-runs the check silently and resumes
 from the last ledger row when the tools are back, else adds `still unavailable: <list>`;
-the cold-researcher `BLOCKED: no MCP` fallback applies only when the same call passed
-the health check; "continue without <tool>" from the user overrides.
+"continue without <tool>" from the user overrides. MCP reads are fork jobs, never cold
+researchers (measured 2026-09-06: workflow agents do not see the session's MCP servers
+under the corporate harness; a fork does).
 
-**1. Research → Gate R** (every path). One cold `session:stage-researcher` (sonnet-low,
-label `son-lo-research`, a one-agent `Workflow`, forks skill "Launch forms") fetches once, into `evidence/raw/`: the ticket intent, the MR
-description and the author's claims, CI status and job results, the changed-file list
-with line counts, the existing threads. The prompt names the exact MCP tool names
-(`Tools: mcp__gitlab__get_merge_request, …`); on `BLOCKED: no MCP` the fetch goes to one
-short fork with the `(fallback)` label suffix, no second cold researcher. It writes
-`evidence/EB-1.md` (≤ 80 lines, pointers). Judgment (what the task really asked, where the claims and the intent
+**1. Research → Gate R** (every path). One short fork (≤ 6 turns) fetches once through
+MCP, straight into `evidence/raw/`, no relay: the ticket intent, the MR description and
+the author's claims, CI status and job results, the changed-file list with line counts,
+the existing threads; it writes `evidence/EB-1.md` (≤ 80 lines, pointers). A cold
+`session:stage-researcher` (sonnet-low, label `son-lo-research`, a one-agent `Workflow`,
+session base "Launch forms") takes only repository, git history and docs questions. Judgment (what the task really asked, where the claims and the intent
 disagree) is one short fork (≤ 6 turns) that writes `Framing` and the `Ledger`, whose
 first lines are the `Sources` block: `used:` every source class that produced evidence
 (MCP tools by name, repo paths, CI logs, docs, skills loaded); `wanted, unavailable:`
@@ -157,7 +165,8 @@ stays open.
 
 ## Forbidden
 
-- Everything the pipeline forbids. No medium or high agent in a review except the full
+- Everything `core.md` and the session base forbid, plus the pipeline's Forbidden list
+  (`../pipeline/SKILL.md`). No medium or high agent in a review except the full
   path's contract critique; no reading of the diff except the full path's read of the
   files behind an unverifiable claim, on opus-low only; no reading of the code base to
   "understand" the MR.
@@ -169,4 +178,5 @@ stays open.
   finding", "findings only: no verified / not verified lists, no procedure"; the main
   session rejects a `threads.md` or a note over the cap, with grouped findings or with
   verification text and sends it back once.
-Reference: `skills/pipeline/SKILL.md` (rules, files), `plugins/session/README.md` (classes, measurements).
+Reference: `skills/pipeline/core.md` (shared rules, files), `skills/pipeline/SKILL.md`
+(stages, Forbidden), `plugins/session/README.md` (classes, measurements).

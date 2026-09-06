@@ -31,7 +31,7 @@ fill exactly those slots, never more.
 | stage | Claude default | executor axis luna / terra | heavy axis sol / astra | heavy axis +sol / +astra |
 |---|---|---|---|---|
 | 1 framing, ledger merges | forks | forks (write task files) | forks | forks |
-| 1 research waves | forks | `luna-high` (sonnet-low slots) / `terra-high` (opus-low slots, terra mode) for repo-only questions; MCP questions stay forks | unchanged | unchanged |
+| 1 research waves | forks | `luna-high` (sonnet-low slots) / `terra-high` (opus-low slots, terra mode) for repo-only questions, luna writes `evidence/EB-<n>.md` and its ledger lines itself; MCP reads are forks (cold agents and codex do not see the session's MCP servers) | unchanged | unchanged |
 | 2 critic (cold) | `stage-critic`, reviewer cell | unchanged | `sol-medium` / `astra-medium` instead | Claude critic + codex critic, merge fork |
 | 3 decision contract | fork | fork | fork | fork |
 | 3 decision review (full path only; standard = low fork check, fast none) | cold `stage-reviewer` | unchanged | `sol-high` / `astra-high` | paired, merge fork |
@@ -56,8 +56,9 @@ Executor jobs that go to codex in `luna` / `terra` mode (`luna-high`; in terra m
 implementation packages and harness build go to `terra-high`, the rest stays luna):
 repo-only research sweeps (no MCP), harness build and health checks, implementation
 packages (one codex run per package, `CODEX CWD` = repo root, in-place edits), test runs
-and mechanical checks. Stay forks: framing, ledger, decision, plans, report, anything that
-writes the task directory. The package prompt file names the files, the acceptance
+and mechanical checks. Stay forks: framing, decision, plans, report. The codex prompt file and the ledger
+rows are written by the main session; a luna research wave writes its evidence bundle
+and ledger lines itself (envelope rule in `SKILL.md`, zero forks around a codex call). The package prompt file names the files, the acceptance
 criteria and the harness commands to run (tests, checks from the verification plan) and
 ends with: run the harness, commit on pass with the given message, return the 5-field
 status with the harness result lines. The codex run does the edit, the harness run and
@@ -76,11 +77,11 @@ around 6 terra packages cost $28 for $1.42 of terra; this rule removes them.
 - Repository edits under Claude permissions, or writes of the pipeline's own artifacts
   (`task.md`, split files, `ledger*`, `evidence/`, `reviews/<stage>.md`). Codex writes only
   into the exchange area `<task dir>/codex/` and, in dual review, `reviews/<stage>-codex.md`
-  (the launching fork sets `CODEX OUTPUT FILE` to that path). A codex
+  (the main session sets `CODEX OUTPUT FILE` to that path). A codex
   package that edits code is allowed only when the user said so for this task: codex edits
   in its own workspace-write sandbox, outside Claude's permission system.
-- A skill is needed: codex sees no SKILL.md; the fork that writes the prompt file pastes
-  the needed rules instead, or the stage stays on Claude.
+- A skill is needed: codex sees no SKILL.md; the prompt file names the SKILL.md path to
+  read, or the stage stays on Claude.
 - Codex 5-hour quota at 0%: executor slots → `luna-reserve-high`; heavy slots → the
   Claude agent of the `none` axis. The fallback is a ledger `label` suffix `(fallback)`,
   not a mode change.
@@ -100,11 +101,12 @@ CODEX PROMPT FILE: <task dir>/codex/<stage>-<n>.md
 CODEX OUTPUT FILE: <task dir>/codex/<stage>-<n>.out.md
 ```
 
-A fork writes the prompt file: role, inputs pasted or by path (codex reads the repo, not
-`~/.claude`), acceptance criteria, the required last lines (the 5-field status; reviews end
-with `DONE severity=<none|low|medium|high>`). The shim never reads it. The output file is
-read by the next fork, never by the main session; the shim's `LAST LINE` is the gate
-signal. Per workflow: `meta.name` `c<class>-<pairing>-<slug>` as usual. Script shape:
+The main session writes the prompt file with one Write, ≤ 30 lines of bullets: the style
+line, role, inputs by absolute path (codex reads the repo, not `~/.claude`), acceptance
+criteria, the required last lines (the 5-field status; reviews end with
+`DONE severity=<none|low|medium|high>`). The shim never reads it. The output file is read
+by its next consumer by path, never by the main session and never by a relay fork; the
+shim's `LAST LINE` is the gate signal. Per workflow: `meta.name` `c<class>-<pairing>-<slug>` as usual. Script shape:
 
 ```
 export const meta = { name: 'c3-fable-opus-critic-codex', description: 'sol critic', phases: [{ title: 'Critic' }] }
