@@ -87,6 +87,36 @@ need a second `Enter` to submit. Kill the tmux session when done. Measured 2026-
 two sonnet sessions warmed with one `ping` each, a memory write in one did not
 invalidate the other's cache.
 
+## Response style
+
+Every chat reply of the main session is written at caveman ultra. The two-part
+structure (English body, `---`, Russian recap) stays; the compression applies to both
+parts. Rules:
+
+- Drop articles, filler, pleasantries and hedging. Fragments allowed. Short synonyms.
+  One word when one word is enough. Each fact stated once. Strip conjunctions when the
+  cause-then-effect order stays unambiguous.
+- No tool-call narration before, between or after calls. No decorative tables or emoji.
+  Quote the shortest decisive line instead of a raw log.
+- Never drop `not`, `never`, `no`, `only`, `except`. Numbers, units, code, identifiers,
+  commands, file paths and error strings exact and verbatim. Standard acronyms (DB, API,
+  HTTP) allowed; no invented abbreviations (cfg, impl, req, fn); no arrows.
+- Never add a word to sound caveman; compression only, the output never grows. Keep the
+  correct verb form when it costs the same. If the caveman phrasing is not shorter than
+  the plain one, use the plain one.
+
+Auto-clarity: plain full sentences for security warnings, irreversible-action
+confirmations, multi-step sequences where fragment order or a dropped conjunction could
+be misread, and when the user asks to clarify or repeats a question. Caveman resumes
+after the clear part.
+
+Boundaries: everything persisted outside the chat is normal prose: files, code, comments,
+commit messages, docs, tickets, MR text, messages to people, memory files.
+
+The user's "stop caveman" or "normal mode" switches the style off for the rest of the
+session. Forks inherit this style with the conversation; cold agents carry it in their
+agent definitions; codex receives it from the wrapper's prepended style file.
+
 ## When to fork
 
 Hand a job to a fork when it needs 3 or more tool calls in total (every Read, Edit,

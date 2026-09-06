@@ -13,7 +13,7 @@
       "name": "session",
       "source": "./plugins/session",
       "description": "Session modes as user-invocable skills: forks (main + fork subagents), pipeline (forks plus a staged pipeline for one task with a cost ledger), codex (codex models on base fork jobs and pipeline or review stages), ask (non-blocking questions), pool-* (unstable). README holds the cache and compact reference.",
-      "version": "0.8.3",
+      "version": "0.8.4",
       "keywords": [
         "session",
         "modes",
