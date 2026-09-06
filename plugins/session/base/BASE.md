@@ -54,6 +54,13 @@ Do not paste file contents or raw logs. On a permission denial stop and return B
 Load these skills with the Skill tool before starting: <names>.   # or: No skills needed for this step.
 ```
 
+Language of agents: every fork, waiter, cold agent and codex run works and answers in
+plain English only: prompts in English, return values in English, no Russian recap, no
+`---` separator, no chat formatting. The two-part chat format (English body, Russian
+recap) belongs to the main session's replies to the user and nowhere else. Files an
+agent writes for people (threads, notes, commits, reports named as Russian by the
+task) follow the language the task names.
+
 Every agent launch is named by model and effort, as a dash-separated PREFIX
 `<mod>-<eff>-`: the `label` of every Workflow `agent()` and the `name` of a fork are
 `<mod>-<eff>-<job>` (`fab-lo-cache-audit`, `ops-me-critic`, `son-lo-research`,
