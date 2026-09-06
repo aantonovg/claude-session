@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Pipeline: review of someone else's work
 
-Loaded on top of the session base (injected at start). Task directory, ledger, cost principle, harness gate,
+Loaded on top of the session base (`/session:base`, invoked first). Task directory, ledger, cost principle, harness gate,
 cold researcher rule and the Sources/Oracles blocks come from `../pipeline/core.md` (read
 first); fork rules from the session base; the stages below mirror the pipeline's stages
 1-7, gates keep their letters. The review checks whether the author understood

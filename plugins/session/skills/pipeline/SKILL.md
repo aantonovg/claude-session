@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Mode: pipeline
 
-The session base (injected at start) with a fixed order of stages and gates on top. All
+The session base (`/session:base`, invoked first) with a fixed order of stages and gates on top. All
 fork rules come from the base and are not repeated here: when to fork, the prompt
 template, the 3-minute limit per call, no background job left running, review and fix in
 different forks. Model and effort of the main session are set at start and forks

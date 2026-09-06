@@ -1,6 +1,6 @@
 ---
 name: codex
-description: Extra skill loaded on top of the session base; routes heavy roles and/or executor jobs to the codex stack (luna, terra, sol, astra) through the codex-proxy shim. Pipeline or review may also be on; then their stages are mapped as well.
+description: Extra skill loaded on top of the session base; routes heavy roles and/or executor jobs to the codex stack (luna, terra, sol, astra) through the session:codex-proxy shim (ships with this plugin). Pipeline or review may also be on; then their stages are mapped as well.
 disable-model-invocation: true
 ---
 
@@ -58,8 +58,8 @@ session; after `/session:pipeline` or `/session:review` when those are used.
    - «luna» — исполнительские форки заменить на luna-high, где допустимо.
    - «terra» — как luna, плюс тяжёлые исполнительские работы на terra-high.
 
-2. One Bash call: `codex --version; ls ~/.claude/bin/codex-exec-logged.sh ~/.codex/proxy-usage.jsonl`.
-   Missing wrapper → BLOCKED, say so. A `CODEX CLI ERROR` mentioning the quota during the
+2. One Bash call: `codex --version; CODEX_BIN=$(ls -d ~/.claude/plugins/cache/claude-session/session/*/bin 2>/dev/null | sort -V | tail -1); [ -n "$CODEX_BIN" ] || CODEX_BIN=~/projects/claude-session/plugins/session/bin; [ -x "$CODEX_BIN/codex-exec-logged.sh" ] || CODEX_BIN=~/.claude/bin; ls "$CODEX_BIN/codex-exec-logged.sh" "$CODEX_BIN/codex-style.md" ~/.codex/proxy-usage.jsonl`.
+   The wrapper and the style file ship with this plugin (`bin/`); a local `~/.claude/agents/codex-proxy.md` copy is no longer needed. Missing wrapper → BLOCKED, say so. A `CODEX CLI ERROR` mentioning the quota during the
    task → executors fall back to `luna-reserve-high`, heavy slots to the Claude agent;
    record `(fallback)` in the ledger label when a ledger exists. Harness gate (pipeline
    skill, when on): the same call runs `codex -p <profile> mcp list` for every MCP server
@@ -68,7 +68,7 @@ session; after `/session:pipeline` or `/session:review` when those are used.
    following `ping` re-runs the check and resumes from the last ledger row when the
    servers are back (`still unavailable: <list>` otherwise); "continue without <tool>"
    from the user overrides.
-3. Astra modes need `astra` in `~/.claude/agents/codex-proxy.md` (one grep); missing →
+3. Astra modes need `astra` in the plugin's `agents/codex-proxy.md` (one grep on `$CODEX_BIN/../agents/codex-proxy.md`); missing →
    run on the sol set and say "astra pending".
 4. Reply with one line: "Codex: <mode> (heavy <…>, exec <…>); fallbacks <…>."
    When a ledger exists, every `ledger.jsonl` row of the task carries `"codex": "<mode>"`.
@@ -83,7 +83,7 @@ writes the prompt file `<exchange dir>/<job>-<n>.md` (≤ 30 lines of bullets, f
 `Style: caveman ultra (see AGENTS.md Response style); plain English only, no Russian recap; artifacts in normal prose.`),
 appends the ledger row when a ledger exists (`kind: "codex-agent"`, `model: "<tier>"`,
 `effort`, `codex: "<mode>"`) with one Bash, runs ONE `Workflow` with one `agent()`
-(`agentType: 'codex-proxy', model: 'haiku', effort: 'medium'`, label
+(`agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium'`, label
 `<sol|atr|lun|lur|ter>-<eff>-<job>`, prompt = the header block, `CODEX CWD` = repo root,
 `CODEX OUTPUT FILE: <exchange dir>/<job>-<n>.out.md`), fills `agent_id` from the
 workflow journal and appends the stop line when a ledger exists; consumes only the shim's

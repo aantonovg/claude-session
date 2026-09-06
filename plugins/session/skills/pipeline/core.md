@@ -1,7 +1,7 @@
 # Pipeline core
 
 Read by `session:pipeline` and `session:review` before their own text; the session base
-(injected at start) applies underneath.
+(`/session:base`, invoked first) applies underneath.
 
 ## Cost principle (why the pipeline exists)
 
