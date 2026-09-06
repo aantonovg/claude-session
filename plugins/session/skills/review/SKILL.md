@@ -1,20 +1,29 @@
 ---
 name: review
-description: Extra skill invoked right after session:pipeline for reviewing someone else's MR or PR; replaces the pipeline stages with a verification-first review (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path for an MR revisited after the author's replies or fixes. Never loaded alone.
+description: Extra skill invoked after session:forks for reviewing someone else's MR or PR; replaces the pipeline stages with a verification-first review (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path for an MR revisited after the author's replies or fixes. Reads skills/pipeline/core.md first; does not need session:pipeline.
 disable-model-invocation: true
 ---
 
 # Pipeline: review of someone else's work
 
-Loaded on top of `session:pipeline`, never alone. Task directory, ledger, fork rules,
-cost principle and forbidden list come from the pipeline; the stages below replace its
-stages 1-7, gates keep their letters. The review checks whether the author understood
+Loaded on top of `session:forks`. Task directory, ledger, cost principle, harness gate,
+cold researcher rule and the Sources/Oracles blocks come from `../pipeline/core.md` (read
+first); fork rules from the forks skill; the stages below mirror the pipeline's stages
+1-7, gates keep their letters. The review checks whether the author understood
 the task and whether the work is verified; findings come from runs, not from reading.
 
 ## Start (do this now)
 
-0. Pipeline mode must already be on (`/session:pipeline` was invoked). If it is not,
-   reply "session:review needs session:pipeline first" and stop.
+0. Read `../pipeline/core.md` first. Then the pipeline Start steps, done here:
+   1. First tool call: `CronCreate` with `cron: "*/30 * * * *"`, `prompt: "ping"`,
+      `recurring: true`. Reply to every `ping` with one word. If a `ping` cron already
+      exists in this session, reuse it. Limit restart: `core.md`, "Ping and limit restart".
+   2. Read `~/.claude/session-map.md` (fallback: `session-map.example.md` in the plugin,
+      fable-opus only). Pick the pairing row the user named, else the default pairing of
+      the account.
+   5. Create the task directory and register it, one command:
+      `D=~/.claude/projects/<encoded-cwd>/pipeline/<date>-<slug>; mkdir -p $D/evidence $D/reviews; P=$(dirname $(dirname $D)); echo $D > $P/pipeline/current; echo ${CLAUDE_SESSION_ID:-$(ls -t $P/*.jsonl | head -1 | xargs basename | sed 's/\.jsonl$//')} > $D/session`
+      (`<encoded-cwd>` = the cwd with every character outside `A-Za-z0-9-` replaced by `-`).
 1. Argument `lite`, `std`, `full` or `re` fixes the path. `re` is also the path when the
    MR already has threads by this user. Without an argument the path comes from the
    class; only when the class is unclear ask one question with `AskUserQuestion`,
@@ -30,7 +39,7 @@ the task and whether the work is verified; findings come from runs, not from rea
 
 ## Stages (replace pipeline stages 1-7)
 
-Harness gate (pipeline skill, same rule): before stage 1 one fork health-checks every
+Harness gate (`core.md`, same rule): before stage 1 one fork health-checks every
 MCP server, host, docker daemon, CLI binary and skill the review needs (codex axis on:
 `codex -p <profile> mcp list` too); any wanted tool unavailable → the `wanted,
 unavailable` lines go into the `Sources` block, one chat line per tool with the exact
@@ -157,7 +166,8 @@ stays open.
 
 ## Forbidden
 
-- Everything the pipeline forbids. No medium or high agent in a review except the full
+- Everything `core.md` and the forks skill forbid, plus the pipeline's Forbidden list
+  (`../pipeline/SKILL.md`). No medium or high agent in a review except the full
   path's contract critique; no reading of the diff except the full path's read of the
   files behind an unverifiable claim, on opus-low only; no reading of the code base to
   "understand" the MR.
@@ -169,4 +179,5 @@ stays open.
   finding", "findings only: no verified / not verified lists, no procedure"; the main
   session rejects a `threads.md` or a note over the cap, with grouped findings or with
   verification text and sends it back once.
-Reference: `skills/pipeline/SKILL.md` (rules, files), `plugins/session/README.md` (classes, measurements).
+Reference: `skills/pipeline/core.md` (shared rules, files), `skills/pipeline/SKILL.md`
+(stages, Forbidden), `plugins/session/README.md` (classes, measurements).
