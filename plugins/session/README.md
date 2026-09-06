@@ -7,18 +7,47 @@ skills: read it before changing any of them.
 
 | skill | mode | spawns |
 |---|---|---|
-| base (`base/BASE.md`, injected by the `SessionStart` hook, no skill to invoke) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + `Workflow` for cold agents: downscale (sonnet-low / opus-low, luna / terra), upscale (opus/fable medium/high, sol / astra), waiter (0.7.2) |
+| `session:base` (`skills/base/SKILL.md` from `base/BASE.md`; invoked first in every session and after `/compact`; no base hooks, 0.8.0) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + `Workflow` for cold agents: downscale (sonnet-low / opus-low, luna / terra), upscale (opus/fable medium/high, sol / astra), waiter (0.7.2) |
 | `session:pipeline` | on top of the base: a staged pipeline with gates (research, critic, decision, verification, implementation, closure check); shared rules in `skills/pipeline/core.md` | forks + lean cold critic (and cold researcher) |
 | `session:review` | on top of the base: verification-first review of someone else's MR (reads `skills/pipeline/core.md`) | forks + cold researcher |
-| `session:codex` | on top of the base (pipeline or review may also be on): codex heavy axis (sol, astra) and executor axis (luna, terra) | codex-proxy one-agent workflows |
+| `session:codex` | on top of the base (pipeline or review may also be on): codex heavy axis (sol, astra) and executor axis (luna, terra) | `session:codex-proxy` one-agent workflows (agent, wrapper and style ship with the plugin) |
 | `session:pool-workflow-unstable` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` (experimental, daemon currently stopped) | pool-proxy agents + forks |
 | `session:pool-unstable` / `session:pool-stop-unstable` | show or start the pool by hand / park it | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
 
-Loading order (2026-09-06, 0.7.0-pre): the base arrives by hook at every session start
-(startup, resume, compact, clear), nothing to invoke; then `/session:pipeline`
-(implementing something) or `/session:review` (someone else's MR); then, optionally,
+Loading order (2026-09-06, 0.8.0): the user invokes `/session:base` as the first prompt
+of every session and again after `/compact`; then `/session:pipeline` (implementing
+something) or `/session:review` (someone else's MR); then, optionally,
 `/session:codex <mode>`. `session:workflow` and `session:forks` were folded into the base the same day.
+
+## Base as a skill (0.8.0)
+
+Cold agents get the output-style rules (plain English, caveman ultra) in their agent definition, section "Output style"; no SubagentStart hook.
+
+codex-proxy ships with the plugin (0.8.0): `agents/codex-proxy.md`, the logging wrapper
+`bin/codex-exec-logged.sh` and the style file `bin/codex-style.md` that the wrapper
+prepends to every codex prompt on stdin. Launch with `agentType: 'session:codex-proxy'`;
+the agent resolves the wrapper from the newest installed plugin version (fallback: the
+source checkout, then a legacy `~/.claude/bin`). A user-level `~/.claude/agents/codex-proxy.md`
+is no longer needed.
+
+The base is the skill `/session:base` (`skills/base/SKILL.md`, generated from
+`base/BASE.md` by `base/split.sh`). Invoke it as the first prompt of every session and
+again after `/compact`; then `/session:pipeline`, `/session:review` or
+`/session:codex <mode>` as needed. The plugin ships no base hooks: nothing is injected
+at session start or per prompt; the base reaches the main session and its forks only
+through the invocation.
+
+Measured 2026-09-06 (batch c, 6 base-family runs on opus-low, base delivered only by
+`SessionStart` hooks as a user-turn attachment): 4 of 6 runs skipped the start block (no
+cron, no reply line, no `Workflow`); the pipeline runs, whose rules came from a typed
+`/session:pipeline`, followed them. Two runs with a 1.4K kernel appended to the system
+prompt (`--append-system-prompt-file`) followed the start block 2 of 2; that route has no
+settings key and is not distributed by the plugin, so 0.8.0 uses the skill instead. Cache:
+two `ping` sessions 30 s apart reused only the system prompt (26.6K read, 29K written);
+hook text in the first turn is rewritten per session while the Remote Control attachment
+carries a per-session URL. `tests/demo-game/launch.sh` sends `/session:base` first in
+every mode.
 
 Default for day-to-day work (decided 2026-09-04 after the tests): the base alone (forks). One
 context, no relay chatter, zero misses measured. `session:pipeline` adds the staged
@@ -197,8 +226,7 @@ Worker names are combos (`opus-low`) or roles (`reviewer=opus-medium`), unique p
 
 ### Daemon policies (not the model's job)
 
-- Keep-warm: `ping` typed 45-50 minutes after the worker's last turn (mark from the
-  worker's Stop hook from the plugin in `last-turn/`, fallback JSONL mtime); one cache read per hour.
+- Keep-warm: `ping` typed 45-50 minutes after the worker's last turn (last-turn hook removed in 0.8.0; the pool daemon falls back to JSONL mtime); one cache read per hour.
   A worker that missed the window is `cold`: not pinged; on the next `ensure` it is
   woken if its context is under 100K, otherwise parked and replaced.
 - Day end: `/compact` typed to every warm worker an hour before midnight, pings stop
@@ -230,9 +258,7 @@ Worker names are combos (`opus-low`) or roles (`reviewer=opus-medium`), unique p
 Daemon: `python3 pool/poold.py run` (foreground) or the units in `pool/units/`
 (`com.claude-session.poold.plist` for the Mac LaunchAgent, `poold.service` for the VM
 systemd user unit; step 5 of the plan, not written yet). CLI: symlink `pool/poolctl`
-into `~/.local/bin`. Plugin 0.5.0 ships the agent, the three skills and the Stop hook
-`hooks/pool-last-turn.sh` (registered by the plugin; it exits at once in sessions
-without `POOL_LAST_TURN_DIR`, so no `settings.json` change is needed). On the VM the
+into `~/.local/bin`. Plugin 0.5.0 ships the agent and the three skills (last-turn hook removed in 0.8.0; the pool daemon falls back to JSONL mtime). On the VM the
 admin page is reached with `ssh -L 19541:localhost:19540 claude-vm`.
 
 ### Measured 2026-09-04 (probes, sonnet-low worker in a detached tmux on the Mac)
@@ -306,7 +332,7 @@ sessions are no answer; in-session forks (Agent tool) are.
 Gotchas: a new cwd shows the trust-folder dialog (Down + Enter accepts), so the daemon
 handles it or the dir is trusted first; the subagent Bash guard also matches a long
 literal wait written inside a tmux command string. Probes 4 (haiku proxy start size,
-role discipline, shared prefix) and 6 (last-turn hook) run with steps 2-3 of the plan.
+role discipline, shared prefix) and 6 (last-turn mark, JSONL mtime since 0.8.0) run with steps 2-3 of the plan.
 
 ## Mode 10 — Pipeline (`session:pipeline`)
 
@@ -422,10 +448,9 @@ budget: ≤5 calls pure reasoning → sol-medium / astra-medium, the hardest doc
 calls → sol-high / astra-high; heavy models never review code (2026-09-06: sol-high
 final code reviews read 300-470K tokens each; those runs count as failed). A stage stays on Claude when it needs MCP, repository edits under Claude
 permissions, the pipeline's own artifacts or a skill; codex writes only into `<task
-dir>/codex/` and `reviews/<stage>-codex.md`. Every codex stage is one `codex-proxy`
+dir>/codex/` and `reviews/<stage>-codex.md`. Every codex stage is one `session:codex-proxy`
 `agent()` with workflow opts `model: 'haiku', effort: 'medium'` (the opts win over the agent
-file; the deployed `~/.claude/agents/codex-proxy.md` still pins opus/low and should be
-re-pinned to haiku-medium with the next user-prefs update), header block only, prompt and
+file's own pin), header block only, prompt and
 answer as files; ledger rows carry `kind: codex-agent` and `codex: <mode>` and are priced
 from `~/.codex/proxy-usage.jsonl` by model + effort, then time window. Astra is mapped
 (`gpt-6-astra`, medium/high, label `atr`; $10 / $1 / $50 per M, unofficial). Tables and conventions:

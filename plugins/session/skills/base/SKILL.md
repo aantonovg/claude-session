@@ -1,3 +1,8 @@
+---
+name: base
+description: "Session base: tools, cache, waits, models, roles. Invoke first in every session and again after /compact."
+disable-model-invocation: true
+---
 
 # Session base: tools, cache, waits, models, roles
 

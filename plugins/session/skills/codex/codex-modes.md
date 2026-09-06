@@ -8,7 +8,7 @@ axis, heavy agent on request → heavy axis) and the exchange directory is
 
 ## Codex model ids
 
-The shim (`codex-proxy.md`) maps targets: `luna` → `gpt-5.6-luna`, `terra` → `gpt-5.6-terra`,
+The shim (`agents/codex-proxy.md` in this plugin) maps targets: `luna` → `gpt-5.6-luna`, `terra` → `gpt-5.6-terra`,
 `sol` → `gpt-5.6-sol`, `luna-reserve` → `gpt-reserve` (luna billed against the separate GPT
 reserve quota, for a 0% main quota). `astra` → `gpt-6-astra` (mapped
 2026-09-05; efforts medium and high, low still accepted; label code `atr`).
@@ -93,7 +93,7 @@ around 6 terra packages cost $28 for $1.42 of terra; this rule removes them.
 ## Launch convention
 
 One `agent()` per codex stage inside a `Workflow`:
-`agentType: 'codex-proxy', model: 'haiku', effort: 'medium'` (the workflow opts pick haiku;
+`agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium'` (the workflow opts pick haiku;
 the agent file's own model pin does not apply inside a Workflow), label `<code>-<eff>-<stage>`
 with codes `lun`, `lur` (reserve), `ter`, `sol`, `ast`. The prompt is the header block and
 nothing else:
@@ -114,7 +114,7 @@ shim's `LAST LINE` is the gate signal. Per workflow: `meta.name` `c<class>-<pair
 
 ```
 export const meta = { name: 'c3-fable-opus-critic-codex', description: 'sol critic', phases: [{ title: 'Critic' }] }
-return await agent(args.header, { agentType: 'codex-proxy', model: 'haiku', effort: 'medium', label: 'sol-me-critic', phase: 'Critic' })
+return await agent(args.header, { agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium', label: 'sol-me-critic', phase: 'Critic' })
 ```
 with `args: { header: "CODEX TARGET: sol-medium\nCODEX CWD: <repo>\nCODEX PROMPT FILE: <…>\nCODEX OUTPUT FILE: <…>" }`.
 

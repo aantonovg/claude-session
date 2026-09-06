@@ -1,24 +1,19 @@
 #!/bin/sh
-# Regenerates base/BASE-<n>.md from base/BASE.md, splitting at `<!-- part -->` lines.
-# Each part, wrapped in the hook's JSON envelope, must stay under 9,000 characters:
-# Claude Code persists a hook additionalContext over 10,000 characters to a file and
-# the model sees only a pointer. Run after every edit of BASE.md.
+# Regenerates skills/base/SKILL.md from base/BASE.md (frontmatter + body).
+# BASE.md is the single source of truth; run after every edit of it.
 set -e
 DIR=$(cd "$(dirname "$0")" && pwd)
 python3 - "$DIR" <<'PY'
-import json, sys, os, glob
+import sys, os
 d = sys.argv[1]
-text = open(os.path.join(d, 'BASE.md'), encoding='utf-8').read()
-parts = [p.strip('\n') + '\n' for p in text.split('<!-- part -->\n')]
-n = len(parts)
-for old in glob.glob(os.path.join(d, 'BASE-*.md')):
-    os.remove(old)
-for i, p in enumerate(parts, 1):
-    if i > 1:
-        p = f'# Session base, part {i} of {n}\n\n' + p
-    size = len(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": p}}))
-    if size > 9000:
-        sys.exit(f'BASE-{i}.md envelope is {size} chars, cap 9000: move a <!-- part --> marker')
-    open(os.path.join(d, f'BASE-{i}.md'), 'w', encoding='utf-8').write(p)
-    print(f'BASE-{i}.md {len(p)} chars, envelope {size}')
+body = open(os.path.join(d, 'BASE.md'), encoding='utf-8').read().strip('\n') + '\n'
+front = ('---\n'
+         'name: base\n'
+         'description: "Session base: tools, cache, waits, models, roles. Invoke first in every session and again after /compact."\n'
+         'disable-model-invocation: true\n'
+         '---\n\n')
+out = os.path.join(d, '..', 'skills', 'base', 'SKILL.md')
+os.makedirs(os.path.dirname(out), exist_ok=True)
+open(out, 'w', encoding='utf-8').write(front + body)
+print(f'skills/base/SKILL.md {len(front + body)} chars')
 PY
