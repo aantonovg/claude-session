@@ -55,6 +55,10 @@ verification-changing unknown is open, contradictions are closed or accepted as 
 and verification capabilities are listed (or "unverifiable" is written explicitly). The
 main session's Gate R status line in chat quotes the `wanted, unavailable` lines
 verbatim (or "none").
+Codex axis on: the prompt file of a luna research run names, by absolute path, the
+`Ledger` snapshot (or `ledger.md`), the `Framing`, the `evidence/` directory and the
+output path `evidence/EB-<n>.md`, and ends with "append your ledger lines to
+`ledger.md`".
 Two waves without new evidence → stop research, go to the critic (standard, full). Fast
 path: no waves at all, the framing fork's own reads are the research and it asks the
 user through `session:ask` when a decision-changing unknown stays open.
@@ -101,7 +105,9 @@ where it is weak (ops, visual) the plan says what stays unverified and the user 
 that through `session:ask` or in chat. Gate V passes only when the `Oracles` block is present, the harness runs, the
 negative control is calibrated (full) and the weak-oracle acceptance is recorded; the
 main session's Gate V status line in chat quotes the `wanted, unconfirmed` lines
-verbatim (or "none").
+verbatim (or "none"). Codex axis on: the prompt file of a harness build names, by
+absolute path, the `Verification plan` (oracle map, scenarios, negative controls) and the
+invariants of the `Decision contract`.
 
 **5. Implementation → Gate I.** A fork writes `Implementation plan`: work packages with
 files, acceptance criteria, order, parallelizable packages, rollback points (fast: 1-3
@@ -109,6 +115,10 @@ work items, no plan section). One fork per package (parallel only in the full pa
 only for disjoint files; sequential otherwise), then verification: test runs and formal
 checks are forks (mechanical); no review of the code (stage 6 rule); fix is a separate
 fork.
+Codex axis on: the prompt file of a package names, by absolute path, that package's
+section of the `Implementation plan` (files, acceptance criteria, order), the invariants
+of the `Decision contract`, the harness commands from the `Verification plan`, and the
+commit message.
 Fix cycles per package by path: fast 1, standard 2, full 3. A check longer than ~2.5 minutes (test suites, CI,
 deploys, tmux-driven checks) is not started in a fork: the fork returns first, the main
 session starts it with `run_in_background` or launches a `waiter` agent (session base,
