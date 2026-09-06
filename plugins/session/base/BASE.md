@@ -150,6 +150,40 @@ batched into ONE workflow (`parallel`); a relay between steps (research → crit
 check) is wired as `pipeline()` stages of the same workflow; every `agent()` carries
 explicit model and effort and the `<mod>-<eff>-` label.
 
+## Decision points
+
+When each tier fires. These rules hold in every session, on top of the "When to fork"
+counts.
+
+Downscale agent (`sonnet-low` / `opus-low`; `luna-high` / `terra-high` under
+`session:codex`), ALWAYS for:
+
+- repository research over more than 3 files;
+- writing a test suite or the verification layer;
+- running a test suite or a build whose output exceeds 3K tokens;
+- a code review of a diff over 100 lines;
+- any mechanical sweep (renames, greps, format passes, inventory).
+
+A fork takes such a job only when it needs the chat context.
+
+Upscale agent (`opus-medium` / `fable-medium`, 5 tool calls; `opus-high` / `fable-high`,
+3 tool calls; the mode's set under `session:codex`; a paired review under `+sol` /
+`+astra`), ALWAYS at these points:
+
+- before implementation starts: a critique of the plan or contract file;
+- after the verification plan is written: a critique of it;
+- before the final report: a review of the closure document;
+- on the user's request: generation of a key document.
+
+One upscale call per point, inputs by path, output to a review file
+(`reviews/<point>.md` in the task dir, else `$TMPDIR/<cwd basename>-reviews/`); a fork
+or a downscale agent then checks the hypotheses the review raised.
+
+Minimum for every base task that produces code: the two upscale points (plan critique,
+closure review) and the downscale test-suite job. The only exemption: a change to a
+single file under 50 lines. Under `session:codex` the same points map to the mode's set
+(`astra` → `astra-medium` / `astra-high`; `+sol` → the paired review).
+
 The rules below came verbatim from the August workflow mode (`session:workflow`, folded
 into this base 2026-09-06) and apply to every `Workflow` launched from any session.
 

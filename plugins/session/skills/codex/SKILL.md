@@ -37,7 +37,9 @@ session; after `/session:pipeline` or `/session:review` when those are used.
 
 0. The base is present in every session; no check. If pipeline or review is on, the stage
    mapping of `codex-modes.md` applies; otherwise the base mapping applies: executor-kind
-   fork job → executor axis, upscale agent → heavy axis.
+   fork job → executor axis, upscale agent → heavy axis. The decision points of the base
+   (section "Decision points": plan critique, verification-plan critique, closure review,
+   test-suite job) fire in every mode; only the agent behind each point changes.
 1. Parse the argument. `<mode>` present → split at the `-` before `luna`/`terra`:
    `sol-luna` = heavy `sol`, exec `luna`; `sol` = heavy `sol`, exec `none`; `luna` = heavy
    `none`, exec `luna`. With an argument there is NO question to the user. Only without an
@@ -137,7 +139,7 @@ forks around 6 terra packages cost $28 for $1.42 of terra; this rule removes the
 - Codex jobs are Workflow calls like the base's cold agents and the pipeline's cold stages
   (critic, cold researcher, waiter); the pipeline's ban on other Workflow stages is lifted
   exactly for them, one agent per job.
-- Dual review (`+sol`, `+astra`): at every upscale REVIEW point the Claude upscale agent of
+- Dual review (`+sol`, `+astra`): at every upscale REVIEW point of the base (decision points) the Claude upscale agent of
   the main session's model (opus-medium / opus-high in an opus session, fable-medium /
   fable-high in a fable session) and the codex agent of the same effort (sol-me with
   opus-me, sol-hi with opus-hi; same for astra) run in ONE `Workflow` (`parallel`), two
