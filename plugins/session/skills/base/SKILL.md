@@ -23,10 +23,14 @@ session's model and effort, there is no mixing.
 ## Start (do this now)
 
 This skill is invoked by the user as the first prompt of a session and again after
-`/compact`. On that turn: first tool call `CronCreate` with
+`/compact`. On that turn: if `CronCreate` is not among the loaded tools, load it first
+with `ToolSearch` (`select:CronCreate`); the same for any deferred tool the base names
+(`CronList`, `Monitor`, `TaskStop`). Then the first tool call `CronCreate` with
 `cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`, `recurring: true`,
-unless a `ping` cron already exists in this session; reply line `Base on, ping cron <id>; forks for every 3+ call job`
-once. Reply to every `ping` with one word. Exception: when the context shows that the
+unless a `ping` cron already exists in this session. The reply line
+`Base on, ping cron <id>; forks for every 3+ call job` is printed once, only after the
+cron exists; there is no variant of this line without a cron id. Reply to every `ping`
+with one word. Exception: when the context shows that the
 previous work turn was cut off by the subscription limit or an API error (an error line
 where an answer should be, a fork or background job launched and never returned, a step
 announced and not done), the ping is the restart signal: answer `pong` and in the same
