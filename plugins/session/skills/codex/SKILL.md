@@ -73,8 +73,12 @@ session; after `/session:pipeline` or `/session:review` when those are used.
 4. Reply with one line: "Codex: <mode> (heavy <…>, exec <…>); fallbacks <…>."
    When a ledger exists, every `ledger.jsonl` row of the task carries `"codex": "<mode>"`.
 5. Exchange directory: `<task dir>/codex/` when pipeline / review has a task directory
-   (`mkdir -p` right after it exists); otherwise `$TMPDIR/codex-<YYYY-MM-DD>/codex/`,
-   created at the first codex job. Prompt and output files live there.
+   (`mkdir -p` right after it exists); otherwise
+   `$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/` (for cwd
+   `~/projects/demo-game-runs/f-opus-sol-terra` on 2026-09-06:
+   `$TMPDIR/codex-2026-09-06-f-opus-sol-terra/codex/`), created at the first codex job.
+   Prompt and output files live there. Two sessions never share an exchange directory; a
+   session never renames or deletes files it did not create there.
 
 ## How a codex job runs
 

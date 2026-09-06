@@ -22,6 +22,8 @@ something) or `/session:review` (someone else's MR); then, optionally,
 
 ## Base as a skill (0.8.0)
 
+0.8.1: the start block loads deferred tools (`CronCreate` and the others the base names) with `ToolSearch` before the first call; the codex exchange directory outside a task dir is per session (`$TMPDIR/codex-<date>-<cwd basename>/codex/`).
+
 Cold agents get the output-style rules (plain English, caveman ultra) in their agent definition, section "Output style"; no SubagentStart hook.
 
 codex-proxy ships with the plugin (0.8.0): `agents/codex-proxy.md`, the logging wrapper

@@ -4,7 +4,7 @@ Read once at the start of `session:codex`; tables and conventions (modes: `SKILL
 The stage tables below apply when `session:pipeline` or `session:review` is on; in a
 base-only session the mapping is the one in `SKILL.md` (executor-kind fork job → executor
 axis, heavy agent on request → heavy axis) and the exchange directory is
-`$TMPDIR/codex-<YYYY-MM-DD>/codex/`.
+`$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/`, one per session, never shared.
 
 ## Codex model ids
 

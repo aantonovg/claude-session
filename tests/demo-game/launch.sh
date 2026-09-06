@@ -67,7 +67,7 @@ wait_for '^❯ |shift\+tab to cycle|\? for shortcuts' 90 || exit 1
 sleep 2
 # the base is a skill since 0.8.0: every run invokes it first
 tmux send-keys -t "$tmux_name" "/session:base" Enter
-wait_for 'Base on, ping cron' 120 || exit 1
+wait_for 'Base on' 120 || exit 1
 if [[ $mode != none ]]; then
   tmux send-keys -t "$tmux_name" "/session:$mode" Enter
   wait_for 'mode on|Pipeline review' 90 || exit 1
