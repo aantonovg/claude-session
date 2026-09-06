@@ -9,11 +9,15 @@
 # built-in fallback. Output: one hookSpecificOutput JSON with additionalContext.
 CLAUDE_DIR=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 LEVEL=$(head -c 40 "$CLAUDE_DIR/.caveman-active" 2>/dev/null | tr -d '[:space:]')
-case "$LEVEL" in lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra) ;; off) exit 0 ;; *) LEVEL=ultra ;; esac
+RULE='Subagent output rule: reply in plain English only; no Russian recap, no `---` separator, no chat formatting; your return value is data for the main session.'
+case "$LEVEL" in lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra) ;;
+  off) python3 -c 'import json,sys; print(json.dumps({"hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": sys.argv[1]}}))' "$RULE"; exit 0 ;;
+  *) LEVEL=ultra ;; esac
 SKILL=""
 for f in "$CLAUDE_DIR"/plugins/cache/caveman/caveman/*/skills/caveman/SKILL.md; do [ -f "$f" ] && SKILL=$f; done
 TMP=$(mktemp "${TMPDIR:-/tmp}/caveman-sub.XXXXXX")
 {
+  printf '%s\n\n' "$RULE"
   printf 'CAVEMAN MODE ACTIVE — level: %s\n\n' "$LEVEL"
   if [ -n "$SKILL" ]; then
     awk 'BEGIN{fm=0} NR==1 && /^---$/ {fm=1; next} fm==1 && /^---$/ {fm=2; next} fm!=1 {print}' "$SKILL"

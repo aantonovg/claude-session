@@ -73,7 +73,7 @@ conventions in `codex-modes.md`, read it once at start):
 
 1. The MAIN session writes the prompt file `<task dir>/codex/<stage>-<n>.md` itself with
    one Write: ≤ 30 lines of bullets: the first line
-   `Style: caveman ultra (see AGENTS.md Response style); artifacts in normal prose.`, then
+   `Style: caveman ultra (see AGENTS.md Response style); plain English only, no Russian recap; artifacts in normal prose.`, then
    role, inputs by absolute path (never pasted, the main session reads no input), the
    acceptance criteria, the harness commands, the required last lines. For a research
    wave the prompt names the output path `<task dir>/evidence/EB-<n>.md` and ends with
