@@ -7,29 +7,21 @@ skills: read it before changing any of them.
 
 | skill | mode | spawns |
 |---|---|---|
-| `session:single` | one session | nothing |
-| `session:forks` | main + fork subagents | forks only |
-| `session:team` | main + tmux teammates (light: one per model+effort; full: one per role) | teammates only |
-| `session:team-forks` | team where main and teammates use forks for volume | teammates + forks |
-| `session:team-compact` | fold a running team into files; `team` / `team-forks` restore from them | - |
-| `session:workflow` | plain workflows with lean stage agents (`stage-author/reviewer/executor/researcher`, 12K start instead of 35K), convergence gate | lean workflow agents + forks for recon |
-| `session:pool-workflow` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` | pool-proxy agents + forks |
-| `session:pool` / `session:pool-stop` | show or start the pool by hand / park it | - |
+| `session:forks` | main + fork subagents | forks only (plus a `waiter` for long waits, as a one-agent `Workflow`) |
+| `session:pipeline` | forks plus a staged pipeline with gates (research, critic, decision, verification, implementation, closure check) | forks + lean cold critic (and cold researcher) |
+| `session:pool-workflow-unstable` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` (experimental, daemon currently stopped) | pool-proxy agents + forks |
+| `session:pool-unstable` / `session:pool-stop-unstable` | show or start the pool by hand / park it | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
 
 Default for day-to-day work (decided 2026-09-04 after the tests): `session:forks`. One
-context, no relay chatter, zero misses measured; team modes cost N notification turns
-per keep-warm cycle and hide the stage flow in messages. Next targets: peers (mode 4)
-and then a workflow over peers (mode 8 with peer sessions instead of teammates: the
-workflow script is the visible pipeline, each `agent()` a cheap proxy that hands its
-stage to a warm peer by role/model and returns a result file; the pieces were measured
-today: SendMessage + file handoff, peers wake with their cache, proxy stage ≈ $0.07-0.15).
+context, no relay chatter, zero misses measured. `session:pipeline` adds the staged
+process on top of it (2026-09-05).
 
-Mode 9 (`session:pool-workflow`) is the workflow-over-peers target above, built on a
-separate daemon (`pool/poold.py`) instead of teammates; see "Mode 9 — Pool".
-
-Deferred, not in the plugin yet: peers (mode 4, started by hand), delegate (mode 6, plain
-subagents with role agents), workflow (mode 7) and workflow over a team (mode 8), codex.
+Removed 2026-09-05 (single, team light/full, team-forks, team-compact, workflow with lean
+stage agents): the modes fell behind and are not used; their skills and README sections
+live in git history before this change. Their measurements are kept below in
+"Measurements (kept from removed modes)". Peers, delegate and workflow-over-a-crew were
+never built; the pool (mode 9) stays as an unstable experiment.
 
 Everything below follows from one fact: the prompt cache is the main cost lever on this
 account, and Fable 5.1 makes the gap between a cache read and a cache write very wide.
@@ -53,11 +45,11 @@ Measured on this Mac (2026-09-03, Claude Code 2.1.259) unless marked "docs".
 | Partial rewrite | `/reload-plugins` (~9K, the tool block) |
 | Does not reset | opening and closing `/plugin`, `/skills`, `/memory`, `/mcp`, `/config`; a memory write by this or a neighbour session (the change arrives as an appended system-reminder); plan mode toggle; file edits |
 | Teammate pane discovery | the teammate's pane lives in the tmux server Claude Code chose for the team, often a private `claude-swarm-<pid>` socket invisible to `tmux list-panes -a`; read `TMUX` and `TMUX_PANE` from the teammate process environment and address the pane with `tmux -S <socket>`; an empty pane list never means in-process (check `backendType` in `~/.claude/teams/<team>/config.json`) |
-| Teammate effort | a tmux teammate inherits the lead's `--effort`; an agent file's `effort:` does not reach it (the `model:` pin does); `/effort <level>` typed into its pane works (confirm dialog needs a second Enter) and so does `/model <full id>`; both are saved as the account default in `~/.claude/settings.json`, so team-compact restores the recorded defaults |
+| Teammate effort | a tmux teammate inherits the lead's `--effort`; an agent file's `effort:` does not reach it (the `model:` pin does); `/effort <level>` typed into its pane works (confirm dialog needs a second Enter) and so does `/model <full id>`; both are saved as the account default in `~/.claude/settings.json`, so a team compact (removed mode) restored the recorded defaults |
 | Fork subagent | inherits the parent's model AND effort, cannot override either; measured (10 forks, 2026-09-04): first turn reads the parent's full prefix (120K-350K read, 0.1-5K written, into the parent's 1h bucket), every later turn writes into the 5m bucket; a fork that waits over 5 minutes in one call rewrites its own suffix on the next turn (the parent prefix stays cached); a cron created by a fork fires in the main session, never in the fork; a parent `/effort` change propagates to running forks (docs) |
 | Plain subagent | fresh context, measured 60K written on the first turn (general-purpose); model (and, per docs, effort) via agent frontmatter; workflow `agent()` opts always honoured; with `subagentPromptCacheTtl: "1h"` the whole 60K lands in the 1h bucket (measured), without it in the 5m bucket |
 | Teammate | with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` a *named* plain Agent spawn is an in-process teammate (`taskKind: in_process_teammate`, transcript under `<session>/subagents/agent-a<name>-*.jsonl`): fresh context, measured 69K written on the first turn in the **5m** bucket, stays alive and answers SendMessage; it has the Agent tool and can spawn its own forks (measured). `name` + `subagent_type: fork` does NOT make a teammate: it is a one-shot fork that exits after its task. With `teammateMode: "tmux"` the teammate is a separate `claude` process in a tmux pane with its own session file, and its writes land in the **1h** bucket (measured: 54K + 13K on start) regardless of `subagentPromptCacheTtl` |
-| Teammate pings wake the lead | every teammate turn ends with an idle notification that is delivered to the lead as a turn: a teammate's `pong` to its own cron costs the lead one cache read of its whole context (measured: ~518K read, ≈ $0.14 on a fable lead; ≈ $0.02 on a fresh 85K lead). With 30-minute pings ≈ $0.28/h per teammate on a fat lead. A lead-driven `ping all teammates` is worse (1 + N lead turns per cycle) and no setting suppresses the notifications, so teammates keep their own crons and the lead drops its own cron once the team is up (the notifications keep it warm): floor = 2N turns per cycle; the levers are a small lead context (forks, short replies), light over full, and `team-compact` for long idle periods |
+| Teammate pings wake the lead | every teammate turn ends with an idle notification that is delivered to the lead as a turn: a teammate's `pong` to its own cron costs the lead one cache read of its whole context (measured: ~518K read, ≈ $0.14 on a fable lead; ≈ $0.02 on a fresh 85K lead). With 30-minute pings ≈ $0.28/h per teammate on a fat lead. A lead-driven `ping all teammates` is worse (1 + N lead turns per cycle) and no setting suppresses the notifications, so teammates keep their own crons and the lead drops its own cron once the team is up (the notifications keep it warm): floor = 2N turns per cycle; the levers are a small lead context (forks, short replies), light over full, and parking the team in files for long idle periods |
 | Peer sessions | a SendMessage to another local session (ref from ListAgents) wakes an idle interactive session: it received the message as a `cross-session-message` turn and answered with its cache intact (84K read, 330 written) |
 | Fork re-invocation | a fork that ends its turn with a background Bash running is re-invoked when the job exits (measured 52 s later), but the re-invoked turn reads only the static head and rewrites the whole context into 5m (409K, ≈ $5 on fable): never leave a background job behind in a fork; short foreground polls are the only cheap wait |
 | TTL clock | measured from request start, not response end (docs); a turn whose generation plus tool wait exceeds the TTL loses its cache before the next request; no keep-alive in Claude Code |
@@ -97,16 +89,20 @@ Measured on this Mac (2026-09-03, Claude Code 2.1.259) unless marked "docs".
      switch back to the working model (a small-context reset, cents), then continue.
      `/model` saves the choice into settings.json, so restore the default afterwards.
 
-## Mode 1 — Single (`session:single`)
+## Mode 1 — Workflow (`session:workflow`)
 
-One session, no agents. The cheapest mode per unit of work: every turn is a cache read
-plus the new tokens.
+The original flow (August 2026, user-prefs 6.5-6.7) kept as the baseline. The main
+session does no work itself: it plans, launches `Workflow` scripts, verifies results and
+talks to the user. Every job is a cold workflow agent: one class and one pairing per
+workflow stamped into `meta.name` (`c<class>-<pairing>-<slug>`), every `agent()` with
+explicit model and effort and a `<mod>-<eff>-` label prefix, 0-3 skills named by the main session at
+the end of each prompt, author → reviewer-debugger (→ fast tests) → fixer loops of 1-3
+cycles, `BLOCKED` stops the script, land stages self-contained. No forks, no plain
+subagents, no teammates.
 
-- Fits: conversation, analysis, small and medium edits, anything under a few hundred tool
-  calls.
-- Limit: tool results pile up in the one context; around 1000 tool calls the session needs
-  a compact, which resets the cache.
-- Setup: cron `ping` every 30 minutes (the skill creates it).
+Cost shape: every stage pays a cold start (35-50K, see "Teammate start size") and the
+main session's prefix is small; the benchmark in Mode 9 ("plain") is this mode. Used to
+compare `forks` and `pipeline` on the same prompt.
 
 ## Mode 2 — Forks (`session:forks`)
 
@@ -124,180 +120,29 @@ out of the main context, which is what makes the main session live longer.
   without any permission prompt; only in plan mode such a command prompts the user
   ("Contains simple_expansion"). Keep forks off Bash expansions during plan mode only.
 - Setup: cron `ping` every 30 minutes in the main session; forks need nothing.
+- Long waits (2026-09-05): every fork turn re-reads the whole parent prefix at cache-read
+  price, so a polling fork on a 500K prefix costs about 0.5M read tokens per poll (18
+  polls ≈ 9M); a call over 5 minutes rewrites the fork suffix; a fork re-invoked by a
+  finished background job is a full miss (409K measured); the API cache lookback is 20
+  blocks, so many-block forks are an unmeasured risk. Rule: forks are short (≤ 10 turns),
+  never poll or wait, never use `run_in_background`. Waits go to the `waiter` agent
+  (`agents/waiter.md`: fresh context, sonnet pin, tools Bash + Read), launched by the main
+  session as a one-agent `Workflow` with the condition, the polling command shape, dialog rules,
+  a time budget and a word limit; it returns facts only. The main session may also run
+  async work itself and be woken by the completion.
+- Launch forms, all modes: exactly two. `Agent` only with `subagent_type: "fork"`;
+  `Workflow` for every cold agent (waiter, critic, decision reviewer, cold researcher,
+  heavy agent on request, codex-proxy), one agent per single stage and ONE workflow
+  (`parallel` / `pipeline`) for N independent cold agents, never N launches; no plain
+  subagents. Measured 2026-09-06, same waiter agent both ways: agent cost identical
+  ($0.136 per five sonnet agents, each reads 6.7K of its system prompt from cache and
+  writes 8.5K); each separate completion notification is a full prefix re-read in the
+  main session (≈ $0.13 on a 285K fable prefix); notifications landing together are
+  batched by Claude Code.
 
-## Mode 3 — Team (`session:team`)
+## Mode 9 — Pool (`session:pool-workflow-unstable`, `session:pool-unstable`, `session:pool-stop-unstable`)
 
-One main session plus 3-5 named teammates with fixed roles (reviewer, author, fixer,
-researcher, executor), each with its own model and effort, each reused across rounds
-without clearing. The main session hands out subtasks and merges results; the teammates
-keep their warmed context, so the second and later rounds are cheap.
-
-- Fits: large tasks with repeated review/fix cycles, multi-model work (fable reviewer,
-  opus fixer, sonnet executor), anything that would need thousands of tool calls in total.
-- Limits: 3-5 session starts up front (≈ 85K written each); every teammate must be kept
-  warm; coordination goes through messages and the shared task list, so the main session
-  spends tokens on orchestration.
-- Measured: in-process teammates (`teammateMode: "in-process"`) start with a fresh 69K
-  context in the 5m bucket; tmux teammates (`teammateMode: "tmux"`) are separate sessions
-  on the 1h bucket. So a team runs with `teammateMode: "tmux"`: teammates keep the 1h
-  cache like the main session, while `subagentPromptCacheTtl` can stay at 5m for the
-  cheap-write forks and plain subagents. Keep-warm ping per teammate is still needed.
-  A named fork is not a teammate: it runs once and exits.
-- Setup: spawn the roles first, then a ping cron in each (the spawn message asks for
-  it), then start dispatching.
-- Tool limits (2026-09-04): the `Agent` tool takes only model aliases (`opus`, `sonnet`,
-  `fable`), no effort; the skill pins the 1M id and the effort by typing `/model` and
-  `/effort` into the teammate's tmux pane. Teammate panes have no status line. tmux
-  teammates do not need the session to run inside tmux: Claude Code opens a private
-  server (`tmux -L claude-swarm-<pid>`; `tmux ls` on the default server shows nothing).
-  Only a *detached test session on macOS* fails with `respawn pane failed: fork failed:
-  Device not configured` (attach a pty client first); Linux needs no client. Every teammate reply lands in the main context: a full team of six on a
-  small task cost ≈ $10 (main $3.9 of it, 6.9M cache-read tokens from 8 exchanges),
-  so replies are kept to "DONE + 5 lines".
-
-### Light and full, by role or by domain
-
-- A new team starts with recon in forks style (the class is only known after looking
-  at the task); the team is spawned once the class and sub-mode are agreed.
-- **Light**: one teammate per unique model+effort combo of the selection-map row for the
-  task class, minus the main session's own combo (the main session does those roles
-  itself). Class 3 with a fable-low main: main = reviewer, teammates `opus-medium`
-  (plan author, fixer) and `opus-low` (author, researcher, executor). Fewest sessions.
-- **Full**: one teammate per role the task needs, equal combos not merged; the main
-  session only drives the stages. More starts, more total context before a compact.
-
-Inside full, two ways to cut the crew:
-
-- **By role** (reviewer, author, fixer, researcher, executor): the default. Each teammate
-  keeps the process knowledge of its role; models and efforts follow the selection map
-  (reviewer-grade model for reviewer and plan roles, cheaper executor family for the
-  rest). Good when the task moves through stages.
-- **By domain or stack** (e.g. `api`, `billing`, `helm-chart`, `frontend`; or Go
-  backend, Angular, k8s/ArgoCD, Jira/GitLab process): each teammate warms up the code,
-  docs and conventions of one area once and answers every question about it for the rest
-  of the day. Good when the task cuts across several services or when the same area is
-  hit many times; a domain teammate that also reviews its own area saves the reviewer
-  from re-reading the code.
-- **Mixed**: a small role core (one reviewer, one fixer) plus domain specialists as
-  authors/researchers. The main session routes by area first, then by role.
-  Domain teammates fit the file handoff (see Team compact) especially well: their context
-  file is a reusable area briefing, not a task state.
-
-## Mode 4 — Peer sessions
-
-Next mode to build (decided 2026-09-04). Why: in team modes every teammate turn ends
-with an idle notification that costs the lead a full context read, so an opus lead
-with N teammates pays N × (lead read) per keep-warm cycle on top of the teammates'
-own reads. Peers have no lead in the protocol: each is a full session with its own
-cron, messages go through `SendMessage` to a local session (measured: the peer wakes
-with its cache intact), and nothing is relayed. Design to do: the coordinating
-session spawns peers itself (`tmux new-session -d "claude --model <id> --effort <x>"`
-plus a typed briefing, so model and effort are set at start and no account default
-changes), names them by role/combination, keeps a manifest like `team.md`, hands out
-stages by message, parks them with the same file protocol; check whether
-cross-session messages need approval in auto mode, and how a peer reports back
-without a lead notification (reply message, or a result file).
-
-
-3-5 independent sessions started by hand (tmux or `claude agents`), no main session, work
-passed between them with SendMessage / ListAgents ("other local Claude sessions on this
-machine").
-
-- Fits: long-running roles that outlive any single task.
-- Measured: a SendMessage from one session to another local session wakes the idle peer
-  and it answers with its cache intact. So peers can relay work between themselves; what
-  is missing is only a scheduler, which the sending session provides by its own prompts.
-- Setup: each session starts its own `/loop 30m ping`.
-
-## Mode 5 — Team + forks (`session:team-forks`)
-
-Mode 3 where each teammate does its heavy lifting through its own fork subagents. The
-teammate keeps a small, warm context; the forks absorb the tool-call volume at the
-teammate's model and effort and read the teammate's cached prefix when they start.
-
-- Fits: the biggest tasks: a multi-model role pool that almost never rewrites its cache.
-- Limits: two levels of delegation to instruct (main → teammate → fork); more moving parts
-  to keep warm. Works as intended only with `teammateMode: "tmux"` (1h teammates); the
-  forks then write at the cheap 5m rate and read the teammate's prefix.
-- Measured: a teammate has the Agent tool and spawned a fork on request (the fork ran
-  `date` and the teammate relayed the result). Plain subagents cannot nest.
-- Setup: as Mode 3, plus a standing instruction in each teammate's prompt: "run every
-  multi-step piece of work in a fork; keep your own context for coordination".
-
-## Mode 6 — Delegate
-
-One lean main session plus fresh plain subagents per job, with model and effort chosen per
-subagent (custom agent types or workflow-style opts). The main session stays small and
-warm; each subagent pays its own start (35-50K written, 5m bucket) and is thrown away.
-
-- Fits: many unrelated small jobs, jobs that need a clean context, jobs on a cheaper
-  model than the main session.
-- Limits: start overhead per subagent; results come back as text only; with the default
-  5m TTL a subagent that waits (network, long build) loses its cache.
-- Setup: `/loop 30m ping` in the main session; `subagentPromptCacheTtl: "1h"` moves the
-  subagent writes into the 1h bucket (measured: 60K in 1h with the key, 5m without).
-
-## Mode 7 — Workflow
-
-Dynamic workflows (`Workflow` tool): deterministic pipelines of fresh agents with explicit
-model and effort per `agent()`, progress UI, resume from a run id. Every agent is a clean
-context, so a 10-15 agent cycle pays 10-15 starts.
-
-- Fits: formal multi-stage processes (plan → review → fix → verify → land), audits and
-  sweeps, anything that must be reproducible and observable.
-- Cache levers: agents of one fan-out with equal model/effort/tools share the first agent's
-  prefix; `subagentPromptCacheTtl: "1h"` for agents that wait; resume replays finished
-  agents from the journal instead of re-running them. There is no reuse of an agent across
-  stages: the price of the mode is the start overhead, the gain is structure.
-- Setup: `/loop 30m ping` in the main session; class and pairing in `meta.name` as usual.
-- Lean stage agents (`session:workflow`, 2026-09-04): the plugin ships `stage-author`,
-  `stage-reviewer`, `stage-executor`, `stage-researcher` with reduced tool sets and no
-  model pin. Measured first turn: 12K written for a lean agent against 35K for the default
-  workflow agent (23.6K of it the built-in tool schemas). The skill adds the convergence
-  gate (review severity below medium ends the cycles) and the tool-output caps.
-
-## Mode 8 — Workflow over a crew (proxy agents)
-
-Mode 5 driven by a workflow script: the crew (tmux teammates, 1h cache, forks for volume)
-does the work, the workflow only sequences it. Each `agent()` is a cheap proxy that hands
-its stage to a teammate and returns the result, so the script keeps its pipeline shape,
-review loops and resume while the tokens are spent in warm contexts.
-
-Measured 2026-09-04 (sonnet):
-
-- A workflow agent CAN `SendMessage` to a teammate and the teammate executes the task.
-- The teammate's reply is routed to the **main session** (as a teammate-message), not to
-  the workflow agent; a subagent cannot idle-wait, so a "wait for the reply" prompt ends
-  with a stub result.
-- Working handoff: the proxy tells the teammate to write its result to a file
-  (`$TMPDIR` or the job tmp dir), then waits for that file with a bash until-loop
-  (`for i in $(seq 1 36); do [ -s FILE ] && break; sleep 5; done`) and returns the file
-  content. Verified end to end (`sw_vers` output came back as `FILE-RESULT:`).
-- First read outside the cwd triggers a one-time "allow reads outside the working
-  directories" dialog in the main session; answer it once (or keep the handoff files
-  under the cwd).
-
-Cost, measured on two sonnet proxies in a large monorepo project (JSONL usage, 5m bucket):
-
-| | proxy 1 (cold) | proxy 2 (3 min later) |
-|---|---|---|
-| first-turn cache write | 60 247 | 35 552 (24 819 read from proxy 1's head) |
-| later writes, total | ~9 900 | ~8 900 |
-| cache reads, total | ~537 000 | ~358 000 |
-
-At sonnet $2/MTok input (5m write 1.25x = $2.50/MTok, read $0.20/MTok): start write
-$0.15 / $0.09, whole stage ≈ $0.29 / $0.18. Ten proxy stages ≈ $2-3. On the 1h bucket the
-start would be $0.24, so keep subagents on 5m in this mode. Same start on opus
-($5/MTok) ≈ $0.22-0.31, on haiku ($1/MTok) ≈ $0.07. Use the cheapest proxy that can
-follow the protocol and keep the number of stages small; the heavy tool-call volume runs
-on the teammate and its forks.
-Not in the script API yet: no `agent()` option to target a teammate directly, and
-workflows cannot spawn forks of the main session or of a teammate (no feature request
-found in anthropics/claude-code as of 2026-09-04).
-
-## Mode 9 — Pool (`session:pool-workflow`, `session:pool`, `session:pool-stop`)
-
-Mode 8 without a team: a separate daemon (`poold`) runs a pool of plain `claude`
+Workflow over warm peers without a team: a separate daemon (`poold`) runs a pool of plain `claude`
 sessions in tmux windows, one per model+effort combo or per role, and keeps them warm.
 A workflow script drives the stages; each `agent()` is a `pool-proxy` (haiku, Bash
 only) that hands a task file to a worker through `poolctl` and returns the result file.
@@ -425,11 +270,11 @@ What the four runs say:
   three cycles) but cost more on small contexts: every fork rereads the worker's
   50-60K prefix on each of its turns and writes its own suffix at the 5m price.
 
-Two workflow rules that follow from the cost floor (in `session:pool-workflow`, and
+Two workflow rules that follow from the cost floor (in `session:pool-workflow-unstable`, and
 valid for plain workflows too): a convergence gate (a review with no medium or high
 findings ends the cycles; the fix and check stages of that cycle are skipped) and
-tool-output caps in task files (reviewers get `git diff` since the previous stage,
-not whole files; checkers return PASS/FAIL lines and the tail of failing output).
+tool-output caps in task files (checkers return PASS/FAIL lines and the tail of failing
+output; the pipeline has no code review stage at all).
 
 Three lessons, now built in:
 
@@ -454,33 +299,184 @@ handles it or the dir is trusted first; the subagent Bash guard also matches a l
 literal wait written inside a tmux command string. Probes 4 (haiku proxy start size,
 role discipline, shared prefix) and 6 (last-turn hook) run with steps 2-3 of the plan.
 
-## Team compact (`session:team-compact`) and restore
+## Mode 10 — Pipeline (`session:pipeline`)
 
-Teammates are tied to the main session: when it exits, is killed, or the tmux server
-dies, the team is gone. A team that spans days therefore parks itself in files.
+The forks mode plus a staged pipeline for one task. Source: the design note
+`claude-code-agent-pipeline-spec-ru.md` (claude-settings, 2026-09-05) after a
+clean-context critique (27 hypotheses) and an evidence audit against the measurements in
+this README (`docs/review/pipeline-spec-*.md` in claude-settings). What was kept from the
+note and what was cut:
 
-1. Directory: `~/.claude/projects/<encoded-cwd>/team-compact/<stamp>-<slug>/`, next to
-   the project's transcripts and memory, outside any repo. `<stamp>` = `YYYY-MM-DD-HHMM`,
-   `<slug>` = 2-4 words about the work (`2026-09-05-1830-retry-logic-mr`); always a new
-   directory.
-2. The main session sends every teammate: "fold your context into `<dir>/<name>.md`:
-   goal, current state, decisions, open items, files and commands you rely on, under
-   300 lines; reply `DONE <path>`", and waits for every DONE.
-3. It writes `<dir>/main.md` (its own state, same template) and `<dir>/team.md` (one-line
-   recap, mode, sub-mode, class, and per teammate: name, roles, model, effort, file).
-4. It stops the teammates, deletes the `ping` cron and tells the user the directory.
+- Kept: research ledger as the one state file of a task (evidence with pointers,
+  unknowns with a class, assumptions, verification capabilities), written and read by
+  forks only: the main session dictates bullets in the fork prompt and works from the
+  fork return lines, it reads a task file at most once after it is marked final;
+  decision contract as a
+  separate section before any plan; verification harness before implementation, with a
+  negative control where the oracle is strong and an explicit "unverifiable" list where
+  it is weak; a 5-field structured status from every fork; fast / standard / full path
+  tied to the task class with a hard per-path table in the skill (what each path skips,
+  ceilings on forks, turns and cold agents: fast ≤ 6 / 50 / 0, standard ≤ 14 / 120 / 1,
+  full ≤ 24 / 220 / 3); loop guards per path (research waves 0 / 1 / 2, fix cycles per
+  package 1 / 2 / 3, closure-check rounds 0 / 1 / 2).
+- Cut: "fresh subagent by default" (a cold agent starts at 35-50K, lean 13-19K; the
+  13-stage benchmarks above cost $3.2-6.5 against ~$1.15 for direct work on a real
+  class-1 ticket), only the critic (and breadth research) stays cold; the hard-coded model
+  table (the session map already has one per account; enterprise has no haiku, opus
+  low/medium and fable low only; a fork cannot change model or effort); 5 review roles
+  cut to 2 (evidence audit is a fork: it refutes against files, anchoring does not hurt
+  there); a "pending-human without blocking" state (a dialog blocks the turn and the
+  pings behind it; `session:ask` already covers it); skill metadata, artifact hash
+  graph, cost manifest (nothing in Claude Code reads them; claude-cost reads the JSONL).
 
-Restore is part of the start of `session:team` and `session:team-forks`: the skill lists
-this project's compacts of the last 7 days (date + recap) in an AskUserQuestion menu with
-a "new team" item; on restore it reads `main.md`, then `team.md`, spawns the same
-teammates with the same full model ids and efforts, tells each to read its file first,
-and restarts the pings. An explicit `<dir>` argument skips the menu.
+Class criteria (the same 1-5 classes as the selection map): 1 = one file, known fix,
+existing test covers it; 2 = a few files, clear spec, tests exist or are obvious; 3 =
+several modules or an unclear cause, needs research, tests to write; 4 = cross-cutting
+change, migration or design choice between alternatives, weak or partial oracle; 5 =
+multi-day, entangled legacy, incident, or a decision that is hard to reverse. The main
+session proposes the class; the critic may raise it. Trade-off, deliberate: a class 1-2
+task is self-assigned and has no external check (the audit wanted the critic to assign
+the class, which costs a cold agent before any research); the calibration signal is the
+share of tasks whose class the critic later raises, visible in `--all-runs`.
 
-Cost: the evening is output only (files); the morning is one clean start per session plus
-one file read each. No cold read of a big history ever happens.
+The cold stages run as a `Workflow` with one `agent()` each: the critic on
+`session:stage-critic` (Read and Write only; model and effort from the reviewer-debugger
+cell of the class row, at most 5 tool calls at medium, 3 at high, label
+`<mod>-<eff>-critic`), the full path's decision review on `session:stage-reviewer` (same cell
+and budget, label `<mod>-<eff>-decision-review`; standard has a low fork check instead,
+fast none), and breadth research on `session:stage-researcher` when the stage 1 rule
+sends it there. There is no final review of the work: Gate F is a mechanical closure
+check by a low fork (verification plan against harness results and package status,
+`reviews/closure.md`). Medium or high effort exists only for generating important
+documents and critiquing them (critic, decision contract review; `session:stage-reviewer`
+is the document reviewer). Code is verified by the harness and never reviewed: a
+package without a formal verifier is authored by opus-low (`terra-high` in terra
+executor mode) and nobody reads it back; a cheap executor writes only packages that
+have a verifier; tests are never reviewed. Everything else is the main session or a
+fork on the main session's model.
 
-Main session, native `/compact` versus the file: see "Compact prices" below; the skill
-uses the cheaper one.
+Cold-stage agents: a cold agent gets only CLAUDE.md with its imports and memory as domain
+context; no Skill tool, no MCP, minimal tools. Skills are chosen by the main session (0-3
+per stage from the skill-routing map) and injected as `Read these first: <SKILL.md paths>`
+in the stage prompt. Sizes measured: default workflow agent 35-50K at start, lean 13K;
+built-in tool schemas 24-26K of that; the Skill tool's listing 9K; CLAUDE.md plus imports
+12K reach every agent and cannot be cut. The benchmarks tied review quality to the
+reviewer's model, not to its tool set. Untested: whether auto-memory (`MEMORY.md`) reaches
+a custom agent at all.
+
+Verification split (user's note on the spec): mechanical checks (tests, linters, formal
+tools) are a plain fork; there is no semantic code review on a weak oracle: the package
+is authored by opus-low (terra-high in terra executor mode) instead and left unreviewed. The cheap executor row of the map is not used in
+this mode; if a task needs a cheaper executor family, start the session on that model.
+
+Cost ledger: `<task dir>/ledger.jsonl` holds one row per spawn or main-session stage
+(ts, stage, step, role, kind main / fork / workflow-agent, model, effort, mode, class,
+agent id, label), written by the main session, plus stop marks written by the plugin's
+`SubagentStop` hook (`hooks/pipeline-subagent-stop.sh`, active only while
+`~/.claude/projects/<encoded-cwd>/pipeline/current` points at a task dir). The session
+id in `<task dir>/session` is written by the skill at start (the hook writes it as a
+fallback; the script falls back to the newest transcript by mtime with a warning).
+`tools/pipeline-cost.py <task dir>` joins the rows with the main and agent transcripts
+(dedup by message id, the price table copied from claude-cost, the cache-miss rule of
+`cache-loss.py`) and prints the per-row table plus cuts by stage, role, kind and
+model+effort, then a session total (every main turn plus every found agent transcript)
+with the unattributed part (main turns outside all stage rows: pings, setup, closure);
+`--all-runs <pipeline root>` gives one line per run (mode, class, attributed $, session
+$, wall time, spawns, misses): the calibration data for the fast / standard / full
+paths. Main-session turns are assigned to the latest `main` row by timestamp, so a stage
+row must be appended when the stage starts. `--selftest` runs on synthetic records.
+
+Cost rules (from test 1, 2026-09-05, B2CT-22116, opus-low main, full path through Gate D;
+analysis in claude-settings `docs/review/pipeline-test1-cost-analysis.md`): $17.9 total,
+one cache miss ($0.34), 63% of the money was prefix re-reads over 197 turns. The rules
+below keep the gates and artifacts and would have saved about $7.9 (44%):
+1. Fork turns ≤ 8, batched commands; split at 12 (8 of 12 forks ran 10-25 turns): ≈ $4.0.
+2. Terse main session: its 29K of chat became prefix for ~120 later turns: ≈ $1.5.
+3. Review forks read inputs in one command and never pause > 3 min before the write (the
+   only miss was a > 5 min pause, 53K rewritten): ≈ $1.0.
+4. MCP payloads capped by fields and persisted once in `evidence/raw/` (45K of GitLab
+   discussions fetched twice, 33K pipeline jobs, 28K JQL): ≈ $0.6.
+5. No merge-ledger fork (the last wave fork updates the ledger); evidence bundles ≤ 80
+   lines (two were 170), `ledger.md` ≤ 120: ≈ $0.8.
+6. Ledger completeness: every spawn gets its row before launch and `agent_id` right after
+   (test 1 lost the merge fork's row and one review row's id).
+
+Codex axis (`session:codex`, loaded after the pipeline skill, otherwise Claude
+only; the pipeline skill itself never mentions codex): two multiplied axes, heavy `none | sol
+| astra | +sol | +astra` (critic, decision review only, document critique: replace the Claude agent or pair a codex one with it, merge fork, a high
+finding in either fails the gate) × executor `none | luna | terra` (research sweeps, harness,
+packages, mechanical checks: sonnet-low slots → luna-high, with terra also opus-low executor
+slots → terra-high; executors have one effort). Heavy effort follows the stage's tool-call
+budget: ≤5 calls pure reasoning → sol-medium / astra-medium, the hardest document gate, ≤3
+calls → sol-high / astra-high; heavy models never review code (2026-09-06: sol-high
+final code reviews read 300-470K tokens each; those runs count as failed). A stage stays on Claude when it needs MCP, repository edits under Claude
+permissions, the pipeline's own artifacts or a skill; codex writes only into `<task
+dir>/codex/` and `reviews/<stage>-codex.md`. Every codex stage is one `codex-proxy`
+`agent()` with workflow opts `model: 'haiku', effort: 'medium'` (the opts win over the agent
+file; the deployed `~/.claude/agents/codex-proxy.md` still pins opus/low and should be
+re-pinned to haiku-medium with the next user-prefs update), header block only, prompt and
+answer as files; ledger rows carry `kind: codex-agent` and `codex: <mode>` and are priced
+from `~/.codex/proxy-usage.jsonl` by model + effort, then time window. Astra is mapped
+(`gpt-6-astra`, medium/high, label `atr`; $10 / $1 / $50 per M, unofficial). Tables and conventions:
+`skills/codex/codex-modes.md`.
+
+Review axis (`session:review`, loaded after the pipeline skill; the pipeline skill
+never mentions it): reviewing someone else's MR or PR without reading the diff; one finding = one draft note = one resolvable thread, MR-level threads for findings without a line; only findings are published, passed checks and unverifiable claims stay silent (lite, std) or get a diff-scoped opus-low read (full). The
+stages 1-7 are replaced by research (cold sonnet-low researcher fetches intent, claims,
+CI, changed files, threads once), verification audit (a fork writes the review contract:
+claim → existing / missing / no possible oracle), verification delta (missing oracles
+only), harness delta and run (MR branch in a worktree under `$TMPDIR`, low forks add and
+run the missing checks), threads from run results (`reviews/threads.md`, critical and
+important findings only, confirmed against the base branch; harness failures on our side
+go to `reviews/harness.md`, never to the MR), closure check, publish: file-line threads
+of at most 3 lines or one MR note of at most 6, at most 30 published lines per MR and
+nothing about how the review was done, all as draft notes, submitted or "request
+changes" on the user's word, approve when nothing critical or important remains. Re-review path (`re`): resolve threads fixed with evidence
+or answered, rerun the existing harness delta and CI, approve. Paths `lite | std | full |
+re` by diff size and blast radius, with ceilings (3 / 10 / 18 / 2 forks); the only code
+reading is a diff-scoped opus-low read of files with no possible oracle (std, full); the
+only heavy agent is the full path's contract critique (3 calls). Main session: opus-low.
+Untested.
+
+Untested (to measure on the first real tasks, Mac via `bw`, fable-low main): A/B cost against a
+plain forks session on 3 class 2-3 tickets ($ by `tools/pipeline-cost.py`, misses by
+`tools/cache-loss.py`, defects caught before the closure check); size of `task.md`
+after two research waves against the 200K enterprise context; whether the decision
+contract check by a low fork (standard path) catches at least 80% of what the full
+path's heavy decision review would; continuing a task from its directory in a new session (tokens
+at start, research repeated); whether the main session reclassifies a disputed unknown
+under pressure (Gate R gaming); whether `SubagentStop` fires for Workflow `agent()`
+calls (until known, the skill appends the stop line of the cold stages by hand).
+
+## Measurements (kept from removed modes)
+
+Facts measured 2026-09-04 while the team, delegate and workflow modes existed; the modes
+are gone, the numbers still hold.
+
+- Teammates: in-process (`teammateMode: "in-process"`) start with a fresh 69K context in
+  the 5m bucket; tmux teammates are separate sessions on the 1h bucket (54K + 13K on
+  start). Claude Code opens a private tmux server (`tmux -L claude-swarm-<pid>`); only a
+  detached test session on macOS fails with `respawn pane failed: fork failed: Device not
+  configured` (attach a pty client first); Linux needs no client. The `Agent` tool takes
+  only model aliases (`opus`, `sonnet`, `fable`), no effort; `/model` and `/effort` typed
+  into the pane work and are saved as the account default. A teammate has the Agent tool
+  and can spawn a fork; plain subagents cannot nest. Every teammate reply lands in the
+  main context: a full team of six on a small task cost ≈ $10 (main $3.9 of it, 6.9M
+  cache-read tokens from 8 exchanges).
+- Plain subagent (delegate): 35-60K written per fresh start; `subagentPromptCacheTtl:
+  "1h"` moves the 60K into the 1h bucket (measured), otherwise 5m.
+- Lean workflow stage agents (`stage-author/reviewer/executor/researcher`, still shipped
+  in `agents/`): 12K written on the first turn against 35K for the default workflow agent
+  (23.6K of it the built-in tool schemas). `session:pipeline` uses `stage-critic` and
+  `stage-researcher` for its cold stages, `stage-reviewer` for a document review.
+- Workflow agent → teammate handoff (sonnet): a workflow agent CAN `SendMessage` to a
+  teammate; the reply is routed to the main session, not to the agent; the working
+  handoff is a result file the proxy waits for with a bash until-loop. No `agent()`
+  option targets a teammate; workflows cannot spawn forks of the main session.
+- Proxy stage cost in a large monorepo (5m bucket): proxy 1 first-turn write 60 247,
+  proxy 2 three minutes later 35 552 (24 819 read from proxy 1's head); later writes
+  ~9-10K each; cache reads ~537K / ~358K. At sonnet prices ≈ $0.29 / $0.18 per stage;
+  opus ≈ $0.22-0.31 start, haiku ≈ $0.07.
 
 ## Closed: 1-hour cache for forks and subagents
 
@@ -517,7 +513,7 @@ normal cached turn, unlike a fork).
 
 Restore from a compact, `/model claude-sonnet-5[1m]` pin through tmux (allow rules for
 `tmux send-keys/capture-pane/list-panes`), five stages by SendMessage, seven forks
-inside the teammate, `pong`, team-compact with a time-stamped dir: main 52 turns and
+inside the teammate, `pong`, a team compact (removed mode) with a time-stamped dir: main 52 turns and
 the teammate 32 turns wrote only into the 1h bucket, every fork read the teammate's
 prefix and wrote 1-4K, zero cache misses anywhere. Cost ≈ $7. A subagent Bash guard
 hook (user-prefs `fork-bash-guard.sh`) now caps fork Bash timeouts at 170 s; Claude Code
@@ -564,7 +560,7 @@ summary. The plugin uses the file for the main session too (one mechanism for ma
 teammates, human-readable, restorable from any fresh session); a native warm `/compact`
 is equally good when the user wants to keep the same session id.
 
-## Roles, selection map and stages (used by `team`, `team-forks`, `forks`)
+## Roles, selection map and stages (used by `workflow`, `forks` and `pipeline`)
 
 Six roles: **reviewer-debugger** (independent review of plans and code, root-causing
 failures; the strongest slot), **plan author/fixer** (writes the plan, applies review
@@ -587,7 +583,7 @@ Selection map, pairing fable-opus (row = task class 1-5, column = role):
 | 4 complex | fable-medium | fable-low | opus-medium | opus-medium | opus-low | opus-low |
 | 5 very complex | fable-high | fable-medium | opus-high | opus-medium | opus-low | opus-low |
 
-Full model ids for spawning teammates (always the 1M variant):
+Full model ids (always the 1M variant on the subscription):
 
 | short | id |
 |---|---|
@@ -617,40 +613,6 @@ Skills for a worker: the main session names 0-3 skills per stage from the skill-
 map (`~/.claude/memory-user/skill-routing.md`) and puts them at the end of the prompt
 ("Load these skills with the Skill tool before starting: …" or "No skills needed for this
 step."). Never `claude-api`, never a superpowers orchestration skill.
-
-## Scores for a big task (~3000 tool calls, review/fix cycles, mixed roles)
-
-1-10, higher is better on every column (cost 10 = cheapest).
-
-| Mode | Cost | Quality | Context capacity | Control / observability | Setup effort | Total |
-|---|---|---|---|---|---|---|
-| 1 Single | 4 | 5 | 2 | 6 | 10 | 27 |
-| 2 Forks | 8 | 6 | 6 | 5 | 9 | 34 |
-| 3 Team (tmux teammates) | 6 | 8 | 7 | 6 | 5 | 32 |
-| 4 Peer sessions | 7 | 7 | 7 | 3 | 3 | 27 |
-| 5 Team + forks | 8 | 9 | 9 | 5 | 4 | 35 |
-| 6 Delegate | 5 | 6 | 8 | 6 | 7 | 32 |
-| 7 Workflow | 3 | 8 | 9 | 10 | 6 | 36 |
-| 8 Workflow over a crew (proxy agents) | 6 | 9 | 9 | 9 | 3 | 36 |
-
-Reading: cost + quality is best in mode 5 (17/20); mode 7 wins on audit trail and
-reproducibility; mode 2 is the cheap default for medium tasks; mode 1 does not fit big
-tasks because forced compacts each cost a full rewrite. Cost reasoning: solo pays several
-compacts; forks pay no start and write at the 5m rate; crew pays 3-5 starts of 55-70K
-then runs on reads; delegate pays ~60K per fresh subagent; workflow pays 35-50K per agent
-times 10-15 agents per cycle.
-
-## Choosing
-
-| Task | Mode |
-|---|---|
-| chat, small edit, single-file fix | 1 Single |
-| one task, parallel angles, same model is fine | 2 Forks |
-| big task, review/fix cycles, mixed models | 3 Team, or 5 Team + forks |
-| many small unrelated jobs, cheap model | 6 Delegate |
-| formal, auditable multi-stage process | 7 Workflow |
-| big task that also needs the audit trail | 8 Workflow over a crew |
-| standing roles outliving tasks | 4 Peer sessions |
 
 ## Verified 2026-09-04 (sonnet sessions in tmux)
 

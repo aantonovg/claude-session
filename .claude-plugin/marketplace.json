@@ -4,7 +4,7 @@
     "name": "Aleksandr Antonov"
   },
   "metadata": {
-    "description": "Session modes for the main Claude Code session: single, forks, team, team-forks, team-compact.",
+    "description": "Session modes for the main Claude Code session: forks, pipeline, pipeline-codex, ask; the worker pool as an unstable experiment.",
     "version": "1.0.0",
     "pluginRoot": "./plugins"
   },
@@ -12,15 +12,15 @@
     {
       "name": "session",
       "source": "./plugins/session",
-      "description": "Session modes as user-invocable skills: single (one session), forks (main + fork subagents), team (tmux teammates picked by model+effort, light/full), team-forks, team-compact (park a team in files and restore it). README holds the cache and compact reference.",
-      "version": "0.5.0",
+      "description": "Session modes as user-invocable skills: forks (main + fork subagents), pipeline (forks plus a staged pipeline for one task with a cost ledger), pipeline-codex (codex models on pipeline stages), ask (non-blocking questions), pool-* (unstable). README holds the cache and compact reference.",
+      "version": "0.6.0",
       "keywords": [
         "session",
         "modes",
         "cache",
         "forks",
-        "teammates",
-        "team-compact"
+        "pipeline",
+        "pipeline-codex"
       ]
     }
   ]
