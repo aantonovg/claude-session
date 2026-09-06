@@ -23,3 +23,11 @@ c-fable-base 8722
 c-opus-pipeline 8723
 c-opus-pipeline-lite 8724
 c-fable-pipeline 8725
+f-opus-luna 8726
+f-opus-astra 8727
+f-opus-plus-sol 8728
+f-opus-sol-terra 8729
+f-fable-base 8730
+f-opus-pipeline 8731
+f-opus-pipeline-lite 8732
+f-fable-pipeline 8733
