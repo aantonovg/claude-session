@@ -1,7 +1,7 @@
 # Pipeline core
 
-Read by `session:pipeline` and `session:review` before their own text; the base rules
-of the forks skill apply underneath.
+Read by `session:pipeline` and `session:review` before their own text; the session base
+(injected at start) applies underneath.
 
 ## Cost principle (why the pipeline exists)
 
@@ -63,7 +63,7 @@ Every spawn and every main-session stage is one line in `<task dir>/ledger.jsonl
 the cost can later be cut by stage, step, role, kind and model:
 `{"ts","stage","step","role","kind":"main|fork|workflow-agent","model","effort",
 "mode":"fast|standard|full","class","agent_id","label"}` (`label` = the launch
-description or workflow label, starting with the `<mod>-<eff>-` prefix as the forks skill prescribes). The main session appends the
+description or workflow label, starting with the `<mod>-<eff>-` prefix as the session base prescribes). The main session appends the
 line BEFORE the launch (merge, fix and audit forks included) and fills `agent_id` from
 the `Agent` result right after; a fork row without `agent_id` is a bug the main session
 fixes in the same turn. Rows of kind `workflow-agent` and `codex-agent` leave `agent_id`
@@ -82,7 +82,7 @@ runs and calibrates the fast / standard / full paths. Remove `pipeline/current` 
 ## Cost rules (from test 1)
 
 Test 1 (B2CT-22116, opus-low, full, through Gate D): $17.9, 63% of it prefix re-reads over
-197 turns, one miss. The forks skill's turn cap and read-once rule apply; on top of them:
+197 turns, one miss. The session base's turn cap and read-once rule apply; on top of them:
 
 - Terse main session: one status line per gate in chat, short ledger lines and fork
   prompts, no restating of fork results; its 29K of chat became prefix for ~120 turns.

@@ -1,13 +1,13 @@
 ---
 name: pipeline
-description: Session mode 10, forks plus a staged pipeline (research, critic, decision, verification, implementation, closure check) for one bugfix, feature, migration, investigation or ops task; invoke at session start.
+description: Session mode 10, the session base plus a staged pipeline (research, critic, decision, verification, implementation, closure check) for one bugfix, feature, migration, investigation or ops task; invoke at session start.
 disable-model-invocation: true
 ---
 
 # Mode: pipeline
 
-The forks mode (`session:forks`) with a fixed order of stages and gates on top. All
-fork rules come from that skill and are not repeated here: when to fork, the prompt
+The session base (injected at start) with a fixed order of stages and gates on top. All
+fork rules come from the base and are not repeated here: when to fork, the prompt
 template, the 3-minute limit per call, no background job left running, review and fix in
 different forks. Model and effort of the main session are set at start and forks
 inherit them; the only stages on another model are the clean-context ones below (the critic, plus a cold researcher when the cold researcher rule in `core.md` sends breadth research there).
@@ -17,9 +17,8 @@ inherit them; the only stages on another model are the clean-context ones below 
 0. Read `core.md` next to this file (cost principle, task directory, cost ledger, cost
    rules, harness gate, cold researcher rule, Sources/Oracles blocks, effort rule, heavy
    document cycle, ping and limit restart). Its rules are part of this mode.
-1. First tool call: `CronCreate` with `cron: "*/30 * * * *"`, `prompt: "ping"`,
-   `recurring: true`. Reply to every `ping` with one word. If a `ping` cron already
-   exists in this session, reuse it. Limit restart: `core.md`, "Ping and limit restart".
+1. The base already created the `ping` cron and answers pings; nothing to start here.
+   Limit restart: `core.md`, "Ping and limit restart".
 2. Read `~/.claude/session-map.md` (fallback: `session-map.example.md` in the plugin,
    fable-opus only). Pick the pairing row the user named, else the default pairing of
    the account.
@@ -112,7 +111,7 @@ checks are forks (mechanical); no review of the code (stage 6 rule); fix is a se
 fork.
 Fix cycles per package by path: fast 1, standard 2, full 3. A check longer than ~2.5 minutes (test suites, CI,
 deploys, tmux-driven checks) is not started in a fork: the fork returns first, the main
-session starts it with `run_in_background` or launches a `waiter` agent (forks skill,
+session starts it with `run_in_background` or launches a `waiter` agent (session base,
 "Long waits and polling") and hands the result path to the next fork. Gate I passes when every package
 is done with evidence and no plan deviation is unrecorded.
 Loop guard: the same failing check fixed twice, a diff that grows without better
@@ -185,11 +184,11 @@ A choice that must be the user's ends the turn with the question restated.
 
 ## Forbidden in this mode
 
-- Everything the forks skill forbids, with one exception: the clean-context stages
+- Everything the session base forbids, with one exception: the clean-context stages
   (critic, the full path's decision review, and research jobs that meet the
   cold-researcher rule in stage 1) run as a `Workflow` with lean `agent()` calls: one
   agent per single stage, one workflow (`parallel`) for a wave of cold researchers;
-  no other workflow stages, no plain subagents, no teammates (forks skill, "Launch
+  no other workflow stages, no plain subagents, no teammates (session base, "Launch
   forms").
 - No hard-coded model or effort in prompts: the critic and the full path's decision
   review take the reviewer-debugger cell of the session map, the cold researcher its
