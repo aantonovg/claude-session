@@ -41,7 +41,7 @@ return await agent("Wait until <condition>. Poll with <command shape> every ~120
 
 Exactly two. (1) `Agent` with `subagent_type: "fork"` for forks; nothing else goes
 through `Agent`. (2) `Workflow` for every cold agent: a single cold agent (waiter,
-critic, decision reviewer, cold researcher, heavy agent on request, codex-proxy) is a
+critic, decision reviewer, cold researcher, downscale or upscale agent, codex-proxy) is a
 one-agent workflow with explicit `agentType`, `model`, `effort` and the
 `<mod>-<eff>-<job>` label; N independent cold agents go into ONE workflow (`parallel`
 or `pipeline`), never N launches. No plain subagents. Measured 2026-09-06 with the same
@@ -84,8 +84,8 @@ Claude sources before the run.
 
 - No plain subagents at all (`general-purpose`, `Explore`, custom agent types through
   `Agent`), no named teammates. `Agent` only with `subagent_type: "fork"`; `Workflow`
-  only for the `waiter` (long waits, launched by the main session) and the single heavy
-  agent of the section above when the user asks for it, one agent each.
+  for every cold agent (downscale, upscale, waiter, codex-proxy), one class and one
+  pairing per workflow.
 - No inline job of 3+ tool calls in the main session (measured 2026-09-06: an inline
   session wrote 19 Bash calls and produced the smallest test suite).
 - No polling loops, waits or `run_in_background` in a fork; a fork starts long jobs

@@ -6,12 +6,15 @@ What to launch when:
 
 | need | launch | model, effort |
 |---|---|---|
-| context-aware work, the chat matters, strongest judgment short of a heavy agent | fork | main session model and effort |
-| fresh context, breadth or mechanical work, downscale | one-agent `Workflow`, lean agent | sonnet-low or opus-low from the session map |
-| point review or generation of a key document, upscale | heavy agent on request (section above) | medium or high, documents only, 5 / 3 tool calls |
-| codex heavy or executor axis | `session:codex` (on top of this base) | sol / astra, luna / terra |
+| context-aware work, the chat matters, strongest judgment of the set; cheap start, costlier execution | fork | main session model and effort |
+| downscale: bulk tool-heavy work (repository research, tests and the verification layer, code review), many tool calls per agent expected | `Workflow`, lean agent | `sonnet-low`; `opus-low` when the main session is fable or a review needs a fresh context; under `session:codex` `luna-high` replaces sonnet-low, `terra-high` replaces opus-low |
+| upscale: critique of one fact set or generation of a key document (section above) | `Workflow`, `session:stage-reviewer` / `session:stage-author` | `opus-medium`, `fable-medium` (5 tool calls); `opus-high`, `fable-high` (3 tool calls); sol / astra under `session:codex` |
 | long wait with judgment | waiter, one-agent `Workflow` | sonnet-low |
-| N independent cold agents | ONE `Workflow` (`parallel` / `pipeline`) | explicit per agent |
+
+Every downscale and upscale agent starts through `Workflow`: independent agents are
+batched into ONE workflow (`parallel`); a relay between steps (research → critique →
+check) is wired as `pipeline()` stages of the same workflow; every `agent()` carries
+explicit model and effort and the `<mod>-<eff>-` label.
 
 The rules below came verbatim from the August workflow mode (`session:workflow`, folded
 into this base 2026-09-06) and apply to every `Workflow` launched from any session.

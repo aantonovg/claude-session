@@ -7,7 +7,7 @@ skills: read it before changing any of them.
 
 | skill | mode | spawns |
 |---|---|---|
-| base (`base/BASE.md`, injected by the `SessionStart` hook, no skill to invoke) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + one-agent `Workflow` for cold agents (waiter, heavy agent on request) |
+| base (`base/BASE.md`, injected by the `SessionStart` hook, no skill to invoke) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + `Workflow` for cold agents: downscale (sonnet-low / opus-low, luna / terra), upscale (opus/fable medium/high, sol / astra), waiter (0.7.2) |
 | `session:pipeline` | on top of the base: a staged pipeline with gates (research, critic, decision, verification, implementation, closure check); shared rules in `skills/pipeline/core.md` | forks + lean cold critic (and cold researcher) |
 | `session:review` | on top of the base: verification-first review of someone else's MR (reads `skills/pipeline/core.md`) | forks + cold researcher |
 | `session:codex` | on top of the base (pipeline or review may also be on): codex heavy axis (sol, astra) and executor axis (luna, terra) | codex-proxy one-agent workflows |
@@ -141,7 +141,7 @@ out of the main context, which is what makes the main session live longer.
   async work itself and be woken by the completion.
 - Launch forms, all modes: exactly two. `Agent` only with `subagent_type: "fork"`;
   `Workflow` for every cold agent (waiter, critic, decision reviewer, cold researcher,
-  heavy agent on request, codex-proxy), one agent per single stage and ONE workflow
+  upscale agent, codex-proxy), one agent per single stage and ONE workflow
   (`parallel` / `pipeline`) for N independent cold agents, never N launches; no plain
   subagents. Measured 2026-09-06, same waiter agent both ways: agent cost identical
   ($0.136 per five sonnet agents, each reads 6.7K of its system prompt from cache and
@@ -412,9 +412,9 @@ below keep the gates and artifacts and would have saved about $7.9 (44%):
 
 Codex axis (`session:codex`, loaded on top of the base at any point, since 0.7.1 without a
 pipeline or review prerequisite; base-only sessions map executor-kind fork jobs to the
-executor axis and the heavy agent on request to the heavy axis, exchange directory
+executor axis and the upscale agent to the heavy axis, exchange directory
 `$TMPDIR/codex-<date>/codex/`; the pipeline skill itself never mentions codex): two multiplied axes, heavy `none | sol
-| astra | +sol | +astra` (critic, decision review only, document critique: replace the Claude agent or pair a codex one with it, merge fork, a high
+| astra | +sol | +astra` (critic, decision review only, document critique: `sol` / `astra` replace the Claude agent with that set only; `+sol` / `+astra` pair the Claude agent with the codex one at the same effort for review, merge fork, a high
 finding in either fails the gate) × executor `none | luna | terra` (research sweeps, harness,
 packages, mechanical checks: sonnet-low slots → luna-high, with terra also opus-low executor
 slots → terra-high; executors have one effort). Heavy effort follows the stage's tool-call
