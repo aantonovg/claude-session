@@ -1,0 +1,276 @@
+{
+ "runs": [
+  {
+   "run": "d-opus-base-1",
+   "main": "claude-opus-5-low",
+   "turns_main": 16,
+   "wall_min": 7.1,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 32,
+     "out": 8978,
+     "cr": 1022693,
+     "cw": 50205,
+     "usd_in": 0.00016,
+     "usd_out": 0.22444999999999996,
+     "usd_cr": 0.5113464999999999,
+     "usd_cw": 0.50205,
+     "turns": 16,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 84,
+     "out": 6985,
+     "cr": 3209855,
+     "cw": 148029,
+     "usd_in": 0.0004200000000000005,
+     "usd_out": 0.17462499999999992,
+     "usd_cr": 1.6049274999999994,
+     "usd_cw": 0.9506175,
+     "turns": 45,
+     "agents": 6,
+     "kind": "fork"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 6,
+    "cold": 0,
+    "codex": 0
+   },
+   "notes": [],
+   "usd_claude": 3.97,
+   "usd_codex": 0,
+   "usd_shim": 0
+  },
+  {
+   "run": "d-opus-base-2",
+   "main": "claude-opus-5-low",
+   "turns_main": 9,
+   "wall_min": 5.5,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 18,
+     "out": 2434,
+     "cr": 510533,
+     "cw": 37557,
+     "usd_in": 9e-05,
+     "usd_out": 0.06085000000000001,
+     "usd_cr": 0.2552665,
+     "usd_cw": 0.37557000000000007,
+     "turns": 9,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 42,
+     "out": 1432,
+     "cr": 1573919,
+     "cw": 46096,
+     "usd_in": 0.00021,
+     "usd_out": 0.035800000000000005,
+     "usd_cr": 0.7869595,
+     "usd_cw": 0.29269749999999994,
+     "turns": 22,
+     "agents": 2,
+     "kind": "fork"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 2,
+    "cold": 0,
+    "codex": 0
+   },
+   "notes": [],
+   "usd_claude": 1.81,
+   "usd_codex": 0,
+   "usd_shim": 0
+  }
+ ],
+ "codex_unattributed": [
+  {
+   "ts": "2026-09-06T13:29:03Z",
+   "model": "gpt-5.6-sol",
+   "effort": "medium",
+   "input": 84120,
+   "cached_input": 60416,
+   "output": 1041,
+   "reasoning_output": 773
+  },
+  {
+   "ts": "2026-09-06T13:33:28Z",
+   "model": "gpt-5.6-sol",
+   "effort": "high",
+   "input": 90813,
+   "cached_input": 55936,
+   "output": 3584,
+   "reasoning_output": 2574
+  },
+  {
+   "ts": "2026-09-06T13:34:11Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 2504385,
+   "cached_input": 2179072,
+   "output": 13790,
+   "reasoning_output": 6682
+  },
+  {
+   "ts": "2026-09-06T13:38:35Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 196859,
+   "cached_input": 175104,
+   "output": 2325,
+   "reasoning_output": 761
+  },
+  {
+   "ts": "2026-09-06T13:41:28Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 248932,
+   "cached_input": 222976,
+   "output": 4629,
+   "reasoning_output": 2648
+  },
+  {
+   "ts": "2026-09-06T13:44:57Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 263434,
+   "cached_input": 230144,
+   "output": 6272,
+   "reasoning_output": 2723
+  },
+  {
+   "ts": "2026-09-06T13:49:28Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 654175,
+   "cached_input": 611072,
+   "output": 9434,
+   "reasoning_output": 4797
+  },
+  {
+   "ts": "2026-09-06T13:50:38Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 246357,
+   "cached_input": 209920,
+   "output": 4162,
+   "reasoning_output": 2608
+  },
+  {
+   "ts": "2026-09-06T13:56:16Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 743098,
+   "cached_input": 695808,
+   "output": 12391,
+   "reasoning_output": 5670
+  },
+  {
+   "ts": "2026-09-06T13:59:38Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 538971,
+   "cached_input": 497920,
+   "output": 5054,
+   "reasoning_output": 2203
+  },
+  {
+   "ts": "2026-09-06T14:04:02Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 249315,
+   "cached_input": 212992,
+   "output": 3707,
+   "reasoning_output": 1287
+  },
+  {
+   "ts": "2026-09-06T17:48:52Z",
+   "model": "gpt-5.6-sol",
+   "effort": "medium",
+   "input": 59546,
+   "cached_input": 36992,
+   "output": 3391,
+   "reasoning_output": 288
+  },
+  {
+   "ts": "2026-09-06T17:52:25Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 447748,
+   "cached_input": 411904,
+   "output": 12699,
+   "reasoning_output": 5134
+  },
+  {
+   "ts": "2026-09-06T17:52:47Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 277747,
+   "cached_input": 219648,
+   "output": 7168,
+   "reasoning_output": 2317
+  },
+  {
+   "ts": "2026-09-06T17:54:23Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 243065,
+   "cached_input": 226816,
+   "output": 3026,
+   "reasoning_output": 1699
+  },
+  {
+   "ts": "2026-09-06T17:58:53Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 351870,
+   "cached_input": 319488,
+   "output": 9062,
+   "reasoning_output": 5355
+  },
+  {
+   "ts": "2026-09-06T17:59:06Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 516726,
+   "cached_input": 476928,
+   "output": 9115,
+   "reasoning_output": 3565
+  },
+  {
+   "ts": "2026-09-06T18:00:23Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 332348,
+   "cached_input": 306176,
+   "output": 3477,
+   "reasoning_output": 2218
+  },
+  {
+   "ts": "2026-09-06T18:02:46Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 219100,
+   "cached_input": 200448,
+   "output": 5056,
+   "reasoning_output": 1615
+  },
+  {
+   "ts": "2026-09-06T18:03:05Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 235369,
+   "cached_input": 217856,
+   "output": 3449,
+   "reasoning_output": 1461
+  }
+ ]
+}

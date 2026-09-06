@@ -1,0 +1,799 @@
+{
+ "runs": [
+  {
+   "run": "c-opus-base",
+   "main": "claude-opus-5-low",
+   "turns_main": 12,
+   "wall_min": 14.5,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 24,
+     "out": 6756,
+     "cr": 692411,
+     "cw": 69383,
+     "usd_in": 0.00012,
+     "usd_out": 0.16889999999999997,
+     "usd_cr": 0.3462055,
+     "usd_cw": 0.6938300000000001,
+     "turns": 12,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 65,
+     "out": 13202,
+     "cr": 2528740,
+     "cw": 117315,
+     "usd_in": 0.0003250000000000002,
+     "usd_out": 0.3300499999999999,
+     "usd_cr": 1.26437,
+     "usd_cw": 0.7433024999999999,
+     "turns": 34,
+     "agents": 3,
+     "kind": "fork"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 3,
+    "cold": 0,
+    "codex": 0
+   },
+   "notes": [
+    "fork mislabel: ops-hi-pure-logic (expected ops-lo-*)",
+    "fork mislabel: ops-hi-browser-layer (expected ops-lo-*)",
+    "fork mislabel: ops-hi-verify-browser (expected ops-lo-*)"
+   ],
+   "usd_claude": 3.55,
+   "usd_codex": 0,
+   "usd_shim": 0
+  },
+  {
+   "run": "c-opus-luna",
+   "main": "claude-opus-5-low",
+   "turns_main": 20,
+   "wall_min": 17.4,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 40,
+     "out": 9772,
+     "cr": 1378348,
+     "cw": 82306,
+     "usd_in": 0.0002,
+     "usd_out": 0.24430000000000002,
+     "usd_cr": 0.6891739999999997,
+     "usd_cw": 0.8230600000000003,
+     "turns": 20,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 13,
+     "out": 929,
+     "cr": 526058,
+     "cw": 63290,
+     "usd_in": 6.500000000000001e-05,
+     "usd_out": 0.023225000000000003,
+     "usd_cr": 0.263029,
+     "usd_cw": 0.39968750000000003,
+     "turns": 7,
+     "agents": 1,
+     "kind": "fork"
+    },
+    "claude-haiku-4-5-medium/codex": {
+     "inp": 150,
+     "out": 48,
+     "cr": 247739,
+     "cw": 35725,
+     "usd_in": 0.00015000000000000001,
+     "usd_out": 0.00024000000000000011,
+     "usd_cr": 0.024773899999999998,
+     "usd_cw": 0.04465625,
+     "turns": 18,
+     "agents": 3,
+     "kind": "codex"
+    },
+    "claude-opus-5-low/cold": {
+     "inp": 9,
+     "out": 140,
+     "cr": 74760,
+     "cw": 24127,
+     "usd_in": 4.5e-05,
+     "usd_out": 0.0035000000000000005,
+     "usd_cr": 0.03738,
+     "usd_cw": 0.15079375,
+     "turns": 5,
+     "agents": 1,
+     "kind": "cold"
+    }
+   },
+   "shims": [
+    {
+     "agent": "a1be14cdc7bcd3df4",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 7,
+     "inp": 58,
+     "out": 23,
+     "cr": 103708,
+     "cw": 10325,
+     "usd": 0.02345005,
+     "codex_cmds": 1,
+     "targets": [
+      "gpt-5.6-luna"
+     ],
+     "t0": "2026-09-06T17:55:28.174Z",
+     "t1": "2026-09-06T17:59:03.365Z"
+    },
+    {
+     "agent": "a53732735272fe25a",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 4,
+     "inp": 34,
+     "out": 6,
+     "cr": 51729,
+     "cw": 8025,
+     "usd": 0.01526815,
+     "codex_cmds": 1,
+     "targets": [
+      "gpt-5.6-luna"
+     ],
+     "t0": "2026-09-06T18:00:44.777Z",
+     "t1": "2026-09-06T18:02:50.515Z"
+    },
+    {
+     "agent": "a7bfbfacc57ec5fd8",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 7,
+     "inp": 58,
+     "out": 19,
+     "cr": 92302,
+     "cw": 17375,
+     "usd": 0.03110195,
+     "codex_cmds": 2,
+     "targets": [
+      "gpt-5.6-luna",
+      "gpt-5.6-luna"
+     ],
+     "t0": "2026-09-06T17:47:29.227Z",
+     "t1": "2026-09-06T17:53:20.898Z"
+    }
+   ],
+   "codex": {
+    "gpt-5.6-luna-high": {
+     "calls": 3,
+     "inp": 86878,
+     "cached": 931840,
+     "out": 26817,
+     "usd": 0.0681928
+    }
+   },
+   "agents": {
+    "fork": 1,
+    "cold": 1,
+    "codex": 3
+   },
+   "notes": [
+    "fork mislabel: ops-hi-browser-check (expected ops-lo-*)"
+   ],
+   "usd_claude": 2.7,
+   "usd_codex": 0.07,
+   "usd_shim": 0.07
+  },
+  {
+   "run": "c-opus-astra",
+   "main": "claude-opus-5-low",
+   "turns_main": 14,
+   "wall_min": 11.0,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 28,
+     "out": 7837,
+     "cr": 883026,
+     "cw": 47129,
+     "usd_in": 0.00014000000000000001,
+     "usd_out": 0.19592500000000004,
+     "usd_cr": 0.44151299999999993,
+     "usd_cw": 0.47129000000000015,
+     "turns": 14,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 90,
+     "out": 4215,
+     "cr": 3757330,
+     "cw": 144086,
+     "usd_in": 0.0004500000000000006,
+     "usd_out": 0.105375,
+     "usd_cr": 1.8786649999999998,
+     "usd_cw": 0.9244399999999999,
+     "turns": 47,
+     "agents": 4,
+     "kind": "fork"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 4,
+    "cold": 0,
+    "codex": 0
+   },
+   "notes": [
+    "fork mislabel: ops-hi-pure-core (expected ops-lo-*)",
+    "fork mislabel: ops-hi-browser-layer (expected ops-lo-*)",
+    "fork mislabel: ops-hi-integrate (expected ops-lo-*)",
+    "fork mislabel: ops-hi-browser-smoke (expected ops-lo-*)"
+   ],
+   "usd_claude": 4.02,
+   "usd_codex": 0,
+   "usd_shim": 0
+  },
+  {
+   "run": "c-opus-plus-sol",
+   "main": "claude-opus-5-low",
+   "turns_main": 13,
+   "wall_min": 7.0,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 26,
+     "out": 8273,
+     "cr": 829433,
+     "cw": 46917,
+     "usd_in": 0.00013000000000000002,
+     "usd_out": 0.20682500000000004,
+     "usd_cr": 0.41471649999999993,
+     "usd_cw": 0.46917,
+     "turns": 13,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 72,
+     "out": 4198,
+     "cr": 2851809,
+     "cw": 121156,
+     "usd_in": 0.00036000000000000035,
+     "usd_out": 0.10494999999999999,
+     "usd_cr": 1.4259045000000001,
+     "usd_cw": 0.7809437500000003,
+     "turns": 38,
+     "agents": 4,
+     "kind": "fork"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 4,
+    "cold": 0,
+    "codex": 0
+   },
+   "notes": [
+    "fork mislabel: ops-hi-pure-logic (expected ops-lo-*)",
+    "fork mislabel: ops-hi-browser-layer (expected ops-lo-*)",
+    "fork mislabel: ops-hi-integration (expected ops-lo-*)",
+    "fork mislabel: ops-hi-browser-smoke (expected ops-lo-*)"
+   ],
+   "usd_claude": 3.4,
+   "usd_codex": 0,
+   "usd_shim": 0
+  },
+  {
+   "run": "c-opus-sol-terra",
+   "main": "claude-opus-5-low",
+   "turns_main": 20,
+   "wall_min": 17.1,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 40,
+     "out": 8798,
+     "cr": 1361613,
+     "cw": 52445,
+     "usd_in": 0.0002,
+     "usd_out": 0.21995,
+     "usd_cr": 0.6808064999999999,
+     "usd_cw": 0.5244500000000001,
+     "turns": 20,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-haiku-4-5-medium/codex": {
+     "inp": 224,
+     "out": 52,
+     "cr": 387006,
+     "cw": 48055,
+     "usd_in": 0.00022400000000000005,
+     "usd_out": 0.00026000000000000014,
+     "usd_cr": 0.03870059999999999,
+     "usd_cw": 0.06006875000000001,
+     "turns": 27,
+     "agents": 4,
+     "kind": "codex"
+    }
+   },
+   "shims": [
+    {
+     "agent": "a40021bd34bee861f",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 6,
+     "inp": 50,
+     "out": 9,
+     "cr": 85043,
+     "cw": 9718,
+     "usd": 0.0207468,
+     "codex_cmds": 2,
+     "targets": [
+      "gpt-5.6-terra",
+      "gpt-5.6-terra"
+     ],
+     "t0": "2026-09-06T17:49:52.880Z",
+     "t1": "2026-09-06T17:54:28.681Z"
+    },
+    {
+     "agent": "ad00c51f6962ee2d4",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 7,
+     "inp": 58,
+     "out": 13,
+     "cr": 103370,
+     "cw": 9734,
+     "usd": 0.022627500000000002,
+     "codex_cmds": 1,
+     "targets": [
+      "gpt-5.6-terra"
+     ],
+     "t0": "2026-09-06T18:01:23.571Z",
+     "t1": "2026-09-06T18:03:12.875Z"
+    },
+    {
+     "agent": "a1a9bf55d3e199cbf",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 5,
+     "inp": 42,
+     "out": 8,
+     "cr": 63242,
+     "cw": 17617,
+     "usd": 0.028427450000000003,
+     "codex_cmds": 1,
+     "targets": [
+      "gpt-5.6-sol"
+     ],
+     "t0": "2026-09-06T17:47:39.241Z",
+     "t1": "2026-09-06T17:48:57.448Z"
+    },
+    {
+     "agent": "a33d8043f64ed9b81",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 9,
+     "inp": 74,
+     "out": 22,
+     "cr": 135351,
+     "cw": 10986,
+     "usd": 0.0274516,
+     "codex_cmds": 2,
+     "targets": [
+      "gpt-5.6-terra",
+      "gpt-5.6-terra"
+     ],
+     "t0": "2026-09-06T17:55:12.048Z",
+     "t1": "2026-09-06T18:00:28.184Z"
+    }
+   ],
+   "codex": {
+    "gpt-5.6-sol-medium": {
+     "calls": 1,
+     "inp": 22554,
+     "cached": 36992,
+     "out": 3391,
+     "usd": 0.1728328
+    },
+    "gpt-5.6-terra-high": {
+     "calls": 5,
+     "inp": 157831,
+     "cached": 1447424,
+     "out": 26235,
+     "usd": 0.9199668
+    }
+   },
+   "agents": {
+    "fork": 0,
+    "cold": 0,
+    "codex": 4
+   },
+   "notes": [],
+   "usd_claude": 1.52,
+   "usd_codex": 1.09,
+   "usd_shim": 0.1
+  },
+  {
+   "run": "c-fable-base",
+   "main": "claude-fable-5-1-low",
+   "turns_main": 9,
+   "wall_min": 20.0,
+   "rows": {
+    "claude-fable-5-1-low/main": {
+     "inp": 138,
+     "out": 6745,
+     "cr": 509531,
+     "cw": 69365,
+     "usd_in": 0.0013800000000000002,
+     "usd_out": 0.33724999999999994,
+     "usd_cr": 0.12738275,
+     "usd_cw": 1.3873000000000002,
+     "turns": 9,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-fable-5-1-low/fork": {
+     "inp": 615,
+     "out": 6656,
+     "cr": 1821931,
+     "cw": 103255,
+     "usd_in": 0.00615,
+     "usd_out": 0.3327999999999999,
+     "usd_cr": 0.45548274999999994,
+     "usd_cw": 1.3207325,
+     "turns": 24,
+     "agents": 3,
+     "kind": "fork"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 3,
+    "cold": 0,
+    "codex": 0
+   },
+   "notes": [],
+   "usd_claude": 3.97,
+   "usd_codex": 0,
+   "usd_shim": 0
+  },
+  {
+   "run": "c-opus-pipeline",
+   "main": "claude-opus-5-low",
+   "turns_main": 52,
+   "wall_min": 25.4,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 104,
+     "out": 31465,
+     "cr": 4848801,
+     "cw": 92721,
+     "usd_in": 0.0005200000000000007,
+     "usd_out": 0.7866250000000002,
+     "usd_cr": 2.4244004999999995,
+     "usd_cw": 0.9272099999999995,
+     "turns": 52,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 200,
+     "out": 23113,
+     "cr": 11860634,
+     "cw": 375991,
+     "usd_in": 0.001000000000000002,
+     "usd_out": 0.5778250000000001,
+     "usd_cr": 5.930317000000003,
+     "usd_cw": 2.394175000000001,
+     "turns": 107,
+     "agents": 14,
+     "kind": "fork"
+    },
+    "claude-fable-5-1-low/cold": {
+     "inp": 65,
+     "out": 254,
+     "cr": 25284,
+     "cw": 19796,
+     "usd_in": 0.0006500000000000001,
+     "usd_out": 0.0127,
+     "usd_cr": 0.006321,
+     "usd_cw": 0.24745,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 14,
+    "cold": 1,
+    "codex": 0
+   },
+   "notes": [],
+   "usd_claude": 13.31,
+   "usd_codex": 0,
+   "usd_shim": 0
+  },
+  {
+   "run": "c-opus-pipeline-lite",
+   "main": "claude-opus-5-low",
+   "turns_main": 16,
+   "wall_min": 21.3,
+   "rows": {
+    "claude-opus-5-low/main": {
+     "inp": 32,
+     "out": 8866,
+     "cr": 1180080,
+     "cw": 59515,
+     "usd_in": 0.00016,
+     "usd_out": 0.22165,
+     "usd_cr": 0.59004,
+     "usd_cw": 0.5951500000000001,
+     "turns": 16,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-opus-5-low/fork": {
+     "inp": 63,
+     "out": 8727,
+     "cr": 2856319,
+     "cw": 143284,
+     "usd_in": 0.0003150000000000002,
+     "usd_out": 0.2181749999999999,
+     "usd_cr": 1.4281595,
+     "usd_cw": 0.9183475000000003,
+     "turns": 34,
+     "agents": 5,
+     "kind": "fork"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 5,
+    "cold": 0,
+    "codex": 0
+   },
+   "notes": [],
+   "usd_claude": 3.97,
+   "usd_codex": 0,
+   "usd_shim": 0
+  },
+  {
+   "run": "c-fable-pipeline",
+   "main": "claude-fable-5-1-low",
+   "turns_main": 43,
+   "wall_min": 14.4,
+   "rows": {
+    "claude-fable-5-1-low/main": {
+     "inp": 896,
+     "out": 22988,
+     "cr": 3968036,
+     "cw": 89561,
+     "usd_in": 0.008960000000000001,
+     "usd_out": 1.1494,
+     "usd_cr": 0.9920089999999996,
+     "usd_cw": 1.79122,
+     "turns": 43,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-fable-5-1-low/fork": {
+     "inp": 1505,
+     "out": 21777,
+     "cr": 6955582,
+     "cw": 211730,
+     "usd_in": 0.01505000000000001,
+     "usd_out": 1.0888499999999999,
+     "usd_cr": 1.7388955,
+     "usd_cw": 2.7250899999999993,
+     "turns": 68,
+     "agents": 11,
+     "kind": "fork"
+    },
+    "claude-fable-5-1-low/cold": {
+     "inp": 65,
+     "out": 39,
+     "cr": 24490,
+     "cw": 14301,
+     "usd_in": 0.0006500000000000001,
+     "usd_out": 0.0019500000000000001,
+     "usd_cr": 0.0061224999999999995,
+     "usd_cw": 0.17876250000000002,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold"
+    }
+   },
+   "shims": [],
+   "codex": {},
+   "agents": {
+    "fork": 11,
+    "cold": 1,
+    "codex": 0
+   },
+   "notes": [],
+   "usd_claude": 9.7,
+   "usd_codex": 0,
+   "usd_shim": 0
+  }
+ ],
+ "codex_unattributed": [
+  {
+   "ts": "2026-09-06T11:25:37Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 679919,
+   "cached_input": 638208,
+   "output": 9140,
+   "reasoning_output": 4013
+  },
+  {
+   "ts": "2026-09-06T11:29:58Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 333699,
+   "cached_input": 307456,
+   "output": 9192,
+   "reasoning_output": 4167
+  },
+  {
+   "ts": "2026-09-06T11:30:41Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 119408,
+   "cached_input": 108288,
+   "output": 1689,
+   "reasoning_output": 948
+  },
+  {
+   "ts": "2026-09-06T11:33:35Z",
+   "model": "gpt-5.6-terra",
+   "effort": "high",
+   "input": 450453,
+   "cached_input": 422400,
+   "output": 3786,
+   "reasoning_output": 1170
+  },
+  {
+   "ts": "2026-09-06T11:50:01Z",
+   "model": "gpt-5.6-sol",
+   "effort": "high",
+   "input": 74034,
+   "cached_input": 55808,
+   "output": 4396,
+   "reasoning_output": 2339
+  },
+  {
+   "ts": "2026-09-06T11:50:17Z",
+   "model": "gpt-6-astra",
+   "effort": "medium",
+   "input": 69566,
+   "cached_input": 54400,
+   "output": 3085,
+   "reasoning_output": 508
+  },
+  {
+   "ts": "2026-09-06T12:15:22Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 194760,
+   "cached_input": 157440,
+   "output": 1229,
+   "reasoning_output": 830
+  },
+  {
+   "ts": "2026-09-06T12:31:21Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 2396167,
+   "cached_input": 2216704,
+   "output": 20824,
+   "reasoning_output": 9725
+  },
+  {
+   "ts": "2026-09-06T12:43:12Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 1617206,
+   "cached_input": 1487616,
+   "output": 8500,
+   "reasoning_output": 4964
+  },
+  {
+   "ts": "2026-09-06T13:29:03Z",
+   "model": "gpt-5.6-sol",
+   "effort": "medium",
+   "input": 84120,
+   "cached_input": 60416,
+   "output": 1041,
+   "reasoning_output": 773
+  },
+  {
+   "ts": "2026-09-06T13:33:28Z",
+   "model": "gpt-5.6-sol",
+   "effort": "high",
+   "input": 90813,
+   "cached_input": 55936,
+   "output": 3584,
+   "reasoning_output": 2574
+  },
+  {
+   "ts": "2026-09-06T13:34:11Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 2504385,
+   "cached_input": 2179072,
+   "output": 13790,
+   "reasoning_output": 6682
+  },
+  {
+   "ts": "2026-09-06T13:38:35Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 196859,
+   "cached_input": 175104,
+   "output": 2325,
+   "reasoning_output": 761
+  },
+  {
+   "ts": "2026-09-06T13:41:28Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 248932,
+   "cached_input": 222976,
+   "output": 4629,
+   "reasoning_output": 2648
+  },
+  {
+   "ts": "2026-09-06T13:44:57Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 263434,
+   "cached_input": 230144,
+   "output": 6272,
+   "reasoning_output": 2723
+  },
+  {
+   "ts": "2026-09-06T13:49:28Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 654175,
+   "cached_input": 611072,
+   "output": 9434,
+   "reasoning_output": 4797
+  },
+  {
+   "ts": "2026-09-06T13:50:38Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 246357,
+   "cached_input": 209920,
+   "output": 4162,
+   "reasoning_output": 2608
+  },
+  {
+   "ts": "2026-09-06T13:56:16Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 743098,
+   "cached_input": 695808,
+   "output": 12391,
+   "reasoning_output": 5670
+  },
+  {
+   "ts": "2026-09-06T13:59:38Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 538971,
+   "cached_input": 497920,
+   "output": 5054,
+   "reasoning_output": 2203
+  },
+  {
+   "ts": "2026-09-06T14:04:02Z",
+   "model": "gpt-5.6-luna",
+   "effort": "high",
+   "input": 249315,
+   "cached_input": 212992,
+   "output": 3707,
+   "reasoning_output": 1287
+  }
+ ]
+}
