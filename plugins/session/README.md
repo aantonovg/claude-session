@@ -431,8 +431,8 @@ from `~/.codex/proxy-usage.jsonl` by model + effort, then time window. Astra is 
 
 Review axis (`session:review`, loaded after the pipeline skill; the pipeline skill
 never mentions it): reviewing someone else's MR or PR without reading the diff; one finding = one draft note = one resolvable thread, MR-level threads for findings without a line; only findings are published, passed checks and unverifiable claims stay silent (lite, std) or get a diff-scoped opus-low read (full). The
-stages 1-7 are replaced by research (cold sonnet-low researcher fetches intent, claims,
-CI, changed files, threads once), verification audit (a fork writes the review contract:
+stages 1-7 are replaced by research (a short fork fetches intent, claims, CI, changed
+files, threads once through MCP; a cold sonnet-low researcher covers repository questions), verification audit (a fork writes the review contract:
 claim → existing / missing / no possible oracle), verification delta (missing oracles
 only), harness delta and run (MR branch in a worktree under `$TMPDIR`, low forks add and
 run the missing checks), threads from run results (`reviews/threads.md`, critical and

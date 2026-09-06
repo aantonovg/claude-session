@@ -44,16 +44,16 @@ MCP server, host, docker daemon, CLI binary and skill the review needs (codex ax
 unavailable` lines go into the `Sources` block, one chat line per tool with the exact
 failure, and the turn ends; every following `ping` re-runs the check silently and resumes
 from the last ledger row when the tools are back, else adds `still unavailable: <list>`;
-the cold-researcher `BLOCKED: no MCP` fallback applies only when the same call passed
-the health check; "continue without <tool>" from the user overrides.
+"continue without <tool>" from the user overrides. MCP reads are fork jobs, never cold
+researchers (measured 2026-09-06: workflow agents do not see the session's MCP servers
+under the corporate harness; a fork does).
 
-**1. Research → Gate R** (every path). One cold `session:stage-researcher` (sonnet-low,
-label `son-lo-research`, a one-agent `Workflow`, session base "Launch forms") fetches once, into `evidence/raw/`: the ticket intent, the MR
-description and the author's claims, CI status and job results, the changed-file list
-with line counts, the existing threads. The prompt names the exact MCP tool names
-(`Tools: mcp__gitlab__get_merge_request, …`); on `BLOCKED: no MCP` the fetch goes to one
-short fork with the `(fallback)` label suffix, no second cold researcher. It writes
-`evidence/EB-1.md` (≤ 80 lines, pointers). Judgment (what the task really asked, where the claims and the intent
+**1. Research → Gate R** (every path). One short fork (≤ 6 turns) fetches once through
+MCP, straight into `evidence/raw/`, no relay: the ticket intent, the MR description and
+the author's claims, CI status and job results, the changed-file list with line counts,
+the existing threads; it writes `evidence/EB-1.md` (≤ 80 lines, pointers). A cold
+`session:stage-researcher` (sonnet-low, label `son-lo-research`, a one-agent `Workflow`,
+session base "Launch forms") takes only repository, git history and docs questions. Judgment (what the task really asked, where the claims and the intent
 disagree) is one short fork (≤ 6 turns) that writes `Framing` and the `Ledger`, whose
 first lines are the `Sources` block: `used:` every source class that produced evidence
 (MCP tools by name, repo paths, CI logs, docs, skills loaded); `wanted, unavailable:`

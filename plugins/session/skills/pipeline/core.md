@@ -107,10 +107,9 @@ Research and verification tools are a hard requirement, not a nice-to-have.
 3. On every following `ping`: `pong`, then in the same turn the same health check runs
    silently; when every wanted tool is back, the stage resumes from the last ledger row
    without asking; when not, one line `still unavailable: <list>` follows `pong`.
-4. The fork fallback for `BLOCKED: no MCP` from a cold researcher applies only when the
-   same MCP call succeeds in the main session's health check (the tool exists, cold
-   agents cannot see it); a tool that fails in the health check is a harness outage under
-   point 2, never a fallback.
+4. MCP reads are never assigned to a cold researcher (measured 2026-09-06: workflow
+   agents do not see the session's MCP servers under the corporate harness; a fork
+   does); a tool that fails in the health check is a harness outage under point 2.
 5. The user may override with "continue without <tool>": the stage runs and the
    unavailable list stays in the block and in the report.
 
@@ -123,8 +122,8 @@ costs a fixed ~15-20K start (lean agent: no Skill tool, few tool schemas; measur
 bare) and nothing per turn, but knows nothing of the chat and reasons at sonnet level.
 The choice is price for quality, made per research job, not by prefix size:
 - Breadth research → cold researcher: inventories, grep sweeps, reading docs or
-  history, collecting file:line pointers, raw MCP payload fetches into `evidence/raw/`,
-  anything whose inputs can be fully named in the prompt. Typical for the first wave of
+  history, collecting file:line pointers, anything whose inputs are files, repositories
+  or docs named in the prompt. Typical for the first wave of
   a big task, when the mass of unknowns is still nice-to-know or implementation-local.
 - Judgment research → fork: why a bug happens, weighing contradictions, unknowns that
   are decision-changing, a small but hard task, anything that needs the chat so far.
@@ -137,13 +136,12 @@ The choice is price for quality, made per research job, not by prefix size:
   forks.
 The cold researcher writes the same `evidence/EB-<n>.md` and gets the same ledger row
 (`kind: workflow-agent`); a wave of cold researchers is one `Workflow` with `parallel`,
-never several launches; the main session appends its stop line. Fetching raw MCP
-payloads into `evidence/raw/` is a cold-researcher job: the prompt names the exact MCP
-tool names (`Tools: mcp__gitlab__get_merge_request, mcp__jira__get_issue, …`), the agent
-loads them with ToolSearch. When the first cold researcher returns `BLOCKED: no MCP`
-(the session's MCP servers are not visible to workflow agents), that fetch goes to one
-short fork instead, its ledger row label gets the `(fallback)` suffix, and no second
-cold researcher is launched for the same fetch.
+never several launches; the main session appends its stop line. MCP reads (Jira,
+GitLab, Confluence, Grafana, Kubernetes) are done by short forks (≤ 6 turns, the payload
+written straight to `evidence/raw/`, no relay), never by cold researchers; cold
+researchers get repository, git history, docs and file inputs only. Measured 2026-09-06:
+workflow agents do not see the session's MCP servers under the corporate harness; a fork
+does.
 
 ## Sources and Oracles blocks
 
