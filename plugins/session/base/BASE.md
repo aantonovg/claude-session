@@ -258,6 +258,28 @@ The main session may start async work itself with `run_in_background` and be wok
 the completion: its turns are paid for anyway and the ping cron keeps its prefix warm.
 Inside a fork the same call is forbidden: the completion would wake the fork.
 
+## Launching a codex model
+
+Codex models (luna, terra, sol, astra) run through the `codex-proxy` agent as a
+one-agent `Workflow`: `agentType: 'codex-proxy', model: 'haiku', effort: 'medium'`, label
+`<lun|ter|sol|atr>-<eff>-<job>`. The prompt is the header block only: `CODEX TARGET`,
+`CODEX CWD`, `CODEX PROMPT FILE`, `CODEX OUTPUT FILE`. The MAIN session writes the prompt
+file itself with one Write, at most 30 lines of bullets: the style line (caveman ultra,
+plain English only), the role, the inputs by absolute path (never pasted), the
+acceptance criteria, the commands to run, the required last lines (the 5-field status).
+The main session consumes only the shim's `LAST LINE`; the output file is read by its
+next consumer by path, never relayed by a fork. A failure → one more codex run with a
+failure packet of at most 10 lines written by the main session, never a fork. No forks
+around a codex call at all: no prompt-writing fork, no output-reading fork.
+
+Roles: `luna-high` = cheap executor and repository researcher (repository and files
+only, no MCP); `terra-high` = stronger executor; `sol-<me|hi>` and `astra-<me|hi>` =
+heavy generation or critique of one document within the 5 (medium) / 3 (high)
+tool-call budget, never code review. Codex quota at 0%: executors → `luna-reserve-high`,
+heavy jobs → the Claude agent of the same role. Context: codex reads `AGENTS.md`, not
+`CLAUDE.md`; where the project has a sync script, `AGENTS.md` is generated from the
+Claude sources before the run.
+
 ## Forbidden in every session
 
 - No plain subagents at all (`general-purpose`, `Explore`, custom agent types through

@@ -68,47 +68,37 @@ Names: single axis `luna`, `terra`, `sol`, `astra`, `+sol`, `+astra`; combos `<h
 
 ## How a codex stage runs
 
-Codex stage envelope, zero forks. Three steps, always the same (per-stage table and
-conventions in `codex-modes.md`, read it once at start):
-
-1. The MAIN session writes the prompt file `<task dir>/codex/<stage>-<n>.md` itself with
-   one Write: ≤ 30 lines of bullets: the first line
-   `Style: caveman ultra (see AGENTS.md Response style); plain English only, no Russian recap; artifacts in normal prose.`, then
-   role, inputs by absolute path (never pasted, the main session reads no input), the
-   acceptance criteria, the harness commands, the required last lines. For a research
-   wave the prompt names the output path `<task dir>/evidence/EB-<n>.md` and ends with
-   "append your ledger lines to `<task dir>/ledger.md`".
-2. The main session appends the ledger row (`kind: "codex-agent"`, `model: "<tier>"`,
-   `effort`, `codex: "<mode>"`) with one Bash, then runs ONE `Workflow` with one `agent()`:
-   `agentType: 'codex-proxy', model: 'haiku', effort: 'medium'`, label `<sol|atr|lun|lur|ter>-<eff>-<stage>`,
-   prompt = the header block only (`CODEX TARGET`, `CODEX CWD` = repo root,
-   `CODEX PROMPT FILE`, `CODEX OUTPUT FILE: <task dir>/codex/<stage>-<n>.out.md`).
-   It fills `agent_id` from the workflow journal and appends the stop line after.
-3. The output file is never read by the main session and never read by a fork for relay:
-   the next consumer reads it by path (the next codex stage, a cold sonnet-low researcher,
-   or the fork of a later stage that needs it for its own work). Luna research writes
-   `evidence/EB-<n>.md` directly and appends its own ledger lines; no copy step, no merge
-   fork. Heavy stages write `reviews/<stage>-codex.md` (dual review) or their output file,
-   which the next stage's consumer reads by path. The main session consumes only the shim's
-   `LAST LINE` (the 5-field status, the gate signal). `partial` or a failing status → a
-   second codex run with a failure packet (≤ 10 lines) written by the main session, still
-   no fork. Forks appear around codex only when a later pipeline stage needs them for its
-   own work. 2026-09-06: two opus forks per codex call (prompt writer, output reader) cost
-   more than the luna call itself on a 150K prefix; this envelope removes them.
+Envelope as in the session base, section "Launching a codex model": the MAIN session
+writes the prompt file `<task dir>/codex/<stage>-<n>.md` (≤ 30 lines of bullets, first line
+`Style: caveman ultra (see AGENTS.md Response style); plain English only, no Russian recap; artifacts in normal prose.`),
+appends the ledger row (`kind: "codex-agent"`, `model: "<tier>"`, `effort`,
+`codex: "<mode>"`) with one Bash, runs ONE `Workflow` with one `agent()`
+(`agentType: 'codex-proxy', model: 'haiku', effort: 'medium'`, label
+`<sol|atr|lun|lur|ter>-<eff>-<stage>`, prompt = the header block, `CODEX CWD` = repo root,
+`CODEX OUTPUT FILE: <task dir>/codex/<stage>-<n>.out.md`), fills `agent_id` from the
+workflow journal and appends the stop line; consumes only the shim's `LAST LINE`; no fork
+writes a prompt or relays an output. Per-stage slots and conventions: `codex-modes.md`,
+read once at start. Inputs of each prompt file: the codex sentences of pipeline stages 1,
+4 and 5 (research: ledger snapshot, framing, `evidence/`, output `evidence/EB-<n>.md` plus
+the ledger append line; harness: verification plan and contract invariants; package: its
+implementation-plan section, contract invariants, harness commands, commit message).
+Luna research writes `evidence/EB-<n>.md` directly and appends its own ledger lines; heavy
+stages write `reviews/<stage>-codex.md` (dual review) or their output file, read by the
+next consumer by path. 2026-09-06: two opus forks per codex call (prompt writer, output
+reader) cost more than the luna call itself on a 150K prefix; this envelope removes them.
 
 Executor jobs (luna, terra) run inside codex's workspace-write sandbox, `CODEX CWD` = repo
-root. The package prompt file names the files, the acceptance criteria and the harness
-commands to run (tests and checks from the verification plan) and ends with: run the
-harness, commit on pass with the given message, return the 5-field status with the
-harness result lines. The codex run does the edit, the harness run and the commit itself.
-No fork reads the diff, no fork re-runs the tests, no review. `partial` or a failing
-harness → one more codex run with the failure packet (the failing lines, the hypothesis),
-never an opus fork; after the second failure the package goes to the pipeline's loop
-guard (failure packet into the ledger, a low fork diagnoses from the failure lines only).
-A harness build in luna / terra mode is closed the same way: the harness must fail on the
-negative control and codex reports it in the status. Choosing an executor mode is the
-user's permission for codex edits in that task. 2026-09-06 sol-terra run: diff-reading
-opus forks around 6 terra packages cost $28 for $1.42 of terra; this rule removes them.
+root. The package prompt file ends with: run the harness, commit on pass with the given
+message, return the 5-field status with the harness result lines. The codex run does the
+edit, the harness run and the commit itself. No fork reads the diff, no fork re-runs the
+tests, no review. `partial` or a failing harness → one more codex run with the failure
+packet (the failing lines, the hypothesis), never an opus fork; after the second failure
+the package goes to the pipeline's loop guard (failure packet into the ledger, a low fork
+diagnoses from the failure lines only). A harness build in luna / terra mode is closed
+the same way: the harness must fail on the negative control and codex reports it in the
+status. Choosing an executor mode is the user's permission for codex edits in that task.
+2026-09-06 sol-terra run: diff-reading opus forks around 6 terra packages cost $28 for
+$1.42 of terra; this rule removes them.
 
 ## Rules
 
