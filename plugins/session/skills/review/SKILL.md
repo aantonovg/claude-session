@@ -1,23 +1,22 @@
 ---
 name: review
-description: Extra skill invoked after session:forks for reviewing someone else's MR or PR; replaces the pipeline stages with a verification-first review (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path for an MR revisited after the author's replies or fixes. Reads skills/pipeline/core.md first; does not need session:pipeline.
+description: Skill for reviewing someone else's MR or PR; replaces the pipeline stages with a verification-first review (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path for an MR revisited after the author's replies or fixes. Reads skills/pipeline/core.md first; does not need session:pipeline.
 disable-model-invocation: true
 ---
 
 # Pipeline: review of someone else's work
 
-Loaded on top of `session:forks`. Task directory, ledger, cost principle, harness gate,
+Loaded on top of the session base (injected at start). Task directory, ledger, cost principle, harness gate,
 cold researcher rule and the Sources/Oracles blocks come from `../pipeline/core.md` (read
-first); fork rules from the forks skill; the stages below mirror the pipeline's stages
+first); fork rules from the session base; the stages below mirror the pipeline's stages
 1-7, gates keep their letters. The review checks whether the author understood
 the task and whether the work is verified; findings come from runs, not from reading.
 
 ## Start (do this now)
 
 0. Read `../pipeline/core.md` first. Then the pipeline Start steps, done here:
-   1. First tool call: `CronCreate` with `cron: "*/30 * * * *"`, `prompt: "ping"`,
-      `recurring: true`. Reply to every `ping` with one word. If a `ping` cron already
-      exists in this session, reuse it. Limit restart: `core.md`, "Ping and limit restart".
+   1. The base already created the `ping` cron and answers pings; nothing to start here.
+      Limit restart: `core.md`, "Ping and limit restart".
    2. Read `~/.claude/session-map.md` (fallback: `session-map.example.md` in the plugin,
       fable-opus only). Pick the pairing row the user named, else the default pairing of
       the account.
@@ -49,7 +48,7 @@ the cold-researcher `BLOCKED: no MCP` fallback applies only when the same call p
 the health check; "continue without <tool>" from the user overrides.
 
 **1. Research → Gate R** (every path). One cold `session:stage-researcher` (sonnet-low,
-label `son-lo-research`, a one-agent `Workflow`, forks skill "Launch forms") fetches once, into `evidence/raw/`: the ticket intent, the MR
+label `son-lo-research`, a one-agent `Workflow`, session base "Launch forms") fetches once, into `evidence/raw/`: the ticket intent, the MR
 description and the author's claims, CI status and job results, the changed-file list
 with line counts, the existing threads. The prompt names the exact MCP tool names
 (`Tools: mcp__gitlab__get_merge_request, …`); on `BLOCKED: no MCP` the fetch goes to one
@@ -166,7 +165,7 @@ stays open.
 
 ## Forbidden
 
-- Everything `core.md` and the forks skill forbid, plus the pipeline's Forbidden list
+- Everything `core.md` and the session base forbid, plus the pipeline's Forbidden list
   (`../pipeline/SKILL.md`). No medium or high agent in a review except the full
   path's contract critique; no reading of the diff except the full path's read of the
   files behind an unverifiable claim, on opus-low only; no reading of the code base to

@@ -1,33 +1,24 @@
----
-name: forks
-description: Base mode, loaded first in every session: main session plus fork subagents. The main session keeps its warm context and hands every job with 3+ tool calls or 3K+ tokens of input to a fork (subagent_type fork) that inherits the cached prefix; no plain subagents, no teammates; Workflow only for cold agents (launch forms, intelligence up/downscale; the August workflow rules live here). Invoke at the start of every session; pipeline, review and codex load on top.
-disable-model-invocation: true
----
 
-# Mode: forks
+# Session base: tools, cache, waits, models, roles
 
 One main session plus fork subagents. A fork inherits the whole conversation and the
 cached prefix, so spawning one is nearly free; its tool calls stay out of the main
 context, which is what keeps the main session small and warm. Forks run on the main
 session's model and effort, there is no mixing.
 
-## Start (do this now)
+## Start (every session, injected by the plugin's SessionStart hook)
 
-1. First tool call, before any reply and even when no task has been given yet:
-   `CronCreate` with `cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`,
-   `recurring: true`. Reply to every `ping` with one word. Exception: when the context
-   shows that the previous work turn was cut off by the subscription limit or an API
-   error (an error line where an answer should be, a fork or background job launched and
-   never returned, a step announced and not done), the ping is the restart signal: answer
-   `pong` and in the same turn resume that step from where it stopped (relaunch the fork,
-   re-arm the wait), no other output.
-2. Model and effort are already chosen; do not change them for the rest of the session.
-3. Reply with one line: "Forks mode on, ping cron <id>; forks only." The cron id must
-   be in that line.
-
-If the skill is invoked with the argument `pool` (`/session:forks pool`), skip step 1
-entirely: never create a cron, the pool daemon keeps the session warm; the reply line is then
-"Forks mode on (pool); forks only."
+On the first turn of a session (and after `/compact`): first tool call `CronCreate` with
+`cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`, `recurring: true`,
+unless a `ping` cron already exists in this session; reply line `Base on, ping cron <id>`
+once. Reply to every `ping` with one word. Exception: when the context shows that the
+previous work turn was cut off by the subscription limit or an API error (an error line
+where an answer should be, a fork or background job launched and never returned, a step
+announced and not done), the ping is the restart signal: answer `pong` and in the same
+turn resume that step from where it stopped (relaunch the fork, re-arm the wait), no
+other output. Model and effort are already chosen; do not change them for the rest of
+the session. `session:pipeline`, `session:review` and `session:codex` load on top of
+this base; nothing here is a skill to invoke.
 
 ## When to fork
 
@@ -120,7 +111,7 @@ What to launch when:
 | N independent cold agents | ONE `Workflow` (`parallel` / `pipeline`) | explicit per agent |
 
 The rules below came verbatim from the August workflow mode (`session:workflow`, folded
-into this skill 2026-09-06) and apply to every `Workflow` launched from this mode.
+into this base 2026-09-06) and apply to every `Workflow` launched from any session.
 
 ### One class and one pairing per workflow
 
@@ -251,7 +242,7 @@ The main session may start async work itself with `run_in_background` and be wok
 the completion: its turns are paid for anyway and the ping cron keeps its prefix warm.
 Inside a fork the same call is forbidden: the completion would wake the fork.
 
-## Forbidden in this mode
+## Forbidden in every session
 
 - No plain subagents at all (`general-purpose`, `Explore`, custom agent types through
   `Agent`), no named teammates. `Agent` only with `subagent_type: "fork"`; `Workflow`
@@ -264,7 +255,7 @@ Inside a fork the same call is forbidden: the completion would wake the fork.
   without the two skill lines, no `meta.name` without class and pairing.
 - No fourth review cycle: stop and report.
 - No `/model`, `/effort`, plugin changes or `/compact` in the middle of a task.
-- Do not switch mode on your own; if the task outgrows forks, say so to the user.
+- Do not switch mode on your own; if the task outgrows the base, say so to the user.
 
 ## Reference
 

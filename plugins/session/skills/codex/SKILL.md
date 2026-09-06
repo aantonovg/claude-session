@@ -1,6 +1,6 @@
 ---
 name: codex
-description: Extra skill invoked right after session:pipeline or session:review; routes heavy roles and/or executors to the codex stack (luna, terra, sol, astra) through the codex-proxy shim. Loaded on top of forks plus pipeline or review, never alone.
+description: Extra skill invoked right after session:pipeline or session:review; routes heavy roles and/or executors to the codex stack (luna, terra, sol, astra) through the codex-proxy shim. Loaded on top of the session base plus pipeline or review, never alone.
 disable-model-invocation: true
 ---
 
