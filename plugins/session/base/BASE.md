@@ -113,6 +113,7 @@ the path and the last line. Budget stated in the prompt: at most 5 tool calls at
 agent returns `partial` with what it has. In pipeline mode the launch gets a ledger row
 like any cold stage.
 
+<!-- part -->
 ## Downscale and upscale of intelligence
 
 What to launch when:
@@ -122,7 +123,7 @@ What to launch when:
 | context-aware work, the chat matters, strongest judgment short of a heavy agent | fork | main session model and effort |
 | fresh context, breadth or mechanical work, downscale | one-agent `Workflow`, lean agent | sonnet-low or opus-low from the session map |
 | point review or generation of a key document, upscale | heavy agent on request (section above) | medium or high, documents only, 5 / 3 tool calls |
-| codex heavy or executor axis | `session:codex` (on top of pipeline or review) | sol / astra, luna / terra |
+| codex heavy or executor axis | `session:codex` (on top of this base) | sol / astra, luna / terra |
 | long wait with judgment | waiter, one-agent `Workflow` | sonnet-low |
 | N independent cold agents | ONE `Workflow` (`parallel` / `pipeline`) | explicit per agent |
 
@@ -200,6 +201,7 @@ changed files, a one-to-two-line summary of the change interpolated from earlier
 results. The agent runs `git status` and `git diff --stat` first and returns
 `BLOCKED: unexpected working tree` on a mismatch. Push only when the task grants it.
 
+<!-- part -->
 ## Long waits and polling
 
 Every fork turn re-reads the whole parent prefix at cache-read price (pipeline test 1:

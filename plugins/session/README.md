@@ -10,7 +10,7 @@ skills: read it before changing any of them.
 | base (`base/BASE.md`, injected by the `SessionStart` hook, no skill to invoke) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + one-agent `Workflow` for cold agents (waiter, heavy agent on request) |
 | `session:pipeline` | on top of the base: a staged pipeline with gates (research, critic, decision, verification, implementation, closure check); shared rules in `skills/pipeline/core.md` | forks + lean cold critic (and cold researcher) |
 | `session:review` | on top of the base: verification-first review of someone else's MR (reads `skills/pipeline/core.md`) | forks + cold researcher |
-| `session:codex` | on top of pipeline or review: codex heavy axis (sol, astra) and executor axis (luna, terra) | codex-proxy one-agent workflows |
+| `session:codex` | on top of the base (pipeline or review may also be on): codex heavy axis (sol, astra) and executor axis (luna, terra) | codex-proxy one-agent workflows |
 | `session:pool-workflow-unstable` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` (experimental, daemon currently stopped) | pool-proxy agents + forks |
 | `session:pool-unstable` / `session:pool-stop-unstable` | show or start the pool by hand / park it | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
@@ -410,8 +410,10 @@ below keep the gates and artifacts and would have saved about $7.9 (44%):
 6. Ledger completeness: every spawn gets its row before launch and `agent_id` right after
    (test 1 lost the merge fork's row and one review row's id).
 
-Codex axis (`session:codex`, loaded after the pipeline skill, otherwise Claude
-only; the pipeline skill itself never mentions codex): two multiplied axes, heavy `none | sol
+Codex axis (`session:codex`, loaded on top of the base at any point, since 0.7.1 without a
+pipeline or review prerequisite; base-only sessions map executor-kind fork jobs to the
+executor axis and the heavy agent on request to the heavy axis, exchange directory
+`$TMPDIR/codex-<date>/codex/`; the pipeline skill itself never mentions codex): two multiplied axes, heavy `none | sol
 | astra | +sol | +astra` (critic, decision review only, document critique: replace the Claude agent or pair a codex one with it, merge fork, a high
 finding in either fails the gate) × executor `none | luna | terra` (research sweeps, harness,
 packages, mechanical checks: sonnet-low slots → luna-high, with terra also opus-low executor

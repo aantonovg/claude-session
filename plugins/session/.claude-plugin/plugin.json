@@ -1,7 +1,7 @@
 {
   "name": "session",
-  "version": "0.7.0",
-  "description": "Session modes for the main Claude Code session, a base injected at every session start by a SessionStart hook (forks, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale), then one user-invocable skill per mode: pipeline (a staged pipeline: ledger, decision contract, verification harness, implementation, closure check, report, cost ledger), review (verification-first review of an MR), codex (codex models luna/terra/sol/astra on pipeline or review stages), ask (questions without blocking), and the unstable worker pool (pool-workflow, pool, pool-stop). README.md holds the whole reference: cache facts, compact prices, measurements.",
+  "version": "0.7.1",
+  "description": "Session modes for the main Claude Code session, a base injected at every session start by a SessionStart hook (forks, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale), then one user-invocable skill per mode: pipeline (a staged pipeline: ledger, decision contract, verification harness, implementation, closure check, report, cost ledger), review (verification-first review of an MR), codex (codex models luna/terra/sol/astra on base fork jobs and on pipeline or review stages), ask (questions without blocking), and the unstable worker pool (pool-workflow, pool, pool-stop). README.md holds the whole reference: cache facts, compact prices, measurements.",
   "keywords": [
     "session",
     "base",
@@ -50,7 +50,25 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/base-session-start.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/base-session-start.sh 1",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/base-session-start.sh 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/base-session-start.sh 3",
             "timeout": 5
           }
         ]
