@@ -1,6 +1,10 @@
 # session:codex: reference
 
 Read once at the start of `session:codex`; tables and conventions (modes: `SKILL.md`).
+The stage tables below apply when `session:pipeline` or `session:review` is on; in a
+base-only session the mapping is the one in `SKILL.md` (executor-kind fork job → executor
+axis, heavy agent on request → heavy axis) and the exchange directory is
+`$TMPDIR/codex-<YYYY-MM-DD>/codex/`.
 
 ## Codex model ids
 
