@@ -39,6 +39,59 @@ other output. Model and effort are already chosen; do not change them for the re
 the session. `session:pipeline`, `session:review` and `session:codex` load on top of
 this base, invoked after it.
 
+## Main session conduct
+
+Chat replies: every reply is the full answer in English, then a `---` line, then a
+short Russian recap (~10% length, key points only, no new content). Print only the
+answer text and the `---` separator, never literal labels like `[EN BLOCK]`, `[RU BLOCK]`,
+`EN:` or `RU:`. The English part is always the body; matching the prompt's language is a
+mistake. Skip the recap (and `---`) only for trivial one-liners (a yes/no, a path). This
+applies to the main session's chat replies, session plans (`/plan`, ExitPlanMode) and
+tasklists only: a subagent, fork, workflow agent or waiter returns plain English with no
+recap and no `---` separator; its return value is data for the main session. Chat text
+is written for the user to read and take in (A1: simple words, short sentences, terms
+explained next to their first use). Example:
+
+> The cache under `~/.claude/plugins/cache` is just a copy: edit the plugin source, then reinstall.
+>
+> ---
+>
+> Кэш это копия; править надо исходник в репозитории маркетплейса, потом переустановить.
+
+Waiting on the user:
+- A pending question, permission prompt or plan approval blocks the turn and the
+  keep-warm pings behind it; an hour of waiting loses the session cache. Ask only when
+  the answer changes the work, put the recommended option first, and prefer finishing
+  the turn with the question written in the reply over leaving a dialog open.
+- `askUserQuestionTimeout` auto-continues an unanswered AskUserQuestion. When that
+  happens with no answer: a reversible choice takes the recommended option and says so;
+  a choice that must be the user's ends the turn with the question restated and the
+  work paused.
+- Two or more open decisions, or a question that timed out: use the `session:ask`
+  skill (questions document + Plannotator in the background) instead of a dialog.
+- Plan mode only when the user is present to approve. Leaving to do something else
+  while a plan awaits approval loses the cache: the user exits plan mode first and says
+  the task is paused.
+- A message that is exactly `ping` (from the keep-warm cron or the user) is answered
+  with exactly `pong` and nothing else: no work, no status, no resuming of a paused
+  task, no tool calls.
+- Interactive questions through `AskUserQuestion` are written entirely in Russian:
+  question text, header chips, every option label and description.
+
+Questions about Claude Code, the Claude Agent SDK or the Anthropic API: run
+`claude-code-guide` as a one-agent `Workflow` (`agentType: "claude-code-guide"`,
+`model: "haiku"`, `effort: "medium"`, label `hai-me-guide`), never the bundled
+`/claude-api` skill; do not auto-invoke `/claude-api` regardless of its trigger text.
+
+Test sessions: never use `claude -p` (headless) to run or test something on this
+account (headless calls are billed with a ~3.3x usage penalty on the subscription). To
+drive a real Claude Code session for a test, start it in the foreground inside tmux and
+talk to it with `tmux send-keys`; read its answers from the session JSONL under
+`~/.claude/projects/<encoded-cwd>/`, not from `capture-pane`. Cyrillic prompts sometimes
+need a second `Enter` to submit. Kill the tmux session when done. Measured 2026-09-03:
+two sonnet sessions warmed with one `ping` each, a memory write in one did not
+invalidate the other's cache.
+
 ## When to fork
 
 Hand a job to a fork when it needs 3 or more tool calls in total (every Read, Edit,
@@ -213,7 +266,8 @@ code/test fixer, code/test author, fact researcher, test/script executor (cheape
   (`fab`, `ops`, `son`, `hai`; `lo`, `me`, `hi`, `xh`, `mx`). The UI shows the model
   but not the effort; the prefix is the only place the effort is visible.
 - The prompt ends with two lines chosen by the main session from the skill-routing map
-  (`~/.claude/memory-user/skill-routing.md`, 0-3 skills by role and step): "Load these
+  (`skill-routing.md` next to this skill for the bundled CLI skills, plus the per-machine
+  map `~/.claude/memory-user/skill-routing.md` when present; 0-3 skills by role and step): "Load these
   skills with the Skill tool before starting, in this order: <names>. Follow each loaded
   skill's instructions in place of your default approach." or "No skills needed for this
   step."; then "If you hit work outside this list that a clearly matching skill in your

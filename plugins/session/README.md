@@ -22,6 +22,7 @@ something) or `/session:review` (someone else's MR); then, optionally,
 
 ## Base as a skill (0.8.0)
 
+0.8.3: main-session conduct (chat reply format, waiting on the user, claude-code-guide routing, tmux test sessions) and the bundled-skills routing map (`base/skill-routing.md`) moved into the base from the global CLAUDE.md.
 0.8.2: the base gains "Decision points" (when a downscale or upscale agent fires; minimum per code task: plan critique, closure review, test-suite job); the codex wrapper runs detached (`--detach <done-file>`), the shim polls the done-file, no second codex run for a job in flight.
 
 0.8.1: the start block loads deferred tools (`CronCreate` and the others the base names) with `ToolSearch` before the first call; the codex exchange directory outside a task dir is per session (`$TMPDIR/codex-<date>-<cwd basename>/codex/`).
@@ -650,7 +651,7 @@ path, branch, expected changed files, a one-line summary of the change; the work
 on a mismatch. Push only when the task explicitly grants it.
 
 Skills for a worker: the main session names 0-3 skills per stage from the skill-routing
-map (`~/.claude/memory-user/skill-routing.md`) and puts them at the end of the prompt
+map (`base/skill-routing.md` in the plugin plus `~/.claude/memory-user/skill-routing.md` when present) and puts them at the end of the prompt
 ("Load these skills with the Skill tool before starting: …" or "No skills needed for this
 step."). Never `claude-api`, never a superpowers orchestration skill.
 
