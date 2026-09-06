@@ -1,6 +1,6 @@
 ---
-name: pool-workflow
-description: Session mode 9, workflows over a pool of warm worker sessions. The main session keeps its context small (forks for recon), each Workflow stage is a pool-proxy agent on haiku that hands a task file to a warm worker started by poold and returns a result file. No teammates, no plain subagents. Invoke at the start of a session for multi-stage work with review/fix cycles and mixed models.
+name: pool-workflow-unstable
+description: UNSTABLE, do not use unless the user asks by name. Session mode 9, workflows over a pool of warm worker sessions. The main session keeps its context small (forks for recon), each Workflow stage is a pool-proxy agent on haiku that hands a task file to a warm worker started by poold and returns a result file. No teammates, no plain subagents. Invoke at the start of a session for multi-stage work with review/fix cycles and mixed models.
 disable-model-invocation: true
 ---
 
@@ -41,7 +41,7 @@ script and reads result files; heavy reads of its own go to forks.
    `~/.claude/projects/<encoded-cwd>/pool-tasks/<YYYY-MM-DD-HHMM>-<stage>-<hash>.md`
    (`<encoded-cwd>` = cwd with `/` replaced by `-`; `<hash>` = first 8 hex chars of
    the file's sha1, appended after writing). Outside the repo so nothing lands in the
-   working tree by accident, next to the other per-project state (`team-compact/`,
+   working tree by accident, next to the other per-project state (`pipeline/`,
    `questions/`). The daemon copies each file into its own `tasks/` dir on submit. The
    hash is part of the name because a workflow `resume` returns the cached `agent()`
    result for an unchanged prompt: a changed task must have a changed path.
@@ -98,7 +98,7 @@ script and reads result files; heavy reads of its own go to forks.
    stopped run with `Workflow({scriptPath, resumeFromRunId})` after editing the task
    files that changed.
 6. **End**: leave the workers to the daemon (it keeps them warm and compacts them at
-   day end); `session:pool-stop` parks them when the user says so.
+   day end); `session:pool-stop-unstable` parks them when the user says so.
 
 ## Forbidden in this mode
 

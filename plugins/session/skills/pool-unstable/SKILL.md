@@ -1,6 +1,6 @@
 ---
-name: pool
-description: Show or start the session pool for this project by hand (mode 9). Runs `poolctl status` and, with an argument, `poolctl ensure --need <combos>`; shared pool by default, dedicated only when the user asks. Invoke to see the warm workers before a workflow or to bring up a pool without a workflow.
+name: pool-unstable
+description: UNSTABLE, do not use unless the user asks by name. Show or start the session pool for this project by hand (mode 9). Runs `poolctl status` and, with an argument, `poolctl ensure --need <combos>`; shared pool by default, dedicated only when the user asks. Invoke to see the warm workers before a workflow or to bring up a pool without a workflow.
 disable-model-invocation: true
 ---
 
@@ -31,4 +31,4 @@ Argument (optional): `$ARGUMENTS` = the `--need` list, e.g. `opus-low,sonnet-low
   only when the user asks for a second one.
 - The session never types into worker panes, never pins `/model` or `/effort`, never
   compacts a worker: the daemon owns the workers. To hand work to them use
-  `session:pool-workflow`; to park them use `session:pool-stop`.
+  `session:pool-workflow-unstable`; to park them use `session:pool-stop-unstable`.

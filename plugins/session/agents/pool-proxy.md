@@ -1,6 +1,6 @@
 ---
 name: pool-proxy
-description: Thin shim that hands one workflow stage to a warm worker session of the pool (poold) and returns the result as a file reference. The caller sends a header block only (POOL, POOL WORKER, POOL TASK FILE, optional POOL MAX WAIT); the shim runs `poolctl submit`, polls `poolctl wait` in short calls, and returns the result file path plus its last line. It never reads the task file and never does the task itself. Used by workflow scripts in session:pool-workflow via agentType "pool-proxy" with model haiku, effort medium.
+description: Thin shim that hands one workflow stage to a warm worker session of the pool (poold) and returns the result as a file reference. The caller sends a header block only (POOL, POOL WORKER, POOL TASK FILE, optional POOL MAX WAIT); the shim runs `poolctl submit`, polls `poolctl wait` in short calls, and returns the result file path plus its last line. It never reads the task file and never does the task itself. Used by workflow scripts in session:pool-workflow-unstable via agentType "pool-proxy" with model haiku, effort medium.
 model: haiku
 tools: Bash
 disallowedTools: Read, Write, Edit, Glob, Grep, Agent, WebFetch, WebSearch, Skill, ToolSearch

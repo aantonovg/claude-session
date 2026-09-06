@@ -1,6 +1,6 @@
 ---
-name: pool-stop
-description: Park the session pool of this project (mode 9): every worker writes its handoff file, the daemon closes its tmux window; optional warm /compact first. Invoke on the user's word at the end of a task or day.
+name: pool-stop-unstable
+description: UNSTABLE, do not use unless the user asks by name. Park the session pool of this project (mode 9): every worker writes its handoff file, the daemon closes its tmux window; optional warm /compact first. Invoke on the user's word at the end of a task or day.
 disable-model-invocation: true
 ---
 

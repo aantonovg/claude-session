@@ -1,6 +1,6 @@
 # Session map
 
-Read by the `session:team` and `session:team-forks` skills. One table per pairing
+Read by the `session:forks` and `session:pipeline` skills (and the unstable pool skills). One table per pairing
 (`<reviewer family>-<executor family>`); row = task class 1-5, column = role; a cell is
 `<model>-<effort>`. The skill uses the default pairing unless the user names another
 one at invocation. Teammates are spawned with the model alias and then pinned to the
