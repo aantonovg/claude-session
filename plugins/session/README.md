@@ -7,11 +7,17 @@ skills: read it before changing any of them.
 
 | skill | mode | spawns |
 |---|---|---|
-| `session:forks` | main + fork subagents | forks only (plus a `waiter` for long waits, as a one-agent `Workflow`) |
-| `session:pipeline` | forks plus a staged pipeline with gates (research, critic, decision, verification, implementation, closure check) | forks + lean cold critic (and cold researcher) |
+| `session:forks` | base, loaded first in every session: main + fork subagents, launch forms, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + one-agent `Workflow` for cold agents (waiter, heavy agent on request) |
+| `session:pipeline` | on top of forks: a staged pipeline with gates (research, critic, decision, verification, implementation, closure check); shared rules in `skills/pipeline/core.md` | forks + lean cold critic (and cold researcher) |
+| `session:review` | on top of forks: verification-first review of someone else's MR (reads `skills/pipeline/core.md`) | forks + cold researcher |
+| `session:codex` | on top of pipeline or review: codex heavy axis (sol, astra) and executor axis (luna, terra) | codex-proxy one-agent workflows |
 | `session:pool-workflow-unstable` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` (experimental, daemon currently stopped) | pool-proxy agents + forks |
 | `session:pool-unstable` / `session:pool-stop-unstable` | show or start the pool by hand / park it | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
+
+Loading order (2026-09-06, 0.7.0-pre): `/session:forks` always first; then `/session:pipeline`
+(implementing something) or `/session:review` (someone else's MR); then, optionally,
+`/session:codex <mode>`. `session:workflow` was folded into forks the same day.
 
 Default for day-to-day work (decided 2026-09-04 after the tests): `session:forks`. One
 context, no relay chatter, zero misses measured. `session:pipeline` adds the staged
@@ -89,9 +95,11 @@ Measured on this Mac (2026-09-03, Claude Code 2.1.259) unless marked "docs".
      switch back to the working model (a small-context reset, cents), then continue.
      `/model` saves the choice into settings.json, so restore the default afterwards.
 
-## Mode 1 — Workflow (`session:workflow`)
+## Mode 1 — Workflow (baseline, folded into forks 2026-09-06)
 
-The original flow (August 2026, user-prefs 6.5-6.7) kept as the baseline. The main
+The original flow (August 2026, user-prefs 6.5-6.7) kept as the baseline; its skill text
+lives in the forks skill, section "Downscale and upscale of intelligence" (`session:workflow`
+no longer exists as a skill, the rules apply to every `Workflow` launched from forks). The main
 session does no work itself: it plans, launches `Workflow` scripts, verifies results and
 talks to the user. Every job is a cold workflow agent: one class and one pairing per
 workflow stamped into `meta.name` (`c<class>-<pairing>-<slug>`), every `agent()` with
