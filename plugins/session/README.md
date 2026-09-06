@@ -7,13 +7,20 @@ skills: read it before changing any of them.
 
 | skill | mode | spawns |
 |---|---|---|
-| `session:forks` | main + fork subagents | forks only (plus a `waiter` for long waits, as a one-agent `Workflow`) |
-| `session:pipeline` | forks plus a staged pipeline with gates (research, critic, decision, verification, implementation, closure check) | forks + lean cold critic (and cold researcher) |
+| base (`base/BASE.md`, injected by the `SessionStart` hook, no skill to invoke) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + one-agent `Workflow` for cold agents (waiter, heavy agent on request) |
+| `session:pipeline` | on top of the base: a staged pipeline with gates (research, critic, decision, verification, implementation, closure check); shared rules in `skills/pipeline/core.md` | forks + lean cold critic (and cold researcher) |
+| `session:review` | on top of the base: verification-first review of someone else's MR (reads `skills/pipeline/core.md`) | forks + cold researcher |
+| `session:codex` | on top of pipeline or review: codex heavy axis (sol, astra) and executor axis (luna, terra) | codex-proxy one-agent workflows |
 | `session:pool-workflow-unstable` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` (experimental, daemon currently stopped) | pool-proxy agents + forks |
 | `session:pool-unstable` / `session:pool-stop-unstable` | show or start the pool by hand / park it | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
 
-Default for day-to-day work (decided 2026-09-04 after the tests): `session:forks`. One
+Loading order (2026-09-06, 0.7.0-pre): the base arrives by hook at every session start
+(startup, resume, compact, clear), nothing to invoke; then `/session:pipeline`
+(implementing something) or `/session:review` (someone else's MR); then, optionally,
+`/session:codex <mode>`. `session:workflow` and `session:forks` were folded into the base the same day.
+
+Default for day-to-day work (decided 2026-09-04 after the tests): the base alone (forks). One
 context, no relay chatter, zero misses measured. `session:pipeline` adds the staged
 process on top of it (2026-09-05).
 
@@ -89,9 +96,11 @@ Measured on this Mac (2026-09-03, Claude Code 2.1.259) unless marked "docs".
      switch back to the working model (a small-context reset, cents), then continue.
      `/model` saves the choice into settings.json, so restore the default afterwards.
 
-## Mode 1 — Workflow (`session:workflow`)
+## Mode 1 — Workflow (baseline, folded into forks 2026-09-06)
 
-The original flow (August 2026, user-prefs 6.5-6.7) kept as the baseline. The main
+The original flow (August 2026, user-prefs 6.5-6.7) kept as the baseline; its skill text
+lives in the base (`base/BASE.md`), section "Downscale and upscale of intelligence" (`session:workflow`
+no longer exists as a skill, the rules apply to every `Workflow` launched from any session). The main
 session does no work itself: it plans, launches `Workflow` scripts, verifies results and
 talks to the user. Every job is a cold workflow agent: one class and one pairing per
 workflow stamped into `meta.name` (`c<class>-<pairing>-<slug>`), every `agent()` with
@@ -104,7 +113,7 @@ Cost shape: every stage pays a cold start (35-50K, see "Teammate start size") an
 main session's prefix is small; the benchmark in Mode 9 ("plain") is this mode. Used to
 compare `forks` and `pipeline` on the same prompt.
 
-## Mode 2 — Forks (`session:forks`)
+## Mode 2 — Forks (the base; `session:forks` folded into `base/BASE.md` 2026-09-06)
 
 One main session plus fork subagents (`subagent_type: "fork"`). Forks inherit the whole
 conversation and the cached prefix, so spawning them is nearly free; their tool calls stay
@@ -301,7 +310,7 @@ role discipline, shared prefix) and 6 (last-turn hook) run with steps 2-3 of the
 
 ## Mode 10 — Pipeline (`session:pipeline`)
 
-The forks mode plus a staged pipeline for one task. Source: the design note
+The session base plus a staged pipeline for one task. Source: the design note
 `claude-code-agent-pipeline-spec-ru.md` (claude-settings, 2026-09-05) after a
 clean-context critique (27 hypotheses) and an evidence audit against the measurements in
 this README (`docs/review/pipeline-spec-*.md` in claude-settings). What was kept from the
@@ -422,8 +431,8 @@ from `~/.codex/proxy-usage.jsonl` by model + effort, then time window. Astra is 
 
 Review axis (`session:review`, loaded after the pipeline skill; the pipeline skill
 never mentions it): reviewing someone else's MR or PR without reading the diff; one finding = one draft note = one resolvable thread, MR-level threads for findings without a line; only findings are published, passed checks and unverifiable claims stay silent (lite, std) or get a diff-scoped opus-low read (full). The
-stages 1-7 are replaced by research (cold sonnet-low researcher fetches intent, claims,
-CI, changed files, threads once), verification audit (a fork writes the review contract:
+stages 1-7 are replaced by research (a short fork fetches intent, claims, CI, changed
+files, threads once through MCP; a cold sonnet-low researcher covers repository questions), verification audit (a fork writes the review contract:
 claim → existing / missing / no possible oracle), verification delta (missing oracles
 only), harness delta and run (MR branch in a worktree under `$TMPDIR`, low forks add and
 run the missing checks), threads from run results (`reviews/threads.md`, critical and

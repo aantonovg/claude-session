@@ -1,33 +1,33 @@
----
-name: forks
-description: Session mode 2, main session plus fork subagents. The main session keeps its warm context and hands every job with 3+ tool calls or 3K+ tokens of input to a fork (subagent_type fork) that inherits the cached prefix; no plain subagents, no teammates, no Workflow. Invoke at the start of a session for one task with parallel angles on one model.
-disable-model-invocation: true
----
 
-# Mode: forks
+# Session base: tools, cache, waits, models, roles
+
+## Hard rules, checked before every tool call
+
+1. The main session never executes a job of 3 or more tool calls itself: it hands it to a fork (count every Read, Edit, Write, Grep, Bash and MCP call).
+2. The main session's own tool calls per turn: at most 2, except the commit and the launch of agents.
+3. Writing a file over 40 lines is a fork.
+4. Running tests, builds, servers or browsers is a fork.
+5. A job that needs 3K+ tokens of input is a fork.
+6. When in doubt, fork.
 
 One main session plus fork subagents. A fork inherits the whole conversation and the
 cached prefix, so spawning one is nearly free; its tool calls stay out of the main
 context, which is what keeps the main session small and warm. Forks run on the main
 session's model and effort, there is no mixing.
 
-## Start (do this now)
+## Start (every session, injected by the plugin's SessionStart hook)
 
-1. First tool call, before any reply and even when no task has been given yet:
-   `CronCreate` with `cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`,
-   `recurring: true`. Reply to every `ping` with one word. Exception: when the context
-   shows that the previous work turn was cut off by the subscription limit or an API
-   error (an error line where an answer should be, a fork or background job launched and
-   never returned, a step announced and not done), the ping is the restart signal: answer
-   `pong` and in the same turn resume that step from where it stopped (relaunch the fork,
-   re-arm the wait), no other output.
-2. Model and effort are already chosen; do not change them for the rest of the session.
-3. Reply with one line: "Forks mode on, ping cron <id>; forks only." The cron id must
-   be in that line.
-
-If the skill is invoked with the argument `pool` (`/session:forks pool`), skip step 1
-entirely: never create a cron, the pool daemon keeps the session warm; the reply line is then
-"Forks mode on (pool); forks only."
+On the first turn of a session (and after `/compact`): first tool call `CronCreate` with
+`cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`, `recurring: true`,
+unless a `ping` cron already exists in this session; reply line `Base on, ping cron <id>; forks for every 3+ call job`
+once. Reply to every `ping` with one word. Exception: when the context shows that the
+previous work turn was cut off by the subscription limit or an API error (an error line
+where an answer should be, a fork or background job launched and never returned, a step
+announced and not done), the ping is the restart signal: answer `pong` and in the same
+turn resume that step from where it stopped (relaunch the fork, re-arm the wait), no
+other output. Model and effort are already chosen; do not change them for the rest of
+the session. `session:pipeline`, `session:review` and `session:codex` load on top of
+this base; nothing here is a skill to invoke.
 
 ## When to fork
 
@@ -62,6 +62,13 @@ Return only <facts | a diff summary | PASS/FAIL with the decisive lines>, at mos
 Do not paste file contents or raw logs. On a permission denial stop and return BLOCKED: <action>.
 Load these skills with the Skill tool before starting: <names>.   # or: No skills needed for this step.
 ```
+
+Language of agents: every fork, waiter, cold agent and codex run works and answers in
+plain English only: prompts in English, return values in English, no Russian recap, no
+`---` separator, no chat formatting. The two-part chat format (English body, Russian
+recap) belongs to the main session's replies to the user and nowhere else. Files an
+agent writes for people (threads, notes, commits, reports named as Russian by the
+task) follow the language the task names.
 
 Every agent launch is named by model and effort, as a dash-separated PREFIX
 `<mod>-<eff>-`: the `label` of every Workflow `agent()` and the `name` of a fork are
@@ -105,6 +112,93 @@ the path and the last line. Budget stated in the prompt: at most 5 tool calls at
 3 at high or xhigh, all inputs read in one call, one write; when the budget runs out the
 agent returns `partial` with what it has. In pipeline mode the launch gets a ledger row
 like any cold stage.
+
+## Downscale and upscale of intelligence
+
+What to launch when:
+
+| need | launch | model, effort |
+|---|---|---|
+| context-aware work, the chat matters, strongest judgment short of a heavy agent | fork | main session model and effort |
+| fresh context, breadth or mechanical work, downscale | one-agent `Workflow`, lean agent | sonnet-low or opus-low from the session map |
+| point review or generation of a key document, upscale | heavy agent on request (section above) | medium or high, documents only, 5 / 3 tool calls |
+| codex heavy or executor axis | `session:codex` (on top of pipeline or review) | sol / astra, luna / terra |
+| long wait with judgment | waiter, one-agent `Workflow` | sonnet-low |
+| N independent cold agents | ONE `Workflow` (`parallel` / `pipeline`) | explicit per agent |
+
+The rules below came verbatim from the August workflow mode (`session:workflow`, folded
+into this base 2026-09-06) and apply to every `Workflow` launched from any session.
+
+### One class and one pairing per workflow
+
+Assess the task once on the 5-class scale (1 very simple … 5 very complex; criteria in
+the README) and pick the pairing once. Stamp both into `meta.name` as
+`c<class>-<pairing>-<slug>` (`c3-fable-opus-fix-retry-logic`); a running workflow must
+always show what it was sized for. Every role takes its combo from that single row of
+the pairing's map: the role picks the column, the class picks the row. Never mix rows,
+never pick a combo ad hoc for one agent, never mix pairings inside a workflow. Switch
+the pairing only on the user's word or a real availability limit, and say so.
+
+Six roles, one column each: reviewer-debugger (strongest slot), plan author/fixer,
+code/test fixer, code/test author, fact researcher, test/script executor (cheapest).
+
+### Every `agent()` call
+
+- `model` and `effort` set explicitly in opts, never inherited; `agentType` launches
+  (`claude-code-guide`) too. Full ids come from the session map (`claude-opus-5[1m]`).
+- Label starts with the `<mod>-<eff>-` prefix: `fab-hi-review-plan`, `ops-lo-fast-tests`
+  (`fab`, `ops`, `son`, `hai`; `lo`, `me`, `hi`, `xh`, `mx`). The UI shows the model
+  but not the effort; the prefix is the only place the effort is visible.
+- The prompt ends with two lines chosen by the main session from the skill-routing map
+  (`~/.claude/memory-user/skill-routing.md`, 0-3 skills by role and step): "Load these
+  skills with the Skill tool before starting, in this order: <names>. Follow each loaded
+  skill's instructions in place of your default approach." or "No skills needed for this
+  step."; then "If you hit work outside this list that a clearly matching skill in your
+  available-skills list covers, load it first, but never load claude-api." Workflow
+  agents never open the skill list on their own (measured 2026-08-27).
+- Author, fixer and executor prompts carry: "On a permission denial stop at once and
+  return BLOCKED: <denied action>."
+- Return format named in the last line: facts, a diff summary, or PASS/FAIL with the
+  decisive lines, with a word limit; no file contents, no raw logs.
+
+Check a saved script before every launch: explicit model+effort, `<mod>-<eff>-` label prefixes, the
+two skill lines, class and pairing in `meta.name`; fix first, then launch. After editing
+a saved script launch it by `scriptPath`, not `name` (name resolution can serve a stale
+copy). Load `workflow-authoring` in the main session before writing a script.
+
+### Stages and quality loops (workflow-only work)
+
+Every stage that authors an artifact (plan, code, tests, scenarios, design document) is
+paired with an independent review by the reviewer-debugger, a separate agent. Wire it as
+author → reviewer-debugger (→ fast tests by the test/script executor when the artifact
+is code) → fixer, 1-3 cycles: exit as soon as the verdict is clean and tests are green;
+after the third cycle stop and report what is unresolved. A full task chains:
+
+1. **Plan**: plan author/fixer writes, reviewer-debugger reviews, plan author/fixer
+   applies; 1-3 cycles. Worth it for large tasks even when well understood.
+2. **Red tests** (when acceptance criteria exist): code/test author writes tests first;
+   the review checks the test code and that every acceptance criterion maps to a test;
+   code/test fixer applies; 1-3 cycles.
+3. **Implementation**: code/test author writes, reviewer-debugger reviews, test/script
+   executor runs the fast tests, code/test fixer applies; 1-3 cycles.
+4. **Technical stages** (preparation, merge, commit, conflict resolution): test/script
+   executor, no review loop.
+
+Parallelize when it pays: before launching, decide whether a stage splits into 3-5
+agents of the same role over independent files, directions or work items. Overlapping
+code areas get `isolation: 'worktree'`; disjoint files share the tree. Parallel agents
+still take the same map row. Prefer `pipeline()` over barriers.
+
+Blocks: the script checks every stage result (`null` or a `BLOCKED` prefix counts as
+blocked) and ends the workflow at once with a report; review and fix never run against
+unchanged files. Relaunch only after the cause is addressed. Resume with
+`resumeFromRunId` after a pause or a script edit; read `journal.jsonl` in the transcript
+dir before diagnosing an empty result.
+
+Land stages (commit, push, MR update) are self-contained: repo path, branch, expected
+changed files, a one-to-two-line summary of the change interpolated from earlier stage
+results. The agent runs `git status` and `git diff --stat` first and returns
+`BLOCKED: unexpected working tree` on a mismatch. Push only when the task grants it.
 
 ## Long waits and polling
 
@@ -164,19 +258,47 @@ The main session may start async work itself with `run_in_background` and be wok
 the completion: its turns are paid for anyway and the ping cron keeps its prefix warm.
 Inside a fork the same call is forbidden: the completion would wake the fork.
 
-## Forbidden in this mode
+## Launching a codex model
+
+Codex models (luna, terra, sol, astra) run through the `codex-proxy` agent as a
+one-agent `Workflow`: `agentType: 'codex-proxy', model: 'haiku', effort: 'medium'`, label
+`<lun|ter|sol|atr>-<eff>-<job>`. The prompt is the header block only: `CODEX TARGET`,
+`CODEX CWD`, `CODEX PROMPT FILE`, `CODEX OUTPUT FILE`. The MAIN session writes the prompt
+file itself with one Write, at most 30 lines of bullets: the style line (caveman ultra,
+plain English only), the role, the inputs by absolute path (never pasted), the
+acceptance criteria, the commands to run, the required last lines (the 5-field status).
+The main session consumes only the shim's `LAST LINE`; the output file is read by its
+next consumer by path, never relayed by a fork. A failure → one more codex run with a
+failure packet of at most 10 lines written by the main session, never a fork. No forks
+around a codex call at all: no prompt-writing fork, no output-reading fork.
+
+Roles: `luna-high` = cheap executor and repository researcher (repository and files
+only, no MCP); `terra-high` = stronger executor; `sol-<me|hi>` and `astra-<me|hi>` =
+heavy generation or critique of one document within the 5 (medium) / 3 (high)
+tool-call budget, never code review. Codex quota at 0%: executors → `luna-reserve-high`,
+heavy jobs → the Claude agent of the same role. Context: codex reads `AGENTS.md`, not
+`CLAUDE.md`; where the project has a sync script, `AGENTS.md` is generated from the
+Claude sources before the run.
+
+## Forbidden in every session
 
 - No plain subagents at all (`general-purpose`, `Explore`, custom agent types through
   `Agent`), no named teammates. `Agent` only with `subagent_type: "fork"`; `Workflow`
   only for the `waiter` (long waits, launched by the main session) and the single heavy
   agent of the section above when the user asks for it, one agent each.
+- No inline job of 3+ tool calls in the main session (measured 2026-09-06: an inline
+  session wrote 19 Bash calls and produced the smallest test suite).
 - No polling loops, waits or `run_in_background` in a fork; a fork starts long jobs
   detached with a done-file, the main session waits (Monitor or its own background
   Bash), a waiter only when the wait needs judgment.
+- No `agent()` without explicit model and effort, no label without the `<mod>-<eff>-` prefix, no prompt
+  without the two skill lines, no `meta.name` without class and pairing.
+- No fourth review cycle: stop and report.
 - No `/model`, `/effort`, plugin changes or `/compact` in the middle of a task.
-- Do not switch mode on your own; if the task outgrows forks, say so to the user.
+- Do not switch mode on your own; if the task outgrows the base, say so to the user.
 
 ## Reference
 
-Cache facts, prices and the role/stage tables: `plugins/session/README.md` in the
-claude-settings repo.
+Cache facts, prices, class criteria, the selection map and the role/stage tables:
+`plugins/session/README.md` (sections "Mode 1 — Workflow" and "Roles, selection map and
+stages").
