@@ -19,7 +19,7 @@ The caller's prompt is a header block and nothing else — the task itself alway
 - `CODEX SANDBOX:` — deprecated; the sandbox is not caller-configurable. Accept the header only with the value `workspace-write` (a no-op, for older callers); any other value (including `read-only` and `danger-full-access`) is invalid — reject it.
 - `CODEX WALL: <minutes>` — optional override of the wall-clock budget; rarely needed. Without it every codex run gets the full default budget of 240 minutes (4 hours) — codex works as long as the task takes.
 - `CODEX PROMPT FILE: <absolute path>` — required. The whole task prompt lives in that file; inline task bodies are not accepted at all. Any non-empty text after the header block is malformed — do not run codex, return the one-line format explanation. A missing or unreadable file at that path is the same error path (checked with a shell test, never by reading the file's content).
-- `CODEX OUTPUT FILE: <absolute path>` — optional; chooses where codex's `-o` writes the answer. Without it you pick your own temp output path. The answer is ALWAYS returned as a file reference — there is no inline output mode, so a value like `inline` (or anything that is not an absolute path) is invalid: treat it as a malformed header.
+- `CODEX OUTPUT FILE: <absolute path>` — optional; the path the model writes its artifact to (the prompt file names it). The shim never writes to that path and never passes it to `-o`: codex's `-o` goes to `<CODEX OUTPUT FILE>.final.md` (the final message). Without a CODEX OUTPUT FILE you pick your own temp output path with the `.final.md` suffix. The answer is ALWAYS returned as a file reference — there is no inline output mode, so a value like `inline` (or anything that is not an absolute path) is invalid: treat it as a malformed header.
 
 If the `CODEX TARGET` or `CODEX PROMPT FILE` header is missing, or any header is malformed or carries an invalid value, do NOT run codex — return exactly one line explaining the required header format.
 
@@ -73,7 +73,7 @@ cat "$TMPDIR/codex-preamble-<chosen-name>.txt" "<prompt file path>" > "$TMPDIR/c
 
 followed by the canonical wrapper command below reading `$TMPDIR/codex-in-<chosen-name>.txt` on stdin. The fixed-temp-path rule applies to these files too.
 
-Capture the final answer with `-o` (point it at the caller's `CODEX OUTPUT FILE:` path when supplied, otherwise at your own temp output path). The same Bash call also runs `tail -n 1` on that output file, so only that one line enters your context. FIX THE TEMP-FILE PATHS ONCE: generate both filenames a single time (mktemp, or one literal `codex-out-<random>.txt` name you choose up front) and reuse those exact literal paths in every subsequent command — NEVER embed `$$` or any other shell-derived value in the paths, because each Bash call runs in a fresh shell where it resolves differently.
+Capture the final message with `-o` pointed at `<CODEX OUTPUT FILE>.final.md` (same directory as the caller's `CODEX OUTPUT FILE:` path; without one, your own temp output path with the `.final.md` suffix). Never point `-o` at `CODEX OUTPUT FILE` itself: codex writes the final message there at the end of the run and would replace the artifact the model wrote during the run. After the run, if `CODEX OUTPUT FILE` does not exist, copy the `.final.md` file to it (`[ -f <out> ] || cp <out>.final.md <out>`); an existing artifact is never touched. The same Bash call also runs `tail -n 1` on the `.final.md` file, so only that one line enters your context. FIX THE TEMP-FILE PATHS ONCE: generate both filenames a single time (mktemp, or one literal `codex-out-<random>.txt` name you choose up front) and reuse those exact literal paths in every subsequent command — NEVER embed `$$` or any other shell-derived value in the paths, because each Bash call runs in a fresh shell where it resolves differently.
 
 Detached run, the only flow: the wrapper is called with `--detach <done-file>` (a temp
 path you fix once, next to your output path). It composes the stdin, starts codex with
@@ -98,9 +98,9 @@ Canonical form (verified working):
 "$CODEX_BIN/codex-exec-logged.sh" --detach "$TMPDIR/codex-done-<chosen-name>" \
   -m <model-id> -c model_reasoning_effort="<effort>" \
   -c approval_policy="on-request" -c approvals_reviewer="auto_review" -s workspace-write \
-  --skip-git-repo-check --ephemeral -o "<output path>" - < "$TMPDIR/codex-in-<chosen-name>.txt"
+  --skip-git-repo-check --ephemeral -o "<output path>.final.md" - < "$TMPDIR/codex-in-<chosen-name>.txt"
 until [ -f "$TMPDIR/codex-done-<chosen-name>" ]; do sleep 20; done   # separate Bash calls, ≤ 120 s each
-cat "$TMPDIR/codex-done-<chosen-name>"; tail -n 1 "<output path>"
+cat "$TMPDIR/codex-done-<chosen-name>"; [ -f "<output path>" ] || cp "<output path>.final.md" "<output path>"; tail -n 1 "<output path>.final.md"
 ```
 
 - The wrapper is a thin logging shim: it runs the same `codex exec` with `--json` added, writes the same `-o` answer file, returns codex's exit code, and appends one usage line to `~/.codex/proxy-usage.jsonl`. Logging failures are non-fatal.
@@ -128,10 +128,10 @@ File output is the only mode: do NOT read the output file and do NOT delete it. 
 
 ```
 CODEX OUTPUT FILE: <absolute path>
-LAST LINE: <output of tail -n 1 on that file>
+LAST LINE: <output of tail -n 1 on <absolute path>.final.md>
 ```
 
-Get that last line with `tail -n 1` via Bash, so only that single line enters your context.
+Get that last line with `tail -n 1` on the `.final.md` file via Bash, so only that single line enters your context.
 
 On failure:
 
