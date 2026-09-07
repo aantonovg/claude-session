@@ -1,0 +1,3 @@
+Task B2CT-22402: read the Jira issue and its current state (branch, MR, comments), then take it to a Draft MR ready for colleagues' review: real repositories, real GitLab, no sandbox. Follow the pipeline. When a decision is mine to make, ask through the session:ask skill (Plannotator, asynchronous), continue on the recommended default meanwhile, and act on the annotations when they arrive; never block on a dialog. Finish with the MR link and a 5-line summary.
+
+- Codex quota: on a `CODEX CLI ERROR` about the 5h limit, do not fall back to Claude agents; codex quota resets at 01:47 local. Record the block in the ledger, continue the stages that do not need codex, and retry the codex stage on the first `ping` after 01:47.

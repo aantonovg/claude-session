@@ -1,0 +1,466 @@
+{
+ "runs": [
+  {
+   "run": "corp-22401",
+   "sid": "14869d57",
+   "main": "claude-fable-5-1-low",
+   "turns_main": 68,
+   "pings": 4,
+   "wall_min": 115.5,
+   "rows": {
+    "claude-fable-5-1-low/main": {
+     "inp": 1524,
+     "out": 31598,
+     "cr": 8191853,
+     "cw5": 0,
+     "cw1": 152482,
+     "usd_in": 0.015240000000000021,
+     "usd_out": 1.5798999999999999,
+     "usd_cr": 2.04796325,
+     "usd_cw": 3.0496400000000006,
+     "turns": 68,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-fable-5-1-low/fork": {
+     "inp": 1912,
+     "out": 33855,
+     "cr": 9873302,
+     "cw5": 227315,
+     "cw1": 9132,
+     "usd_in": 0.019120000000000022,
+     "usd_out": 1.6927500000000002,
+     "usd_cr": 2.4683254999999997,
+     "usd_cw": 3.0240774999999984,
+     "turns": 74,
+     "agents": 11,
+     "kind": "fork"
+    },
+    "claude-haiku-4-5-medium/codex": {
+     "inp": 108,
+     "out": 24,
+     "cr": 213697,
+     "cw5": 31527,
+     "cw1": 0,
+     "usd_in": 0.00010800000000000001,
+     "usd_out": 0.00012,
+     "usd_cr": 0.0213697,
+     "usd_cw": 0.03940875000000001,
+     "turns": 13,
+     "agents": 2,
+     "kind": "codex"
+    },
+    "claude-fable-5-1-low/cold:session:stage-reviewer": {
+     "inp": 68,
+     "out": 1747,
+     "cr": 33351,
+     "cw5": 21398,
+     "cw1": 0,
+     "usd_in": 0.00068,
+     "usd_out": 0.08735,
+     "usd_cr": 0.00833775,
+     "usd_cw": 0.267475,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold:session:stage-reviewer"
+    },
+    "claude-opus-5-medium/cold:session:stage-critic": {
+     "inp": 6,
+     "out": 1675,
+     "cr": 32574,
+     "cw5": 20363,
+     "cw1": 0,
+     "usd_in": 3.0000000000000004e-05,
+     "usd_out": 0.041875,
+     "usd_cr": 0.016287,
+     "usd_cw": 0.12726875,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold:session:stage-critic"
+    }
+   },
+   "shims": [
+    {
+     "agent": "a396652991db48b80",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 6,
+     "inp": 50,
+     "out": 11,
+     "cr": 101787,
+     "cw": 11348,
+     "usd": 0.0244687,
+     "codex_cmds": 1,
+     "targets": [
+      "gpt-6-astra"
+     ],
+     "t0": "2026-09-06T22:12:56.932Z",
+     "t1": "2026-09-06T22:14:27.955Z"
+    },
+    {
+     "agent": "aabc1acc90805af53",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 7,
+     "inp": 58,
+     "out": 13,
+     "cr": 111910,
+     "cw": 20179,
+     "usd": 0.03653775,
+     "codex_cmds": 2,
+     "targets": [
+      "gpt-6-astra"
+     ],
+     "t0": "2026-09-06T22:08:29.574Z",
+     "t1": "2026-09-06T22:09:32.400Z"
+    }
+   ],
+   "codex": {
+    "gpt-6-astra-medium": {
+     "calls": 1,
+     "inp": 10933,
+     "cached": 74752,
+     "out": 536,
+     "usd": 0.21088200000000001
+    },
+    "gpt-6-astra-low": {
+     "calls": 1,
+     "inp": 19054,
+     "cached": 82048,
+     "out": 1666,
+     "usd": 0.355888
+    }
+   },
+   "agents": {
+    "fork": 11,
+    "cold": 2,
+    "codex": 2
+   },
+   "wf_labels": [
+    "ops-me-critic",
+    "atr-me-critic",
+    "fab-lo-decision-review",
+    "atr-lo-decision-review"
+   ],
+   "notes": [],
+   "usd_claude": 14.51,
+   "usd_codex": 0.57,
+   "usd_shim": 0.06
+  },
+  {
+   "run": "corp-22402",
+   "sid": "9b396e6f",
+   "main": "claude-fable-5-1-low",
+   "turns_main": 53,
+   "pings": 3,
+   "wall_min": 93.7,
+   "rows": {
+    "claude-fable-5-1-low/main": {
+     "inp": 1128,
+     "out": 23692,
+     "cr": 6253829,
+     "cw5": 0,
+     "cw1": 146425,
+     "usd_in": 0.011280000000000009,
+     "usd_out": 1.1845999999999997,
+     "usd_cr": 1.5634572499999995,
+     "usd_cw": 2.9285000000000005,
+     "turns": 53,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-fable-5-1-low/fork": {
+     "inp": 1476,
+     "out": 14320,
+     "cr": 7331907,
+     "cw5": 160889,
+     "cw1": 4845,
+     "usd_in": 0.014760000000000018,
+     "usd_out": 0.7159999999999999,
+     "usd_cr": 1.8329767499999994,
+     "usd_cw": 2.1080125000000005,
+     "turns": 55,
+     "agents": 8,
+     "kind": "fork"
+    },
+    "claude-fable-5-1-low/cold:session:stage-reviewer": {
+     "inp": 68,
+     "out": 109,
+     "cr": 34440,
+     "cw5": 23301,
+     "cw1": 0,
+     "usd_in": 0.00068,
+     "usd_out": 0.00545,
+     "usd_cr": 0.00861,
+     "usd_cw": 0.2912625,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold:session:stage-reviewer"
+    },
+    "claude-haiku-4-5-medium/codex": {
+     "inp": 116,
+     "out": 34,
+     "cr": 238921,
+     "cw5": 33076,
+     "cw1": 0,
+     "usd_in": 0.00011600000000000001,
+     "usd_out": 0.0001700000000000001,
+     "usd_cr": 0.0238921,
+     "usd_cw": 0.04134499999999999,
+     "turns": 14,
+     "agents": 2,
+     "kind": "codex"
+    },
+    "claude-fable-5-1-low/cold:session:stage-critic": {
+     "inp": 68,
+     "out": 15,
+     "cr": 40971,
+     "cw5": 29770,
+     "cw1": 0,
+     "usd_in": 0.00068,
+     "usd_out": 0.00075,
+     "usd_cr": 0.01024275,
+     "usd_cw": 0.37212500000000004,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold:session:stage-critic"
+    }
+   },
+   "shims": [
+    {
+     "agent": "ad5ee8c947fef0e5c",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 9,
+     "inp": 74,
+     "out": 29,
+     "cr": 163459,
+     "cw": 12881,
+     "usd": 0.03266615,
+     "codex_cmds": 2,
+     "targets": [
+      "gpt-6-astra"
+     ],
+     "t0": "2026-09-06T21:15:01.911Z",
+     "t1": "2026-09-06T21:17:12.899Z"
+    },
+    {
+     "agent": "a936da58b32e37b9f",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 5,
+     "inp": 42,
+     "out": 5,
+     "cr": 75462,
+     "cw": 20195,
+     "usd": 0.03285695,
+     "codex_cmds": 1,
+     "targets": [
+      "gpt-6-astra"
+     ],
+     "t0": "2026-09-06T21:09:09.620Z",
+     "t1": "2026-09-06T21:11:41.038Z"
+    }
+   ],
+   "codex": {
+    "gpt-6-astra-medium": {
+     "calls": 1,
+     "inp": 38156,
+     "cached": 172800,
+     "out": 3386,
+     "usd": 0.72366
+    },
+    "gpt-6-astra-high": {
+     "calls": 2,
+     "inp": 59203,
+     "cached": 210048,
+     "out": 3400,
+     "usd": 0.972078
+    }
+   },
+   "agents": {
+    "fork": 8,
+    "cold": 2,
+    "codex": 2
+   },
+   "wf_labels": [
+    "fab-lo-critic",
+    "atr-me-critic",
+    "fab-lo-decision-review",
+    "atr-hi-decision-review"
+   ],
+   "notes": [],
+   "usd_claude": 11.11,
+   "usd_codex": 1.7,
+   "usd_shim": 0.07
+  },
+  {
+   "run": "corp-22116",
+   "sid": "01e55f15",
+   "main": "claude-fable-5-1-low",
+   "turns_main": 113,
+   "pings": 3,
+   "wall_min": 106.7,
+   "rows": {
+    "claude-fable-5-1-low/main": {
+     "inp": 2600,
+     "out": 63246,
+     "cr": 17215561,
+     "cw5": 0,
+     "cw1": 212182,
+     "usd_in": 0.026000000000000023,
+     "usd_out": 3.162299999999999,
+     "usd_cr": 4.303890249999999,
+     "usd_cw": 4.243640000000001,
+     "turns": 113,
+     "agents": 1,
+     "kind": "main"
+    },
+    "claude-fable-5-1-low/fork": {
+     "inp": 7762,
+     "out": 53840,
+     "cr": 51154998,
+     "cw5": 781126,
+     "cw1": 15374,
+     "usd_in": 0.07762000000000015,
+     "usd_out": 2.692,
+     "usd_cr": 12.788749500000007,
+     "usd_cw": 10.071555000000005,
+     "turns": 276,
+     "agents": 20,
+     "kind": "fork"
+    },
+    "claude-fable-5-1-high/cold:session:stage-reviewer": {
+     "inp": 68,
+     "out": 16,
+     "cr": 37433,
+     "cw5": 30087,
+     "cw1": 0,
+     "usd_in": 0.00068,
+     "usd_out": 0.0008000000000000001,
+     "usd_cr": 0.009358249999999999,
+     "usd_cw": 0.3760875,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold:session:stage-reviewer"
+    },
+    "claude-haiku-4-5-medium/codex": {
+     "inp": 230,
+     "out": 48,
+     "cr": 513429,
+     "cw5": 49095,
+     "cw1": 0,
+     "usd_in": 0.00023000000000000006,
+     "usd_out": 0.00024000000000000011,
+     "usd_cr": 0.0513429,
+     "usd_cw": 0.06136875000000001,
+     "turns": 28,
+     "agents": 3,
+     "kind": "codex"
+    },
+    "claude-fable-5-1-medium/cold:session:stage-author": {
+     "inp": 168,
+     "out": 415,
+     "cr": 121449,
+     "cw5": 67212,
+     "cw1": 0,
+     "usd_in": 0.00168,
+     "usd_out": 0.02075,
+     "usd_cr": 0.03036225,
+     "usd_cw": 0.84015,
+     "turns": 7,
+     "agents": 2,
+     "kind": "cold:session:stage-author"
+    },
+    "claude-fable-5-1-high/cold:session:stage-critic": {
+     "inp": 68,
+     "out": 17,
+     "cr": 36318,
+     "cw5": 24729,
+     "cw1": 0,
+     "usd_in": 0.00068,
+     "usd_out": 0.0008500000000000001,
+     "usd_cr": 0.0090795,
+     "usd_cw": 0.3091125,
+     "turns": 3,
+     "agents": 1,
+     "kind": "cold:session:stage-critic"
+    }
+   },
+   "shims": [
+    {
+     "agent": "a691d27666526fe7b",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 11,
+     "inp": 90,
+     "out": 16,
+     "cr": 209003,
+     "cw": 13580,
+     "usd": 0.0380453,
+     "codex_cmds": 2,
+     "targets": [
+      "gpt-6-astra"
+     ],
+     "t0": "2026-09-06T21:28:32.428Z",
+     "t1": "2026-09-06T21:31:16.143Z"
+    },
+    {
+     "agent": "a849af7ad7c5474b3",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 8,
+     "inp": 66,
+     "out": 14,
+     "cr": 147194,
+     "cw": 13585,
+     "usd": 0.03183665,
+     "codex_cmds": 1,
+     "targets": [
+      "gpt-6-astra"
+     ],
+     "t0": "2026-09-06T21:20:54.584Z",
+     "t1": "2026-09-06T21:23:34.440Z"
+    },
+    {
+     "agent": "ad599fe50efdbba15",
+     "model": "claude-haiku-4-5-20251001",
+     "turns": 9,
+     "inp": 74,
+     "out": 18,
+     "cr": 157232,
+     "cw": 21930,
+     "usd": 0.0432997,
+     "codex_cmds": 2,
+     "targets": [
+      "gpt-6-astra"
+     ],
+     "t0": "2026-09-06T21:19:15.131Z",
+     "t1": "2026-09-06T21:20:15.625Z"
+    }
+   ],
+   "codex": {
+    "gpt-6-astra-high": {
+     "calls": 2,
+     "inp": 35482,
+     "cached": 126592,
+     "out": 6328,
+     "usd": 0.797812
+    }
+   },
+   "agents": {
+    "fork": 20,
+    "cold": 4,
+    "codex": 3
+   },
+   "wf_labels": [
+    "fab-hi-critic",
+    "atr-hi-critic",
+    "atr-hi-critic-2",
+    "fab-me-decision-generate",
+    "fab-hi-decision-review",
+    "atr-hi-decision-review",
+    "fab-me-decision-fix"
+   ],
+   "notes": [],
+   "usd_claude": 39.08,
+   "usd_codex": 0.8,
+   "usd_shim": 0.11
+  }
+ ],
+ "codex_unattributed": []
+}

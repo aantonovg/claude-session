@@ -143,9 +143,13 @@ commit, the report.
 - Read once, write once: all inputs in one command (`cat a b c` or one script), think
   once, write at once; never a gap over 3 minutes between two tool calls (the suffix
   expires at 5; measured: a review fork paused > 5 min before its Write, 53K rewritten).
-- A bulk job that does not need the chat context (repository research, a test or
-  verification layer, a code review of a finished diff) goes to a downscale agent
-  (section "Downscale and upscale of intelligence") instead of a fork.
+- Repository research, test writing, test and build runs, code review of a finished
+  diff and mechanical sweeps go to a downscale agent by default (sonnet-low /
+  opus-low; luna / terra under `session:codex`; section "Downscale and upscale of
+  intelligence"). A fork takes such a job only on strong doubt that a fresh agent
+  copes: high complexity of the job itself, or the job depends on an understanding
+  that lives only in this conversation. The doubt is named in one line before the
+  fork launch.
 
 ## Fork prompt template
 
@@ -228,7 +232,7 @@ What to launch when:
 
 | need | launch | model, effort |
 |---|---|---|
-| context-aware work, the chat matters, strongest judgment of the set; cheap start, costlier execution | fork | main session model and effort |
+| work that depends on this conversation, or strong doubt that a fresh agent copes (named in the launch line); cheap start, costlier execution | fork | main session model and effort |
 | downscale: bulk tool-heavy work (repository research, tests and the verification layer, code review), many tool calls per agent expected | `Workflow`, lean agent | `sonnet-low`; `opus-low` when the main session is fable or a review needs a fresh context; under `session:codex` `luna-high` replaces sonnet-low, `terra-high` replaces opus-low |
 | upscale: critique of one fact set or generation of a key document (section above) | `Workflow`, `session:stage-reviewer` / `session:stage-author` | `opus-medium`, `fable-medium` (5 tool calls); `opus-high`, `fable-high` (3 tool calls); sol / astra under `session:codex` |
 | long wait with judgment | waiter, one-agent `Workflow` | sonnet-low |
@@ -252,7 +256,9 @@ Downscale agent (`sonnet-low` / `opus-low`; `luna-high` / `terra-high` under
 - a code review of a diff over 100 lines;
 - any mechanical sweep (renames, greps, format passes, inventory).
 
-A fork takes such a job only when it needs the chat context.
+A fork takes such a job only on strong doubt that a fresh agent copes (high complexity
+of the job, or an understanding that lives only in this conversation), and the launch
+line names that doubt.
 
 Upscale agent (`opus-medium` / `fable-medium`, 5 tool calls; `opus-high` / `fable-high`,
 3 tool calls; the mode's set under `session:codex`; a paired review under `+sol` /
