@@ -684,8 +684,14 @@ A key appears once its skill has been invoked; the last invocation wins.
 `hooks/session-modes.sh` is the only writer, wired to four hooks of this plugin:
 `UserPromptSubmit` records a user-typed `/session:<mode> <arg>` (prefix match on the first
 line, invalid arguments ignored), `PostToolUse` on `Skill` records a model-invoked one,
-and `PreCompact` and `SessionStart` clear the file, because after a compact or a resume
-the modes are no longer loaded. `SessionStart` also prunes files older than seven days.
+and `PreCompact` and `SessionStart` clear the file, because after a compact the modes are
+no longer loaded (a `resume` is the exception and keeps it). `SessionStart` also prunes
+every file in the directory older than seven days.
+
+The first prompt of a session with no `<session_id>.seeded` marker reads the first 256 KB
+of the transcript once and replays the session commands found in user entries, so modes
+typed before the hook ran still show. Every clear writes that marker, so nothing comes
+back; `SessionStart(startup)` also removes it, because a fresh id may still need a seed.
 The writer never prints and always exits 0.
 
 Any consumer may read the file; it is state, not an API. The statusline in `user-prefs`
