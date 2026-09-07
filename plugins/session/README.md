@@ -673,3 +673,22 @@ step."). Never `claude-api`, never a superpowers orchestration skill.
    usage entry in the session JSONL; its cost is the total delta minus the next turn.
 
 Recommended team setting: `teammateMode: "tmux"` + default 5m subagent TTL.
+
+## Session mode counters (`~/.claude/session-modes/<session_id>.json`)
+
+The plugin records which of its modes are loaded in a session, so a statusline can show
+them. The file is a small JSON object keyed by skill name, holding the string to render:
+`{"base":"base","codex":"codex+astra","pipeline":"pipeline-full","review":"review-std"}`.
+A key appears once its skill has been invoked; the last invocation wins.
+
+`hooks/session-modes.sh` is the only writer, wired to four hooks of this plugin:
+`UserPromptSubmit` records a user-typed `/session:<mode> <arg>` (prefix match on the first
+line, invalid arguments ignored), `PostToolUse` on `Skill` records a model-invoked one,
+and `PreCompact` and `SessionStart` clear the file, because after a compact or a resume
+the modes are no longer loaded. `SessionStart` also prunes files older than seven days.
+The writer never prints and always exits 0.
+
+Any consumer may read the file; it is state, not an API. The statusline in `user-prefs`
+reads it by the `session_id` on its stdin and joins the values with `:`, showing nothing
+when the file is missing. A rewind is invisible to the hooks, so `/session:reset-counter`
+clears the file and the panel is rebuilt by hand.
