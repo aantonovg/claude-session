@@ -153,12 +153,18 @@ jq -nc --arg c "$(cmd base '')" '{type:"user",message:{content:[{type:"text",tex
 run "$(tpayload "$TR" 'hello')"
 check "array content ignored" ''
 
+# Big payloads go to jq through a FILE (--rawfile), never through argv: a few
+# hundred KB in a command line blows ARG_MAX on Linux.
+# A command inside the slice must seed, one pushed past the cut must not, so the
+# case cannot pass by the hook never running.
 reset
-PAD=$(head -c 300000 /dev/zero | tr '\0' 'y')
-jq -nc --arg c "$PAD" '{type:"user",message:{content:$c}}' >"$TR"
+PADF="$HOME/pad.txt"
+head -c 300000 /dev/zero | tr '\0' 'y' >"$PADF"
+uline "$(cmd codex '+sol')" >"$TR"
+jq -nc --rawfile c "$PADF" '{type:"user",message:{content:$c}}' >>"$TR"
 uline "$(cmd base '')" >>"$TR"
 run "$(tpayload "$TR" 'hello')"
-check "command past the 256KB cap not seeded" ''
+check "command past the 256KB cap not seeded" '{"codex":"codex+sol"}'
 
 # A pass that could not read the transcript must not block a later seed: the
 # real consequence, not just the absent marker.
@@ -180,17 +186,20 @@ check "directory transcript_path still reseeds later" '{"base":"base"}'
 
 # A record cut in half by the 256 KB slice must be dropped, not half-parsed.
 reset
-PADCUT=$(head -c 262000 /dev/zero | tr '\0' 'z')
-jq -nc --arg c "$PADCUT" '{type:"user",message:{content:$c}}' >"$TR"
-# shrink the first record until its line ends just before the 256 KB cut, so the
-# second record starts inside the slice and is chopped in half by it
+# a good record first, so the case fails if the hook never ran
+uline "$(cmd codex '+sol')" >"$TR"
+head -c 262000 /dev/zero | tr '\0' 'z' >"$PADF"
+jq -nc --rawfile c "$PADF" '{type:"user",message:{content:$c}}' >>"$TR"
+# shrink the pad record until the line before the straddler ends just short of
+# the 256 KB cut, so the next record starts inside the slice and is chopped
 L=$(wc -c <"$TR" | tr -d ' ')
-PADCUT=$(head -c $((262000 - (L - 262100))) /dev/zero | tr '\0' 'z')
-jq -nc --arg c "$PADCUT" '{type:"user",message:{content:$c}}' >"$TR"
+head -c $((262000 - (L - 262100))) /dev/zero | tr '\0' 'z' >"$PADF"
+uline "$(cmd codex '+sol')" >"$TR"
+jq -nc --rawfile c "$PADF" '{type:"user",message:{content:$c}}' >>"$TR"
 jq -nc --arg c "$(cmd base '')" '{type:"user",message:{content:$c}}' | tr -d '\n' >>"$TR"
 printf '\n' >>"$TR"
 run "$(tpayload "$TR" 'hello')"
-check "record straddling the 256KB cut is dropped" ''
+check "record straddling the 256KB cut is dropped" '{"codex":"codex+sol"}'
 
 # A seed still works after SessionStart(startup) cleared the marker.
 reset; { uline "$(cmd base '')"; } >"$TR"
