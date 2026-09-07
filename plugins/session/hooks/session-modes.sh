@@ -4,9 +4,14 @@
 #
 # User-typed slash commands are NOT Skill tool calls: the harness puts them into
 # the prompt, so UserPromptSubmit is the only place their name and argument are
-# visible. Two payload shapes exist. Interactive sessions send the prompt
-# verbatim ("/session:codex +astra"). Background-job sessions send the command
-# already expanded, starting with a tag block:
+# visible. The name arrives in either namespace form: fully qualified
+# ("/session:codex +astra") or with the plugin namespace stripped ("/codex
+# +astra"), depending on how the command was entered. Measured 2026-09-07: a
+# typed "/session:pipeline" reached the hook as "/pipeline". Both are accepted,
+# but the bare form only for the five names below, so an unrelated command like
+# /model or /compact is never taken for a mode. Two payload shapes exist as
+# well. Interactive sessions send the prompt verbatim. Background-job sessions
+# send the command already expanded, starting with a tag block:
 #   <command-message>session:codex</command-message>
 #   <command-name>/session:codex</command-name>
 #   <command-args>+astra</command-args>
@@ -39,6 +44,15 @@ case "$SESSION_ID" in
 esac
 STATE="$STATE_DIR/${SESSION_ID}.json"
 MARKER="$STATE_DIR/${SESSION_ID}.seeded"
+
+# The only command names this hook may claim. Guards the namespace-stripped
+# form: without it "/model" or "/plan" would be parsed as a session command.
+bare_ok() {
+  case "$1" in
+    base|codex|pipeline|review|reset-counter) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # "codex" "+astra" -> codex+astra ; "pipeline" "full" -> pipeline-full ; "base" "" -> base
 mode_fmt() {
@@ -107,7 +121,7 @@ seed() {
   # It only SKIPS - it must not mark: the commands may simply not have reached
   # the first 256 KB yet, and a marker here would freeze the miss for the whole
   # session. Only a pass that really parsed may write the marker.
-  printf '%s\n' "$slice" | grep -q '<command-name>/session:' || return 0
+  printf '%s\n' "$slice" | grep -q '<command-name>/' || return 0
 
   # Only a string-shaped .message.content is read. Every observed transcript uses
   # that shape; an array-shaped content is ignored on purpose (verified, not a bug).
@@ -121,7 +135,7 @@ seed() {
       | .message.content
       | select(type == "string")
       | select(startswith("<command-message>") or startswith("<command-name>"))
-      | (capture("(?:^|\n)<command-name>/session:(?<s>[^<\n]*)</command-name>(?:\n<command-args>(?<a>[^<\n]*)</command-args>)?(?:\n|$)")?)
+      | (capture("(?:^|\n)<command-name>/(?:session:)?(?<s>[^<\n]*)</command-name>(?:\n<command-args>(?<a>[^<\n]*)</command-args>)?(?:\n|$)")?)
       | select(. != null)
       | [.s, (.a // "")] | @tsv' 2>/dev/null )
   rc=$?
@@ -166,15 +180,21 @@ case "$EVENT" in
     first=$(printf '%s' "$head" | head -n1)
     skill=""; args=""
     case "$first" in
-      /session:*)                       # verbatim shape
-        rest=${first#/session:}
-        skill=${rest%% *}
-        if [ "$skill" = "$rest" ]; then args=""; else args=${rest#* }; fi ;;
+      /*)                               # verbatim shape, either namespace form
+        rest=${first#/}
+        cand=${rest%% *}
+        if [ "$cand" = "$rest" ]; then cargs=""; else cargs=${rest#* }; fi
+        cand=${cand#session:}
+        if bare_ok "$cand"; then skill=$cand; args=$cargs; fi ;;
       *)                                # expanded shape: read the tag block
-        skill=$(printf '%s\n' "$head" \
-          | sed -n 's|^<command-name>/session:\([^<]*\)</command-name>$|\1|p' | head -n1)
-        args=$(printf '%s\n' "$head" \
-          | sed -n 's|^<command-args>\(.*\)</command-args>$|\1|p' | head -n1) ;;
+        raw=$(printf '%s\n' "$head" \
+          | sed -n 's|^<command-name>/\([^<]*\)</command-name>$|\1|p' | head -n1)
+        raw=${raw#session:}
+        if bare_ok "$raw"; then
+          skill=$raw
+          args=$(printf '%s\n' "$head" \
+            | sed -n 's|^<command-args>\(.*\)</command-args>$|\1|p' | head -n1)
+        fi ;;
     esac
     # trim surrounding whitespace from the argument
     args=$(printf '%s' "$args" | awk '{$1=$1; print}')

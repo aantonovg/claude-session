@@ -283,6 +283,39 @@ else
   echo "FAIL bad session id writes nothing"
 fi
 
+# --- namespace-stripped ("bare") command form ---------------------------------
+# Measured 2026-09-07: a typed "/session:pipeline" reached the hook as "/pipeline".
+
+reset; run "$(payload x '/pipeline')";        check "bare pipeline" '{"pipeline":"pipeline"}'
+reset; run "$(payload x '/base')";            check "bare base" '{"base":"base"}'
+reset; run "$(payload x '/codex +sol')";      check "bare codex +sol" '{"codex":"codex+sol"}'
+reset; run "$(payload x '/pipeline full')";   check "bare pipeline full" '{"pipeline":"pipeline-full"}'
+reset; run "$(payload x '/review lite')";     check "bare review lite" '{"review":"review-lite"}'
+
+reset; run "$(payload x '/base')"; run "$(payload x '/reset-counter')"
+check "bare reset-counter deletes" ''
+reset; run "$(payload x '/base')"; run "$(payload x '/reset-counter')"
+check_marker "bare reset-counter marks" yes
+
+# Unrelated commands must never be taken for a mode, and must never delete.
+for c in /model /plan /compact /pipelines /basement; do
+  reset; run "$(payload x "$c")"; check "unrelated $c records nothing" ''
+  reset; run "$(payload x '/base')"; run "$(payload x "$c")"
+  check "unrelated $c deletes nothing" '{"base":"base"}'
+done
+
+BARE_EXP='<command-message>pipeline</command-message>
+<command-name>/pipeline</command-name>
+<command-args>full</command-args>'
+reset; run "$(payload x "$BARE_EXP")"; check "bare form in expanded block" '{"pipeline":"pipeline-full"}'
+
+reset
+BARE_TR="$HOME/bare-transcript.jsonl"
+jq -nc '{type:"user",message:{role:"user",content:"<command-message>codex</command-message>\n<command-name>/codex</command-name>\n<command-args>+sol</command-args>"}}' > "$BARE_TR"
+run "$(jq -nc --arg s "$SID" --arg t "$BARE_TR" '{hook_event_name:"UserPromptSubmit",session_id:$s,transcript_path:$t,prompt:"hello"}')"
+check "bare form seeded from transcript" '{"codex":"codex+sol"}'
+rm -f "$BARE_TR"
+
 rm -rf "$HOME"
 if [ "$PASS" -eq "$TOTAL" ]; then
   echo "session-modes hook: $PASS/$TOTAL pass"; exit 0
