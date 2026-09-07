@@ -102,7 +102,8 @@ ledger append line; harness: verification plan and contract invariants; package:
 implementation-plan section, contract invariants, harness commands, commit message).
 Luna research writes `evidence/EB-<n>.md` directly and appends its own ledger lines; heavy
 jobs write `reviews/<stage>-codex.md` (dual review) or their output file, read by the
-next consumer by path. 2026-09-06: two opus forks per codex call (prompt writer, output
+next consumer by path; the artifact stays at `CODEX OUTPUT FILE`, the final message lands
+in `<CODEX OUTPUT FILE>.final.md`, which the shim reads for `LAST LINE`. 2026-09-06: two opus forks per codex call (prompt writer, output
 reader) cost more than the luna call itself on a 150K prefix; this envelope removes them.
 
 Executor jobs (luna, terra) run inside codex's workspace-write sandbox, `CODEX CWD` = repo

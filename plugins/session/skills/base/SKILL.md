@@ -421,7 +421,8 @@ one-agent `Workflow`: `agentType: 'session:codex-proxy', model: 'haiku', effort:
 file itself with one Write, at most 30 lines of bullets: the style line (caveman ultra,
 plain English only), the role, the inputs by absolute path (never pasted), the
 acceptance criteria, the commands to run, the required last lines (the 5-field status).
-The main session consumes only the shim's `LAST LINE`; the output file is read by its
+The main session consumes only the shim's `LAST LINE` (read from `<CODEX OUTPUT FILE>.final.md`,
+the final message); the artifact stays at `CODEX OUTPUT FILE` and is read by its
 next consumer by path, never relayed by a fork. A failure → one more codex run with a
 failure packet of at most 10 lines written by the main session, never a fork. No forks
 around a codex call at all: no prompt-writing fork, no output-reading fork.

@@ -108,9 +108,10 @@ CODEX OUTPUT FILE: <task dir>/codex/<stage>-<n>.out.md
 The main session writes the prompt file with one Write, ≤ 30 lines of bullets: the style
 line, role, inputs by absolute path (codex reads the repo, not `~/.claude`), acceptance
 criteria, the required last lines (the 5-field status; reviews end with
-`DONE severity=<none|low|medium|high>`). The shim never reads it. The output file is read
-by its next consumer by path, never by the main session and never by a relay fork; the
-shim's `LAST LINE` is the gate signal. Per workflow: `meta.name` `c<class>-<pairing>-<slug>` as usual. Script shape:
+`DONE severity=<none|low|medium|high>`). The shim never reads it. The artifact the model writes stays at `CODEX OUTPUT FILE`; the
+final message lands in `<CODEX OUTPUT FILE>.final.md`, which the shim reads for `LAST LINE`.
+The output file is read by its next consumer by path, never by the main session and never
+by a relay fork; the shim's `LAST LINE` is the gate signal. Per workflow: `meta.name` `c<class>-<pairing>-<slug>` as usual. Script shape:
 
 ```
 export const meta = { name: 'c3-fable-opus-critic-codex', description: 'sol critic', phases: [{ title: 'Critic' }] }
