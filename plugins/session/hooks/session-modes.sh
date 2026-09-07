@@ -104,10 +104,13 @@ seed() {
   local slice
   slice=$( { head -c 262144 "$tp" 2>/dev/null; printf 'X'; } | sed '$d' )
   # Cheap fixed-string pre-check: no command tag at all means nothing to parse.
-  if ! printf '%s\n' "$slice" | grep -q '<command-name>/session:'; then
-    mark
-    return 0
-  fi
+  # It only SKIPS - it must not mark: the commands may simply not have reached
+  # the first 256 KB yet, and a marker here would freeze the miss for the whole
+  # session. Only a pass that really parsed may write the marker.
+  printf '%s\n' "$slice" | grep -q '<command-name>/session:' || return 0
+
+  # Only a string-shaped .message.content is read. Every observed transcript uses
+  # that shape; an array-shaped content is ignored on purpose (verified, not a bug).
 
   local out rc
   out=$(printf '%s\n' "$slice" | jq -R -r '
@@ -138,7 +141,18 @@ seed() {
   done < <( printf '%s\n' "$out" )
 
   mkdir -p "$STATE_DIR" 2>/dev/null || return 0
-  [ "$acc" = "{}" ] || printf '%s\n' "$acc" >"$STATE" 2>/dev/null
+  # Merge, never overwrite: a state file written by real hook events is the more
+  # authoritative source, so on a key collision the EXISTING value wins over the
+  # seeded one. An empty or unparseable state file counts as {}.
+  if [ "$acc" != "{}" ]; then
+    local cur merged
+    cur=$(cat "$STATE" 2>/dev/null)
+    printf '%s' "$cur" | jq -e 'type == "object"' >/dev/null 2>&1 || cur='{}'
+    merged=$(printf '%s\n%s\n' "$acc" "$cur" | jq -c -s '.[0] + .[1]' 2>/dev/null)
+    [ -n "$merged" ] || merged=$acc
+    printf '%s\n' "$merged" >"$STATE.tmp" 2>/dev/null && mv -f "$STATE.tmp" "$STATE" 2>/dev/null
+    rm -f "$STATE.tmp" 2>/dev/null
+  fi
   # A completed pass always marks, even when it found nothing.
   : >"$MARKER" 2>/dev/null
   return 0

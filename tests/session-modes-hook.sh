@@ -241,11 +241,30 @@ check_marker "failed seed parse leaves no marker" no
 run "$(tpayload "$TR" 'hello again')"
 check "failed seed parse retries later" '{"base":"base"}'
 
-# No command tag anywhere: mark and skip the parse.
+# No command tag anywhere: skip the parse, but leave NO marker - the commands may
+# just not be in the slice yet, and a later prompt must still be able to seed.
 reset
-jq -nc '{type:"user",message:{content:"just a plain prompt"}}' >"$TR"
+TAGLESS="$HOME/tagless.jsonl"
+jq -nc '{type:"user",message:{content:"just a plain prompt"}}' >"$TAGLESS"
+run "$(tpayload "$TAGLESS" 'hello')"
+check_marker "transcript without tags leaves no marker" no
+run "$(tpayload "$GOOD_TR" 'hello again')"
+check "tagless slice still reseeds later" '{"base":"base"}'
+
+# State recorded without any transcript block survives a seed that finds other
+# commands: the seed merges instead of overwriting.
+reset
+run "$(jq -nc --arg s "$SID" '{hook_event_name:"PostToolUse",session_id:$s,tool_name:"Skill",tool_input:{skill:"session:pipeline",args:"full"}}')"
+{ uline "$(cmd base '')"; } >"$TR"
 run "$(tpayload "$TR" 'hello')"
-check_marker "transcript without tags marks" yes
+check "seed merges with existing state" '{"base":"base","pipeline":"pipeline-full"}'
+
+# On a key collision the existing value wins over the seeded one.
+reset
+run "$(jq -nc --arg s "$SID" '{hook_event_name:"PostToolUse",session_id:$s,tool_name:"Skill",tool_input:{skill:"session:codex",args:"+sol"}}')"
+{ uline "$(cmd codex '+astra')"; } >"$TR"
+run "$(tpayload "$TR" 'hello')"
+check "existing key not clobbered by seed" '{"codex":"codex+sol"}'
 
 reset; run "$(payload x '/session:base')"; run "$(jq -nc --arg s "$SID" '{hook_event_name:"PreCompact",session_id:$s}')"
 run "$(payload x '/session:base')"
