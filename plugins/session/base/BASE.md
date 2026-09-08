@@ -12,8 +12,9 @@
 
 One main session plus fork subagents. A fork inherits the whole conversation and the
 cached prefix, so spawning one is nearly free; its tool calls stay out of the main
-context, which is what keeps the main session small and warm. Forks run on the main
-session's model and effort, there is no mixing.
+context, which is what keeps the main session small and warm. The main session may
+run any model and effort (fable, opus or sonnet high alike); a fork always runs on the
+main session's own model and effort, there is no mixing.
 
 ## Start (do this now)
 
@@ -24,7 +25,10 @@ with `ToolSearch` (`select:CronCreate`); the same for any deferred tool the base
 `cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`, `recurring: true`,
 unless a `ping` cron already exists in this session. The reply line
 `Base on, ping cron <id>; forks for every 3+ call job` is printed once, only after the
-cron exists; there is no variant of this line without a cron id. Reply to every `ping`
+cron exists; there is no variant of this line without a cron id. With the argument
+`sonnet` (`/session:base sonnet`) the session runs in the sonnet mode (section "Mode:
+sonnet") for its whole life and the reply line is `Base on (sonnet), ping cron <id>;
+forks for every 3+ call job`; without the argument nothing changes. Reply to every `ping`
 with one word. Exception: when the context shows that the
 previous work turn was cut off by the subscription limit or an API error (an error line
 where an answer should be, a fork or background job launched and never returned, a step
@@ -127,6 +131,9 @@ inline: count the calls. Writing a function plus its tests plus running them is
 always a fork. Do only tiny things yourself: one read, one edit, one command, the
 commit, the report.
 
+- A fork is context-aware and cheap to start; a fresh lean agent starts cold. The
+  early fact-gathering steps of a task go to forks by preference; lean agents (small
+  start context, reduced tools) take the bulk jobs after that.
 - Independent jobs go to parallel forks in one message (one `Agent` call each).
 - The main session does the writing that matters for continuity: plan files, final
   edits when they are small, commits, the report to the user. A fork may edit files
@@ -176,8 +183,9 @@ waiters, plain subagents) starts with the same prefix, then a space and the job
 instead of the bare type); never set `name` on a waiter or any plain subagent: a named
 plain subagent is spawned as a mailbox teammate (measured 2026-09-06), a named fork
 stays a fork. A fork's prefix is the main session's own model and effort, copied one
-to one from the status line (`fable:low` → `fab-lo`, `opus:low` → `ops-lo`); a fork
-cannot run at another effort, so `ops-hi-` on a fork in a low session is an error. A
+to one from the status line (`fable:low` → `fab-lo`, `opus:low` → `ops-lo`,
+`sonnet:high` → `son-hi`); a fork cannot run at another effort, so `ops-hi-` on a fork
+in a low session is an error. A
 waiter is `son-lo`,
 a codex-proxy label names the codex target (the haiku shim is implied). This replaces
 the older `<mod>:<eff>` form and the earlier suffix form.
@@ -228,14 +236,27 @@ What to launch when:
 | need | launch | model, effort |
 |---|---|---|
 | work that depends on this conversation, or strong doubt that a fresh agent copes (named in the launch line); cheap start, costlier execution | fork | main session model and effort |
-| downscale: bulk tool-heavy work (repository research, tests and the verification layer, code review), many tool calls per agent expected | `Workflow`, lean agent | `sonnet-low`; `opus-low` when the main session is fable or a review needs a fresh context; under `session:codex` `luna-high` replaces sonnet-low, `terra-high` replaces opus-low |
-| upscale: critique of one fact set or generation of a key document (section above) | `Workflow`, `session:stage-reviewer` / `session:stage-author` | `opus-medium`, `fable-medium` (5 tool calls); `opus-high`, `fable-high` (3 tool calls); sol / astra under `session:codex` |
+| downscale: bulk tool-heavy work (repository research, tests and the verification layer, code review), many tool calls per agent expected | `Workflow`, lean agent | `sonnet-low`; `opus-low` when the main session is fable or a review needs a fresh context (`sonnet-high` in the sonnet mode); under `session:codex` `luna-high` replaces sonnet-low, `terra-high` replaces opus-low |
+| upscale: critique of one fact set or generation of a key document (section above) | `Workflow`, `session:stage-reviewer` / `session:stage-author` | `opus-medium`, `fable-medium` (5 tool calls); `opus-high`, `fable-high` (3 tool calls); `sonnet-high` for both in the sonnet mode; sol / astra under `session:codex` |
 | long wait with judgment | waiter, one-agent `Workflow` | sonnet-low |
 
 Every downscale and upscale agent starts through `Workflow`: independent agents are
 batched into ONE workflow (`parallel`); a relay between steps (research → critique →
 check) is wired as `pipeline()` stages of the same workflow; every `agent()` carries
 explicit model and effort and the `<mod>-<eff>-` label.
+
+## Mode: sonnet
+
+On `/session:base sonnet`: no opus anywhere in the session. Every slot the base assigns
+to opus (the opus-low downscale agent, opus-medium and opus-high upscale agents, the
+"opus-low when the main session is fable" rule, the opus rows of the workflow selection
+map) runs on `sonnet-high`; the cheap slots stay `sonnet-low`. Lean cold agents pick by
+role the way the opus-low / sonnet-low split does: reviewer-debugger, plan author and
+fixer, code/test fixer, upscale critique and generation → `sonnet-high`; fact
+researcher, test/script executor, test runs, mechanical sweeps → `sonnet-low`. Upscale
+budgets stay (5 tool calls at medium, 3 at high). Labels `son-hi-` / `son-lo-`; workflow
+`meta.name` pairing `sonnet` (`c3-sonnet-<slug>`). Forks run on the main session's model
+and effort as always (a sonnet high main gives `son-hi-` forks). Codex modes unchanged.
 
 ## Decision points
 
