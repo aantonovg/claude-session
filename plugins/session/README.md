@@ -7,7 +7,7 @@ skills: read it before changing any of them.
 
 | skill | mode | spawns |
 |---|---|---|
-| `session:base` (`skills/base/SKILL.md` from `base/BASE.md`; invoked first in every session and after `/compact`; no base hooks, 0.8.0) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + `Workflow` for cold agents: downscale (sonnet-low / opus-low, luna / terra), upscale (opus/fable medium/high, sol / astra), waiter (0.7.2) |
+| `session:base [sonnet]` (`skills/base/SKILL.md` from `base/BASE.md`; invoked first in every session and after `/compact`; no base hooks, 0.8.0; `sonnet` argument = sonnet-only session, 0.9.0) | every session: main + fork subagents, launch forms, cache and wait rules, models, efforts, roles, intelligence up/downscale (the August workflow rules folded in, 2026-09-06) | forks + `Workflow` for cold agents: downscale (sonnet-low / opus-low, luna / terra), upscale (opus/fable medium/high, sol / astra), waiter (0.7.2) |
 | `session:pipeline` | on top of the base: a staged pipeline with gates (research, critic, decision, verification, implementation, closure check); shared rules in `skills/pipeline/core.md` | forks + lean cold critic (and cold researcher) |
 | `session:review` | on top of the base: verification-first review of someone else's MR (reads `skills/pipeline/core.md`) | forks + cold researcher |
 | `session:codex` | on top of the base (pipeline or review may also be on): codex heavy axis (sol, astra) and executor axis (luna, terra) | `session:codex-proxy` one-agent workflows (agent, wrapper and style ship with the plugin) |
@@ -22,6 +22,7 @@ something) or `/session:review` (someone else's MR); then, optionally,
 
 ## Base as a skill (0.8.0)
 
+0.9.0: `/session:base sonnet` runs the session without opus: every opus slot (opus-low downscale, opus-medium / opus-high upscale, map rows) goes to sonnet-high, cheap slots stay sonnet-low, pairing `sonnet`. The main session may run any model (sonnet high included); forks copy its model and effort; early fact gathering goes to forks, bulk jobs to lean agents.
 0.8.4: response style (caveman ultra) stated in the base for every chat reply of the main session; the caveman plugin stays optional.
 0.8.3: main-session conduct (chat reply format, waiting on the user, claude-code-guide routing, tmux test sessions) and the bundled-skills routing map (`base/skill-routing.md`) moved into the base from the global CLAUDE.md.
 0.8.2: the base gains "Decision points" (when a downscale or upscale agent fires; minimum per code task: plan critique, closure review, test-suite job); the codex wrapper runs detached (`--detach <done-file>`), the shim polls the done-file, no second codex run for a job in flight.
