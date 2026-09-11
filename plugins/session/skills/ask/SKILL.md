@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Ask the user without blocking the session. Use when a question has timed out unanswered (askUserQuestionTimeout), when several decisions have piled up, or when the user is likely away. Writes a short Russian context document with the options and the chosen defaults, opens it in Plannotator in the background, continues on reversible defaults, and acts on the annotations when they arrive.
+description: Ask the user without blocking the session: when an AskUserQuestion timed out, several decisions piled up, or the user is likely away. Writes a short Russian options document, opens it in Plannotator in the background, continues on reversible defaults, acts on the annotations when they arrive.
 ---
 
 # Ask without blocking

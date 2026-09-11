@@ -1,6 +1,6 @@
 ---
 name: stage-executor
-description: Lean workflow stage agent for the test/script executor role. Runs the commands the task names and reports PASS/FAIL with the decisive lines. Reduced tool set, no model pin; the workflow script passes model and effort.
+description: Lean stage agent for the test and script executor role: runs the named commands, reports PASS/FAIL with the decisive lines. The workflow passes model and effort.
 tools: Bash, Read, Grep, Glob
 ---
 

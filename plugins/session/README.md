@@ -22,6 +22,33 @@ something) or `/session:review` (someone else's MR); then, optionally,
 
 ## Base as a skill (0.8.0)
 
+0.10.0 agents for heavy work (the main session keeps the lean tool set, one-agent `Workflow`
+launches with `agentType: session:<name>`, inputs by path):
+
+| agent | model / effort | tools | returns |
+|---|---|---|---|
+| `artifact-publisher` | opus / medium | Artifact, Read, Write, Bash | `URL: <url>`, at most 40 words |
+| `artifact-designer` | opus / medium | Artifact, DesignSync, Read, Write, Bash | `URL: <url>`, at most 40 words |
+| `web-researcher` | sonnet / medium | WebFetch, WebSearch, Read, Write | `FILE: <path>` plus a digest of at most 600 words with sources |
+| `code-reviewer` | sonnet / high | Read, Grep, Glob, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
+| `simplifier` | sonnet / medium | Read, Edit, Bash | one line per file plus the check result, at most 150 words |
+| `security-reviewer` | sonnet / high | Read, Grep, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
+
+Each agent names its skills in `skills:` (code-review, simplify, security-review, the
+artifact and design skills); those skills are `off` in the user `skillOverrides`, preload
+through the frontmatter was not verified, so every agent body carries its own rules and works
+without the preload.
+
+Artifact toggle: Artifact and DesignSync are denied per project (`permissions.deny` in
+`.claude/settings.local.json` of every directory under `~/projects`, git-ignored). To publish
+from a project: remove the two entries from that project's local file, start a new session,
+launch `artifact-publisher` or `artifact-designer`, put the entries back. Measured 2026-09-11:
+a deny edit is picked up by a running session at its next request and rewrites the whole
+prompt cache of that session (cache_read 0, about 16K smaller), so edit the file before
+starting the session you need it in, not while warm sessions run in that folder.
+
+0.10.0: agent descriptions trimmed to 50-100 tokens (details moved into the agent bodies), six new lean agents for heavy work (artifact-publisher, artifact-designer, web-researcher, code-reviewer, simplifier, security-reviewer), `session:reset-counter` hidden from the model, per-project Artifact and DesignSync deny toggle documented.
+
 0.9.1: the keep-warm ping is a `Monitor` instead of a cron: one `ping` event every 59
 minutes, just under the 1-hour prompt-cache TTL, so a long session pays half the ping
 turns of the old 30-minute cron. The base loads `Monitor` as its deferred tool, the reply
