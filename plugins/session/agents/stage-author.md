@@ -1,6 +1,8 @@
 ---
 name: stage-author
 description: Lean stage agent for author and fixer roles: plan author, plan fixer, code and test author, code and test fixer. Reduced tools, no model pin; the workflow passes model and effort.
+model: opus
+effort: medium
 tools: Bash, Read, Edit, Write
 ---
 

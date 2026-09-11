@@ -52,6 +52,18 @@ reset; run "$(payload x "$EXP_CODEX
 $BODY")"; check "expanded + 20KB body" '{"codex":"codex+sol"}'
 
 reset; run "$(payload x '/session:codex nonsense')"; check "invalid mode writes nothing" ''
+reset; run "$(payload x '/session:base c4')"; check "base c4" '{"base":"base-c4"}'
+reset; run "$(payload x '/session:base no-sonnet c4')"; check "base no-sonnet c4" '{"base":"base-c4-no-sonnet"}'
+reset; run "$(payload x '/session:base c5 no-fable no-sonnet')"; check "base c5 no-fable no-sonnet (canonical order)" '{"base":"base-c5-no-sonnet-no-fable"}'
+reset; run "$(payload x '/base no-opus')"; check "bare /base no-opus" '{"base":"base-no-opus"}'
+reset; run "$(payload x '/session:base c9')"; check "base c9 invalid" ''
+reset; run "$(payload x '/session:base sonnet')"; check "base sonnet invalid now" ''
+reset; run "$(payload x '/session:base no-sonnet no-opus no-fable')"; check "base all three submodes invalid" ''
+reset; run "$(payload x '/session:base c2 c3')"; check "base two classes invalid" ''
+EXP_BASE_ARGS='<command-message>session:base</command-message>
+<command-name>/session:base</command-name>
+<command-args>no-fable c2</command-args>'
+reset; run "$(payload x "$EXP_BASE_ARGS")"; check "expanded base no-fable c2" '{"base":"base-c2-no-fable"}'
 
 reset; run "$(payload x '/session:base')"; run "$(payload x '/session:reset-counter')"
 check "raw reset-counter deletes" ''

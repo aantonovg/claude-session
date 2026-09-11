@@ -1,6 +1,8 @@
 ---
 name: stage-executor
 description: Lean stage agent for the test and script executor role: runs the named commands, reports PASS/FAIL with the decisive lines. The workflow passes model and effort.
+model: sonnet
+effort: high
 tools: Bash, Read
 ---
 

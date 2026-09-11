@@ -1,6 +1,8 @@
 ---
 name: stage-researcher
 description: Lean stage agent for the fact researcher role: reads code, git history and docs named in the prompt, writes a notes file. No MCP; the workflow passes model and effort.
+model: sonnet
+effort: high
 tools: Bash, Read, Write
 ---
 

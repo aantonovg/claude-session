@@ -45,6 +45,7 @@ a deny edit is picked up by a running session at its next request and rewrites t
 prompt cache of that session (cache_read 0, about 16K smaller), so edit the file before
 starting the session you need it in, not while warm sessions run in that folder.
 
+0.11.0: delegation threshold 2 tool calls (was 3), a fork prompt under 100 tokens and a workflow agent prompt of 300-1000 tokens, workflow preferred over fork, slot by input volume (small main-model / medium opus / large sonnet), five classes as three slots (c3 default fable-low + opus-medium + sonnet-high), submodes `no-sonnet` / `no-opus` / `no-fable` with a fixed 35-cell table, `/session:base [submodes] [c1..c5]` in any order (`session:base sonnet` is now `no-fable no-opus`), agent frontmatter carries the c3 defaults, the pairing maps and `~/.claude/session-map.md` are no longer read; keep-warm monitor every 57 minutes (`sleep 3420`) instead of 59, which missed the one-hour cache window too often.
 0.10.3: base reads the caveman plugin's ruleset by path at start (ultra level); plugin disabled, no hook injection (the SessionStart hook injected 5220 bytes as hidden context, which the model followed poorly). If the file is missing the reply line says `no style file` and the session continues without one.
 
 0.10.2: agent tool sets cut to the role minimum (codex-proxy Bash only; artifact agents without Bash, text inputs only; web-researcher without Read; stage agents without Grep, Glob, ToolSearch, WebFetch), dead `skills:` preloads removed (the skills are off by `skillOverrides`, their rules stay inlined; re-adding a skill means re-adding the line), codex-proxy body trimmed from 15.8K to 6.7K chars with the permission-set rationale moved below, stage agents read skill files by path (no `Skill` tool in any plugin agent).
@@ -163,7 +164,7 @@ Measured on this Mac (2026-09-03, Claude Code 2.1.259) unless marked "docs".
 
 1. Pick model and effort before the first message. Never change them mid-session.
 2. A keep-warm `ping` in every long-lived session: the main session runs a `Monitor`
-   every 59 minutes, created by the base as its first tool call, just under the 1-hour
+   every 57 minutes, created by the base as its first tool call, just under the 1-hour
    cache TTL; teammates keep their own 30-minute crons, created from the spawn message.
 3. No `/clear` and no `/compact` mid-task until the task is finished or the context is
    clearly degraded (well above 500K). A warm compact is cheap (rule 7), but every compact
@@ -199,8 +200,8 @@ The original flow (August 2026, user-prefs 6.5-6.7) kept as the baseline; its sk
 lives in the base (`base/BASE.md`), section "Downscale and upscale of intelligence" (`session:workflow`
 no longer exists as a skill, the rules apply to every `Workflow` launched from any session). The main
 session does no work itself: it plans, launches `Workflow` scripts, verifies results and
-talks to the user. Every job is a cold workflow agent: one class and one pairing per
-workflow stamped into `meta.name` (`c<class>-<pairing>-<slug>`), every `agent()` with
+talks to the user. Every job is a cold workflow agent: one class per workflow, stamped
+with the submodes into `meta.name` (`c<class>[-<submodes>]-<slug>`), every `agent()` with
 explicit model and effort and a `<mod>-<eff>-` label prefix, 0-3 skills named by the main session at
 the end of each prompt, author → reviewer-debugger (→ fast tests) → fixer loops of 1-3
 cycles, `BLOCKED` stops the script, land stages self-contained. No forks, no plain
@@ -225,7 +226,7 @@ out of the main context, which is what makes the main session live longer.
 - Measured 2026-09-04: in normal auto mode a fork runs Bash with `$var`, `$(…)` and loops
   without any permission prompt; only in plan mode such a command prompts the user
   ("Contains simple_expansion"). Keep forks off Bash expansions during plan mode only.
-- Setup: a `ping` monitor every 59 minutes in the main session; forks need nothing.
+- Setup: a `ping` monitor every 57 minutes in the main session; forks need nothing.
 - Long waits (2026-09-05): every fork turn re-reads the whole parent prefix at cache-read
   price, so a polling fork on a 500K prefix costs about 0.5M read tokens per poll (18
   polls ≈ 9M); a call over 5 minutes rewrites the fork suffix; a fork re-invoked by a
@@ -291,8 +292,8 @@ the class, which costs a cold agent before any research); the calibration signal
 share of tasks whose class the critic later raises, visible in `--all-runs`.
 
 The cold stages run as a `Workflow` with one `agent()` each: the critic on
-`session:stage-critic` (Read and Write only; model and effort from the reviewer-debugger
-cell of the class row, at most 5 tool calls at medium, 3 at high, label
+`session:stage-critic` (Read and Write only; model and effort from the main-model slot
+of the class row, at most 5 tool calls at medium, 3 at high, label
 `<mod>-<eff>-critic`), the full path's decision review on `session:stage-reviewer` (same cell
 and budget, label `<mod>-<eff>-decision-review`; standard has a low fork check instead,
 fast none), and breadth research on `session:stage-researcher` when the stage 1 rule
@@ -512,28 +513,51 @@ summary. The plugin uses the file for the main session too (one mechanism for ma
 teammates, human-readable, restorable from any fresh session); a native warm `/compact`
 is equally good when the user wants to keep the same session id.
 
-## Roles, selection map and stages (used by `workflow`, `forks` and `pipeline`)
+## Roles, classes and stages (used by `workflow`, `forks` and `pipeline`)
 
 Six roles: **reviewer-debugger** (independent review of plans and code, root-causing
-failures; the strongest slot), **plan author/fixer** (writes the plan, applies review
+failures; the sonnet slot for a diff, the main-model slot for a document), **plan author/fixer** (writes the plan, applies review
 findings to it), **code/test fixer** (applies review findings to code and tests),
 **code/test author** (writes code and tests), **fact researcher** (collects facts, no
 analysis), **test/script executor** (builds, tests, scripts, deploys; mistakes are loud).
 
-The live map is per account: `~/.claude/session-map.md` (deployed by the user-prefs
-plugin of claude-settings from `hooks/session-map-<tier>.md`; the plugin ships
-`session-map.example.md` with the same layout). The skills read that file; the table
-below is the subscription default and the fallback when the file is missing.
+Three slots, one row per class; the class comes from `/session:base [no-sonnet] [no-opus]
+[no-fable] [c1..c5]` (default c3, any order, `/base` alias) and holds for the session. The
+main session's own model and effort are independent of the class; a fork always runs on
+the main session's model and effort. `~/.claude/session-map.md` and the pairing maps are
+no longer read (0.11.0).
 
-Selection map, pairing fable-opus (row = task class 1-5, column = role):
+| class | main-model slot (small input; document critique and generation) | opus slot (medium input; plan and code authors, fixers) | sonnet slot (large input; researchers, executors, bulk reviews) |
+|---|---|---|---|
+| c1 lowest | opus-low | opus-low | sonnet-low |
+| c2 below default | fable-low | opus-low | sonnet-medium |
+| c3 default | fable-low | opus-medium | sonnet-high |
+| c4 above default | fable-medium | opus-high | sonnet-high |
+| c5 highest | fable-high | opus-high | opus-high |
 
-| Class | Reviewer-debugger | Plan author/fixer | Code/test fixer | Code/test author | Fact researcher | Test/script executor |
-|---|---|---|---|---|---|---|
-| 1 very simple | opus-low | opus-low | opus-low | opus-low | opus-low | opus-low |
-| 2 simple | opus-medium | opus-low | opus-low | opus-low | opus-low | opus-low |
-| 3 medium | fable-low | opus-medium | opus-medium | opus-low | opus-low | opus-low |
-| 4 complex | fable-medium | fable-low | opus-medium | opus-medium | opus-low | opus-low |
-| 5 very complex | fable-high | fable-medium | opus-high | opus-medium | opus-low | opus-low |
+Roles onto slots: reviewer-debugger of a document (stage-reviewer, stage-critic, c3 default fable-low) → main-model
+slot; plan author/fixer, code/test author and fixer (stage-author, simplifier, artifact
+agents) → opus slot; fact researcher, test/script executor, bulk code and security review,
+web research (stage-researcher, stage-executor, code-reviewer, security-reviewer,
+web-researcher) → sonnet slot. Large input moves a role one slot down, never up. Fixed:
+waiter sonnet-low; codex-proxy and claude-code-guide haiku-medium. An upscale agent
+(critique or generation of one document) is the main-model slot of the workflow's own
+class; upscaling or downscaling is always the whole workflow at another class, chosen by
+the user or by the main session with a one-line reason, never per stage.
+
+Submodes rewrite the row; cells are main / opus / sonnet slot (`fab ops son`, `lo me hi`);
+all three submodes at once is an argument error:
+
+| class | none | no-sonnet | no-opus | no-fable | no-sonnet no-opus | no-sonnet no-fable | no-opus no-fable |
+|---|---|---|---|---|---|---|---|
+| c1 | ops-lo / ops-lo / son-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo | ops-lo / ops-lo / son-lo | fab-lo / fab-lo / fab-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo |
+| c2 | fab-lo / ops-lo / son-me | fab-lo / ops-lo / ops-lo | fab-lo / son-me / son-me | ops-me / ops-lo / son-me | fab-lo / fab-lo / fab-lo | ops-me / ops-lo / ops-lo | son-me / son-me / son-me |
+| c3 | fab-lo / ops-me / son-hi | fab-lo / ops-me / ops-me | fab-lo / son-hi / son-hi | ops-me / ops-me / son-hi | fab-lo / fab-me / fab-me | ops-me / ops-me / ops-me | son-me / son-hi / son-hi |
+| c4 | fab-me / ops-hi / son-hi | fab-me / ops-hi / ops-me | fab-me / fab-me / son-hi | ops-hi / ops-hi / son-hi | fab-me / fab-me / fab-me | ops-hi / ops-hi / ops-me | son-hi / son-hi / son-hi |
+| c5 | fab-hi / ops-hi / ops-hi | fab-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | son-hi / son-hi / son-hi |
+
+Agent frontmatter carries the c3 default (model, effort) as a fallback for direct
+launches; every `agent()` still passes the effective values explicitly.
 
 Full model ids (always the 1M variant on the subscription):
 

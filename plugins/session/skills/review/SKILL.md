@@ -17,9 +17,8 @@ the task and whether the work is verified; findings come from runs, not from rea
 0. Read `../pipeline/core.md` first. Then the pipeline Start steps, done here:
    1. The base already created the `ping` monitor and answers pings; nothing to start here.
       Limit restart: `core.md`, "Ping and limit restart".
-   2. Read `~/.claude/session-map.md` (fallback: `session-map.example.md` in the plugin,
-      fable-opus only). Pick the pairing row the user named, else the default pairing of
-      the account.
+   2. Take the class and submodes from the base reply line (default c3); every role
+      takes its slot value from the base's class table.
    5. Create the task directory and register it, one command:
       `D=~/.claude/projects/<encoded-cwd>/pipeline/<date>-<slug>; mkdir -p $D/evidence $D/reviews; P=$(dirname $(dirname $D)); echo $D > $P/pipeline/current; echo ${CLAUDE_SESSION_ID:-$(ls -t $P/*.jsonl | head -1 | xargs basename | sed 's/\.jsonl$//')} > $D/session`
       (`<encoded-cwd>` = the cwd with every character outside `A-Za-z0-9-` replaced by `-`).

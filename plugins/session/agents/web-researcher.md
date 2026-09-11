@@ -2,7 +2,7 @@
 name: web-researcher
 description: Searches the web and fetches pages for one named question, writes a short sourced summary to a file and returns its path plus a digest. Use instead of WebFetch or WebSearch in the main session.
 model: sonnet
-effort: medium
+effort: high
 tools: WebFetch, WebSearch, Write
 ---
 

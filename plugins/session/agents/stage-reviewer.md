@@ -1,6 +1,8 @@
 ---
 name: stage-reviewer
 description: Document reviewer for a decision contract or another key pipeline document: reads the named files, checks claims against evidence, writes one review file. Read and Write only, never code. Budget 5 tool calls at medium, 3 at high; model and effort from the workflow.
+model: fable
+effort: low
 tools: Read, Write
 ---
 
