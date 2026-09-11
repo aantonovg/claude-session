@@ -1,8 +1,8 @@
 ---
 name: codex-proxy
 description: Shim that runs one task on a codex model (luna, luna-reserve, terra, sol, astra) through the local codex CLI and returns a file reference. Launch only from a Workflow with agentType session:codex-proxy; model and effort come from the workflow call. Prompt is a header block only: CODEX TARGET, CODEX PROMPT FILE, optional CODEX CWD and CODEX OUTPUT FILE; task text and answer never pass through the shim.
-model: opus
-effort: low
+model: haiku
+effort: medium
 tools: Bash
 ---
 

@@ -61,9 +61,31 @@ mode_fmt() {
 }
 
 # Validates <skill> <args>; prints the rendered mode, or nothing when invalid.
+# "base" args: any subset of no-sonnet no-opus no-fable (not all three) plus at most
+# one class c1..c5, in any order; rendered as base[-cN][-no-sonnet][-no-opus][-no-fable].
+base_mode() {
+  local cls="" ns=0 no=0 nf=0 w
+  for w in $1; do
+    case "$w" in
+      c[1-5]) [ -n "$cls" ] && return 1; cls=$w ;;
+      no-sonnet) ns=1 ;;
+      no-opus) no=1 ;;
+      no-fable) nf=1 ;;
+      *) return 1 ;;
+    esac
+  done
+  [ $((ns + no + nf)) -eq 3 ] && return 1
+  printf 'base'
+  [ -n "$cls" ] && printf -- '-%s' "$cls"
+  [ $ns -eq 1 ] && printf -- '-no-sonnet'
+  [ $no -eq 1 ] && printf -- '-no-opus'
+  [ $nf -eq 1 ] && printf -- '-no-fable'
+  return 0
+}
+
 mode_valid() {
   case "$1" in
-    base) printf 'base' ;;
+    base) base_mode "$2" || true ;;
     codex)
       case "$2" in
         "") printf 'codex' ;;

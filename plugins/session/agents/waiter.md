@@ -2,6 +2,7 @@
 name: waiter
 description: Small fresh-context agent for long waits and polling: tmux sessions, JSONL transcripts, CI, deploys, remote queues. Keeps waits out of the main session and forks. Bash and Read only, pinned to sonnet.
 model: sonnet
+effort: low
 tools: Bash, Read
 ---
 

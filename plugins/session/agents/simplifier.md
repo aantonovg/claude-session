@@ -1,7 +1,7 @@
 ---
 name: simplifier
 description: Applies reuse, simplification and efficiency cleanups to the changed files named by the caller and returns a diff summary. Quality only, no bug hunting.
-model: sonnet
+model: opus
 effort: medium
 tools: Read, Edit, Bash
 ---

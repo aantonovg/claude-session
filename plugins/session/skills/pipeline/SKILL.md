@@ -19,9 +19,8 @@ inherit them; the only stages on another model are the clean-context ones below 
    document cycle, ping and limit restart). Its rules are part of this mode.
 1. The base already created the `ping` monitor and answers pings; nothing to start here.
    Limit restart: `core.md`, "Ping and limit restart".
-2. Read `~/.claude/session-map.md` (fallback: `session-map.example.md` in the plugin,
-   fable-opus only). Pick the pairing row the user named, else the default pairing of
-   the account.
+2. Take the class and submodes from the base reply line (default c3); every role
+   takes its slot value from the base's class table.
 3. Reply with one line: "Pipeline mode on, ping monitor <task id>; forks + cold critic."
 4. When the task arrives: propose its class (1-5, criteria in the README) and the path
    (class 1-2 fast, 3-4 standard, 5 or weak oracle or the word "full" from the user →

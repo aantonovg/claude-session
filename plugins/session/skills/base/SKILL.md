@@ -8,18 +8,20 @@ disable-model-invocation: true
 
 ## Hard rules, checked before every tool call
 
-1. The main session never executes a job of 3 or more tool calls itself: it hands it to a fork (count every Read, Edit, Write, Grep, Bash and MCP call).
-2. The main session's own tool calls per turn: at most 2, except the commit and the launch of agents.
-3. Writing a file over 40 lines is a fork.
-4. Running tests, builds, servers or browsers is a fork.
-5. A job that needs 3K+ tokens of input is a fork.
-6. When in doubt, fork.
+1. The main session never executes a job of 2 or more tool calls itself: it hands it to a fork or a workflow (count every Read, Edit, Write, Grep, Bash and MCP call).
+2. The main session's own tool calls per turn: at most 1, except the Start turn (ToolSearch, Monitor, the style-file path resolve and its Read), the commit, and the launch of forks and workflows.
+3. Writing a file over 40 lines is a fork or a workflow agent.
+4. Running tests, builds, servers or browsers is a fork or a workflow agent.
+5. Input volume picks the slot of a cold agent (section "Classes, slots and submodes"): small stays on the main model, medium goes to the opus slot, large to the sonnet slot; unknown counts as large.
+6. When in doubt, delegate; prefer a workflow over a fork.
 
-One main session plus fork subagents. A fork inherits the whole conversation and the
-cached prefix, so spawning one is nearly free; its tool calls stay out of the main
-context, which is what keeps the main session small and warm. The main session may
-run any model and effort (fable, opus or sonnet high alike); a fork always runs on the
-main session's own model and effort, there is no mixing.
+One main session plus fork subagents and cold workflow agents. A fork inherits the whole
+conversation and the cached prefix, so spawning one is nearly free to start; its tool
+calls stay out of the main context, which is what keeps the main session small and warm.
+The main session may run any model and effort (fable, opus or sonnet high alike); a fork
+always runs on the main session's own model and effort, there is no mixing. A workflow
+agent runs on a slot model of the session's class (section "Classes, slots and
+submodes"), independent of the main session's model.
 
 ## Start (do this now)
 
@@ -27,23 +29,28 @@ This skill is invoked by the user as the first prompt of a session and again aft
 `/compact`. On that turn: if `Monitor` is not among the loaded tools, load it first
 with `ToolSearch` (`select:Monitor`); the same for any deferred tool the base names
 (`TaskStop`, `TaskList`). Then the first tool call `Monitor` with
-`command: "while true; do sleep 3540; echo ping; done"` (this exact command),
-`description: "keep-warm ping every 59m"`, `persistent: true`, `timeout_ms: 3600000`,
-unless a keep-warm ping monitor already exists in this session; 59 minutes because the
-main session's prompt cache has a 1-hour TTL, so one ping just under the hour keeps it
-warm at half the rate of the older 30-minute cron. The reply line
-`Base on, ping monitor <task id>; forks for every 3+ call job` is printed once, only
-after the monitor exists; there is no variant of this line without a task id. With the
-argument `sonnet` (`/session:base sonnet`) the session runs in the sonnet mode (section
-"Mode: sonnet") for its whole life and the reply line is `Base on (sonnet), ping monitor
-<task id>; forks for every 3+ call job`; without the argument nothing changes. Reply to
+`command: "while true; do sleep 3420; echo ping; done"` (this exact command),
+`description: "keep-warm ping every 57m"`, `persistent: true`, `timeout_ms: 3600000`,
+unless a keep-warm ping monitor already exists in this session; 57 minutes because the
+main session's prompt cache has a 1-hour TTL and a ping at 59 minutes missed the window
+too often (scheduler jitter plus the request itself), so 57 keeps it warm at about half
+the rate of the older 30-minute cron. Arguments, in any
+order: `/session:base [no-sonnet] [no-opus] [no-fable] [c1|c2|c3|c4|c5]`; `/base` is the
+same command. Default `c3`, no submodes; more than one class, an unknown word, or all
+three submodes together is an error: the reply line says `invalid arguments` and the
+session keeps its previous class and submodes. The class and submodes hold for the
+session's whole life (section "Classes, slots and submodes"). The reply line
+`Base on (c3), ping monitor <task id>; forks or workflows for every 2+ call job` is
+printed once, only after the monitor exists; with submodes the parenthesis lists them
+after the class in the order no-sonnet, no-opus, no-fable (`Base on (c4, no-sonnet,
+no-fable), …`); there is no variant of this line without a task id. Reply to
 every `ping` with one word, whether it arrives as a monitor event carrying the line
 `ping` or as a user message. Exception: when the context shows that the
 previous work turn was cut off by the subscription limit or an API error (an error line
 where an answer should be, a fork or background job launched and never returned, a step
 announced and not done), the ping is the restart signal: answer `pong` and in the same
 turn resume that step from where it stopped (relaunch the fork, re-arm the wait), no
-other output. The second tool call of that turn is `Read` on the caveman plugin's ruleset, path
+other output. The next tool call of that turn is `Read` on the caveman plugin's ruleset, path
 resolved at that moment with
 `python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")))["plugins"]["caveman@caveman"][0]["installPath"]+"/skills/caveman/SKILL.md")'`
 (the install path of the plugin, so two cache copies cannot be confused), and the
@@ -107,20 +114,39 @@ need a second `Enter` to submit. Kill the tmux session when done. Measured 2026-
 two sonnet sessions warmed with one `ping` each, a memory write in one did not
 invalidate the other's cache.
 
-## When to fork
+## When to delegate
 
-Hand a job to a fork when it needs 3 or more tool calls in total (every Read, Edit,
-Write, Grep and Bash counts, reads included), or when it would bring 3K or more tokens
-of input into the context (reading several files, log or search sweeps, running
-tests, tmux-driven checks, verification passes). "Small scope" is not a reason to stay
-inline: count the calls. Writing a function plus its tests plus running them is
-always a fork. Do only tiny things yourself: one read, one edit, one command, the
+Hand a job to a fork or a workflow when it needs 2 or more tool calls in total (every
+Read, Edit, Write, Grep and Bash counts, reads included). "Small scope" is not a reason
+to stay inline: count the calls. Writing a function plus its tests plus running them is
+always delegated. Do only single things yourself: one read, one edit, one command, the
 commit, the report.
 
-- A fork is context-aware and cheap to start; a fresh lean agent starts cold. The
-  early fact-gathering steps of a task go to forks by preference; lean agents (small
-  start context, reduced tools) take the bulk jobs after that.
-- Independent jobs go to parallel forks in one message (one `Agent` call each).
+Workflow or fork. Prefer a workflow: a cold agent on a slot model is cheaper than a
+fork, whose every turn re-reads the main prefix on the main session's model (usually
+the most expensive one). A fork only when (a) the job is general-purpose, many skills
+and tools, and explaining it cold would cost more than the fork's context reads, or (b)
+the input is small and lives in this conversation. A fork always runs on the main
+session's own model and effort.
+
+Input volume picks the slot of a cold agent (section "Classes, slots and submodes"):
+small = up to 3 files or under 3K tokens of input, the main-model slot (a fork is
+allowed here too); medium = 4-10 files or 3-15K tokens, the opus slot; large = more
+than 10 files, over 15K tokens, or a size unknown in advance (logs, test runs, sweeps,
+tmux-driven checks, verification passes), the sonnet slot. Unknown counts as large.
+Haiku runs only proxy agents (codex-proxy, claude-code-guide), never work.
+
+Prompt size. A fork prompt is under 100 tokens: the fork has the whole conversation, so
+the prompt names the job, the files it owns and the return format, nothing else. A
+workflow agent prompt is 300-1000 tokens, scaled to the job: inputs by absolute path,
+never pasted; acceptance criteria; commands; return format. Over 1000 tokens means the
+job should be split or the inputs become a file the agent reads.
+
+- A fork is context-aware and cheap to start; a fresh lean agent starts cold (5-15K
+  after the 0.10.2 trims). Facts that live only in this conversation go to a fork; the
+  bulk jobs go to lean agents on the slot models.
+- Independent jobs go to parallel forks in one message (one `Agent` call each), or
+  into one workflow (`parallel`).
 - The main session does the writing that matters for continuity: plan files, final
   edits when they are small, commits, the report to the user. A fork may edit files
   when the edit is the job; say which files it owns so parallel forks do not collide.
@@ -132,12 +158,11 @@ commit, the report.
   once, write at once; never a gap over 3 minutes between two tool calls (the suffix
   expires at 5; measured: a review fork paused > 5 min before its Write, 53K rewritten).
 - Repository research, test writing, test and build runs, code review of a finished
-  diff and mechanical sweeps go to a downscale agent by default (sonnet-low /
-  opus-low; luna / terra under `session:codex`; section "Downscale and upscale of
-  intelligence"). A fork takes such a job only on strong doubt that a fresh agent
-  copes: high complexity of the job itself, or the job depends on an understanding
-  that lives only in this conversation. The doubt is named in one line before the
-  fork launch.
+  diff and mechanical sweeps are large-volume jobs: the sonnet slot by default (luna /
+  terra under `session:codex`). A fork takes such a job only on strong doubt that a
+  fresh agent copes: high complexity of the job itself, or the job depends on an
+  understanding that lives only in this conversation. The doubt is named in one line
+  before the fork launch.
 
 ## Fork prompt template
 
@@ -146,7 +171,7 @@ The first line sets the role, the last line the return format:
 ```
 You are the <role>: <one-line goal>.            # reviewer-debugger, code/test author, ...
 Style: caveman ultra, plain English only; the return value is data.
-<the task, the files, the acceptance criteria>
+<the task, the files it owns, the acceptance criteria; under 100 tokens in total>
 Return only <facts | a diff summary | PASS/FAIL with the decisive lines>, at most <N> words.
 Do not paste file contents or raw logs. On a permission denial stop and return BLOCKED: <action>.
 Read these skill files with the Read tool before starting, in this order: <resolved SKILL.md paths>.   # or: No skills needed for this step.
@@ -204,45 +229,97 @@ suffix; the parent prefix it inherited stays in the parent's 1-hour cache.
 
 ## Upscale agents
 
-Combos: `opus-medium`, `fable-medium` (at most 5 tool calls), `opus-high`, `fable-high`
-(at most 3 tool calls); `sol` or `astra` (the mode's set only) in the same slots when
-`session:codex` is on; `+sol` / `+astra` pair the Claude agent with the codex one at the
-same effort for review.
+An upscale agent runs on the main-model slot of the workflow's own class (fable-lo at
+c3, fable-me at c4, fable-hi at c5, ops-lo at c1, fab-lo at c2), submodes applied; budget
+5 tool calls when the effective effort is medium or lower, 3 at high or above. The class
+is one setting for the whole workflow: the user names it, or the main session picks a
+higher class for the whole workflow when the task calls for it (a critical change, high
+uncertainty, or the user's word justify c4 or c5) and says so in `meta.name`; there is
+no per-stage step up or down. `sol` or
+`astra` (the mode's set only) in the same place when `session:codex` is on; `+sol` /
+`+astra` pair the Claude agent with the codex one at the same effort for review.
 Two jobs: (1) critique of one complex fact set given by path (research ledger,
 verification plan, decision contract): hypotheses of what may go wrong, no verification
 of them; (2) generation of a key document (verification plan from a research ledger,
 decision contract). The session launches them at its decision points on its own
 judgment; the user may also name one ("high-ревью", "через sol"). After an upscale
-critique a fork or a downscale agent checks the hypotheses. Agent types:
+critique a fork or a sonnet-slot agent checks the hypotheses. Agent types:
 `session:stage-reviewer` for critique, `session:stage-author` for generation,
 `codex-proxy` for sol / astra. Never tool-heavy code review, never implementation; code
 review only when the change is critical, the uncertainty is high and the whole change
-fits one diff (rare). Launched through `Workflow` (`label: "ops-hi-critique"`,
-`"fab-me-generate"`), inputs passed by path, output written to a file, the main session
-receives the path and the last line. Budget stated in the prompt: at most 5 tool calls
-at medium, 3 at high or xhigh, all inputs read in one call, one write; when the budget
+fits one diff (rare). Launched through `Workflow` (`label: "<mod>-<eff>-critique"`,
+`"<mod>-<eff>-generate"` from the effective values), inputs passed by path, output
+written to a file, the main session receives the path and the last line. Budget stated
+in the prompt: at most 5 tool calls at medium or lower, 3 at high or above, all inputs
+read in one call, one write; when the budget
 runs out the agent returns `partial` with what it has. In pipeline mode the launch gets
 a ledger row like any cold stage.
 
-## Downscale and upscale of intelligence
+## Classes, slots and submodes
+
+Three slots, one row per class. The class is set at `/session:base` and holds for the
+session; every workflow's `meta.name` carries it with the submodes
+(`c<class>[-<submodes>]-<slug>`: `c3-fix-retry-logic`, `c4-no-sonnet-fix-retry-logic`).
+The main session's own model and effort are independent of the class (a fable-high main
+may run c1 workflows); a fork always runs on the main session's model and effort, never
+on a slot.
+
+| class | main-model slot (small input; critique or generation of one document) | opus slot (medium input; plan and code authors, fixers) | sonnet slot (large input; researchers, executors, bulk reviews) |
+|---|---|---|---|
+| c1 lowest | opus-low | opus-low | sonnet-low |
+| c2 below default | fable-low | opus-low | sonnet-medium |
+| c3 default | fable-low | opus-medium | sonnet-high |
+| c4 above default | fable-medium | opus-high | sonnet-high |
+| c5 highest | fable-high | opus-high | opus-high |
+
+Roles onto slots: reviewer-debugger of a document (`stage-reviewer`, `stage-critic`,
+upscale critique and generation) → main-model slot; plan author/fixer, code/test author
+and fixer (`stage-author`, `simplifier`, `artifact-publisher`, `artifact-designer`) →
+opus slot; fact researcher, test/script executor, bulk code and security review, web
+research (`stage-researcher`, `stage-executor`, `code-reviewer`, `security-reviewer`,
+`web-researcher`) → sonnet slot. Input volume moves a role one slot down when its input
+is large (an author over 10 files runs on the sonnet slot), never up. Fixed outside the
+classes: `waiter` sonnet-low; `codex-proxy` and `claude-code-guide` haiku-medium.
+
+Submodes rewrite the row after the class is chosen. The table below is the rule; it was
+built from the single maps no-sonnet (sonnet-high → opus-medium, sonnet-medium →
+opus-low, sonnet-low → opus-low), no-opus (opus-high → fable-medium, opus-medium →
+sonnet-high, opus-low → sonnet-medium) and no-fable (fable-high → opus-high,
+fable-medium → opus-high, fable-low → opus-medium); two submodes leave one model, and no
+cell ever lands on a banned model. All three submodes at once is an argument error.
+Cells are main / opus / sonnet slot; `fab ops son`, `lo me hi`.
+
+| class | none | no-sonnet | no-opus | no-fable | no-sonnet no-opus | no-sonnet no-fable | no-opus no-fable |
+|---|---|---|---|---|---|---|---|
+| c1 | ops-lo / ops-lo / son-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo | ops-lo / ops-lo / son-lo | fab-lo / fab-lo / fab-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo |
+| c2 | fab-lo / ops-lo / son-me | fab-lo / ops-lo / ops-lo | fab-lo / son-me / son-me | ops-me / ops-lo / son-me | fab-lo / fab-lo / fab-lo | ops-me / ops-lo / ops-lo | son-me / son-me / son-me |
+| c3 | fab-lo / ops-me / son-hi | fab-lo / ops-me / ops-me | fab-lo / son-hi / son-hi | ops-me / ops-me / son-hi | fab-lo / fab-me / fab-me | ops-me / ops-me / ops-me | son-me / son-hi / son-hi |
+| c4 | fab-me / ops-hi / son-hi | fab-me / ops-hi / ops-me | fab-me / fab-me / son-hi | ops-hi / ops-hi / son-hi | fab-me / fab-me / fab-me | ops-hi / ops-hi / ops-me | son-hi / son-hi / son-hi |
+| c5 | fab-hi / ops-hi / ops-hi | fab-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | son-hi / son-hi / son-hi |
+
+Every `agent()` carries the effective slot value explicitly as `model` and `effort`;
+the agent file's frontmatter holds the c3 default as a fallback for direct launches
+only; the label prefix `<mod>-<eff>-` is built from the effective values.
 
 What to launch when:
 
 | need | launch | model, effort |
 |---|---|---|
-| work that depends on this conversation, or strong doubt that a fresh agent copes (named in the launch line); cheap start, costlier execution | fork | main session model and effort |
-| downscale: bulk tool-heavy work (repository research, tests and the verification layer, code review), many tool calls per agent expected | `Workflow`, lean agent | `sonnet-low`; `opus-low` when the main session is fable or a review needs a fresh context (`sonnet-high` in the sonnet mode); under `session:codex` `luna-high` replaces sonnet-low, `terra-high` replaces opus-low |
-| upscale: critique of one fact set or generation of a key document (section above) | `Workflow`, `session:stage-reviewer` / `session:stage-author` | `opus-medium`, `fable-medium` (5 tool calls); `opus-high`, `fable-high` (3 tool calls); `sonnet-high` for both in the sonnet mode; sol / astra under `session:codex` |
+| a job whose facts live only in this conversation, or a general-purpose job that is costlier to explain cold than to run warm | fork | main session model and effort |
+| small input (up to 3 files, under 3K tokens) | fork, or one-agent `Workflow` | main-model slot |
+| medium input (4-10 files, 3-15K tokens): plan or code authoring, fixes | `Workflow` | opus slot |
+| large or unknown input: repository research, tests and the verification layer, code review, sweeps, logs | `Workflow`, lean agent | sonnet slot (`luna-high` / `terra-high` under `session:codex`) |
+| critique of one fact set or generation of a key document (section above) | `Workflow`, `session:stage-reviewer` / `session:stage-author` | main-model slot of the workflow's class; sol / astra under `session:codex` |
 | long wait with judgment | waiter, one-agent `Workflow` | sonnet-low |
 
-Every downscale and upscale agent starts through `Workflow`: independent agents are
-batched into ONE workflow (`parallel`); a relay between steps (research → critique →
-check) is wired as `pipeline()` stages of the same workflow; every `agent()` carries
-explicit model and effort and the `<mod>-<eff>-` label.
+Every cold agent starts through `Workflow`: independent agents are batched into ONE
+workflow (`parallel`); a relay between steps (research → critique → check) is wired as
+`pipeline()` stages of the same workflow; every `agent()` carries explicit model and
+effort and the `<mod>-<eff>-` label.
 
 Heavy tools live in agents, not in the main session: web pages through `web-researcher`
-(`son-me-web-<job>`), a diff review through `code-reviewer` (`son-hi-review-<job>`), cleanup
-passes through `simplifier` (`son-me-simplify-<job>`), a security pass through
+(`son-hi-web-<job>`), a diff review through `code-reviewer` (`son-hi-review-<job>`), cleanup
+passes through `simplifier` (`ops-me-simplify-<job>`), a security pass through
 `security-reviewer` (`son-hi-security-<job>`), a published page through `artifact-publisher`
 or `artifact-designer` (`ops-me-artifact-<job>`). All are one-agent `Workflow` launches with
 `agentType: session:<name>`, explicit model and effort, inputs by path. The main session never
@@ -250,26 +327,12 @@ calls WebFetch, WebSearch or Artifact itself. Artifact and DesignSync are denied
 `.claude/settings.local.json`; an artifact job needs those two entries removed in that project
 and a new session.
 
-## Mode: sonnet
-
-On `/session:base sonnet`: no opus anywhere in the session. Every slot the base assigns
-to opus (the opus-low downscale agent, opus-medium and opus-high upscale agents, the
-"opus-low when the main session is fable" rule, the opus rows of the workflow selection
-map) runs on `sonnet-high`; the cheap slots stay `sonnet-low`. Lean cold agents pick by
-role the way the opus-low / sonnet-low split does: reviewer-debugger, plan author and
-fixer, code/test fixer, upscale critique and generation → `sonnet-high`; fact
-researcher, test/script executor, test runs, mechanical sweeps → `sonnet-low`. Upscale
-budgets stay (5 tool calls at medium, 3 at high). Labels `son-hi-` / `son-lo-`; workflow
-`meta.name` pairing `sonnet` (`c3-sonnet-<slug>`). Forks run on the main session's model
-and effort as always (a sonnet high main gives `son-hi-` forks). Codex modes unchanged.
-
 ## Decision points
 
 When each tier fires. These rules hold in every session, on top of the "When to fork"
 counts.
 
-Downscale agent (`sonnet-low` / `opus-low`; `luna-high` / `terra-high` under
-`session:codex`), ALWAYS for:
+Sonnet-slot agent (`luna-high` / `terra-high` under `session:codex`), ALWAYS for:
 
 - repository research over more than 3 files;
 - writing a test suite or the verification layer;
@@ -281,8 +344,8 @@ A fork takes such a job only on strong doubt that a fresh agent copes (high comp
 of the job, or an understanding that lives only in this conversation), and the launch
 line names that doubt.
 
-Upscale agent (`opus-medium` / `fable-medium`, 5 tool calls; `opus-high` / `fable-high`,
-3 tool calls; the mode's set under `session:codex`; a paired review under `+sol` /
+Upscale agent (main-model slot of the workflow's class, 5 tool calls at medium or lower, 3 at
+high or above; the mode's set under `session:codex`; a paired review under `+sol` /
 `+astra`), ALWAYS at these points:
 
 - before implementation starts: a critique of the plan or contract file;
@@ -292,33 +355,38 @@ Upscale agent (`opus-medium` / `fable-medium`, 5 tool calls; `opus-high` / `fabl
 
 One upscale call per point, inputs by path, output to a review file
 (`reviews/<point>.md` in the task dir, else `$TMPDIR/<cwd basename>-reviews/`); a fork
-or a downscale agent then checks the hypotheses the review raised.
+or a sonnet-slot agent then checks the hypotheses the review raised.
 
 Minimum for every base task that produces code: the two upscale points (plan critique,
-closure review) and the downscale test-suite job. The only exemption: a change to a
+closure review) and the sonnet-slot test-suite job. The only exemption: a change to a
 single file under 50 lines. Under `session:codex` the same points map to the mode's set
 (`astra` → `astra-medium` / `astra-high`; `+sol` → the paired review).
 
 The rules below came verbatim from the August workflow mode (`session:workflow`, folded
 into this base 2026-09-06) and apply to every `Workflow` launched from any session.
 
-### One class and one pairing per workflow
+### One class per workflow
 
-Assess the task once on the 5-class scale (1 very simple … 5 very complex; criteria in
-the README) and pick the pairing once. Stamp both into `meta.name` as
-`c<class>-<pairing>-<slug>` (`c3-fable-opus-fix-retry-logic`); a running workflow must
-always show what it was sized for. Every role takes its combo from that single row of
-the pairing's map: the role picks the column, the class picks the row. Never mix rows,
-never pick a combo ad hoc for one agent, never mix pairings inside a workflow. Switch
-the pairing only on the user's word or a real availability limit, and say so.
+The class comes from `/session:base` (default c3); the user may name another class for
+one task, and the workflow's `meta.name` stamps it with the submodes
+(`c<class>[-<submodes>]-<slug>`, `c3-fix-retry-logic`, `c4-no-sonnet-fix-retry-logic`),
+so a running workflow always shows what it was sized for. Every role takes its value
+from that single row of the class table: the role picks the slot, the class picks the
+row, the submodes rewrite it. Never mix rows, never pick a value ad hoc for one agent.
+Upscaling or downscaling is always the whole workflow at another class: the main session
+picks c4 or c5 for a critical change or high uncertainty, c1 or c2 for mechanical work,
+and states the reason in one line at launch; the user's word overrides.
 
-Six roles, one column each: reviewer-debugger (strongest slot), plan author/fixer,
-code/test fixer, code/test author, fact researcher, test/script executor (cheapest).
+Six roles, three slots: reviewer-debugger (main-model slot for documents; the sonnet
+slot for bulk code review), plan author/fixer and code/test fixer and code/test author
+(opus slot), fact researcher and test/script executor (sonnet slot, the cheapest).
 
 ### Every `agent()` call
 
-- `model` and `effort` set explicitly in opts, never inherited; `agentType` launches
-  (`claude-code-guide`) too. Full ids come from the session map (`claude-opus-5[1m]`).
+- `model` and `effort` set explicitly in opts as the effective slot values (class row,
+  then submodes), never inherited; the agent file's frontmatter holds the c3 default as
+  a fallback for direct launches only; `agentType` launches (`claude-code-guide`) too.
+  Full ids in the README (`claude-opus-5[1m]`).
 - Label starts with the `<mod>-<eff>-` prefix: `fab-hi-review-plan`, `ops-lo-fast-tests`
   (`fab`, `ops`, `son`, `hai`; `lo`, `me`, `hi`, `xh`, `mx`). The UI shows the model
   but not the effort; the prefix is the only place the effort is visible.
@@ -336,7 +404,7 @@ code/test fixer, code/test author, fact researcher, test/script executor (cheape
   decisive lines, with a word limit; no file contents, no raw logs.
 
 Check a saved script before every launch: explicit model+effort, `<mod>-<eff>-` label prefixes, the
-two skill lines, class and pairing in `meta.name`; fix first, then launch. After editing
+two skill lines, the class and submodes in `meta.name`; fix first, then launch. After editing
 a saved script launch it by `scriptPath`, not `name` (name resolution can serve a stale
 copy). Load `workflow-authoring` in the main session before writing a script.
 
@@ -404,7 +472,7 @@ main session launches the waiter from it (or arms a Monitor when no judgment is 
 Launch template:
 
 ```
-Workflow(script: `export const meta = { name: 'c1-<pairing>-wait-<job>', description: 'waiter: <job>', phases: [{ title: 'Wait' }] }
+Workflow(script: `export const meta = { name: 'c<class>[-<submodes>]-wait-<job>', description: 'waiter: <job>', phases: [{ title: 'Wait' }] }
 phase('Wait')
 return await agent("Wait until <condition>. Poll with <command shape> every ~120 s, each call under 150 s, total budget <N> minutes. Dialog rules: <what may be approved, what not>. Return <facts wanted>, at most <N> words. Never print secrets.",
   { agentType: 'session:waiter', model: 'sonnet', effort: 'low', label: 'son-lo-wait-<job>', phase: 'Wait' })`)
@@ -460,21 +528,21 @@ Claude sources before the run.
 
 - No plain subagents at all (`general-purpose`, `Explore`, custom agent types through
   `Agent`), no named teammates. `Agent` only with `subagent_type: "fork"`; `Workflow`
-  for every cold agent (downscale, upscale, waiter, codex-proxy), one class and one
-  pairing per workflow.
-- No inline job of 3+ tool calls in the main session (measured 2026-09-06: an inline
+  for every cold agent (slot agents, upscale, waiter, codex-proxy), one class per
+  workflow.
+- No inline job of 2+ tool calls in the main session (measured 2026-09-06: an inline
   session wrote 19 Bash calls and produced the smallest test suite).
 - No polling loops, waits or `run_in_background` in a fork; a fork starts long jobs
   detached with a done-file, the main session waits (Monitor or its own background
   Bash), a waiter only when the wait needs judgment.
 - No `agent()` without explicit model and effort, no label without the `<mod>-<eff>-` prefix, no prompt
-  without the two skill lines, no `meta.name` without class and pairing.
+  without the two skill lines, no `meta.name` without the class and the submodes.
 - No fourth review cycle: stop and report.
 - No `/model`, `/effort`, plugin changes or `/compact` in the middle of a task.
 - Do not switch mode on your own; if the task outgrows the base, say so to the user.
 
 ## Reference
 
-Cache facts, prices, class criteria, the selection map and the role/stage tables:
-`plugins/session/README.md` (sections "Mode 1 — Workflow" and "Roles, selection map and
+Cache facts, prices, class criteria, the class table and the role/stage tables:
+`plugins/session/README.md` (sections "Mode 1 — Workflow" and "Roles, classes and
 stages").
