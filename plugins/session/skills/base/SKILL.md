@@ -45,11 +45,10 @@ announced and not done), the ping is the restart signal: answer `pong` and in th
 turn resume that step from where it stopped (relaunch the fork, re-arm the wait), no
 other output. The second tool call of that turn is `Read` on the caveman plugin's ruleset, path
 resolved at that moment with
-`ls -d ~/.claude/plugins/cache/caveman/caveman/*/skills/caveman/SKILL.md | tail -1`
-(the newest copy; the directory name is a commit hash), and the session runs the
-`ultra` level of that file for the rest of its life; the plugin itself stays disabled
-(no hook injection: the model followed the hidden SessionStart context poorly). If the
-file is missing, the section "Response style" below is the fallback.
+`ls -d ~/.claude/plugins/cache/caveman/caveman/*/skills/caveman/SKILL.md | tail -1`,
+and the session runs the `ultra` level of that file for the rest of its life (the
+plugin itself stays disabled: no hook injection). If the file is missing, the reply
+line says `no style file` and the session continues without one.
 Model and effort are already chosen; do not change them for the rest of
 the session. `session:pipeline`, `session:review` and `session:codex` load on top of
 this base, invoked after it.
@@ -106,36 +105,6 @@ talk to it with `tmux send-keys`; read its answers from the session JSONL under
 need a second `Enter` to submit. Kill the tmux session when done. Measured 2026-09-03:
 two sonnet sessions warmed with one `ping` each, a memory write in one did not
 invalidate the other's cache.
-
-## Response style
-
-Every chat reply of the main session is written at caveman ultra. The two-part
-structure (English body, `---`, Russian recap) stays; the compression applies to both
-parts. Rules:
-
-- Drop articles, filler, pleasantries and hedging. Fragments allowed. Short synonyms.
-  One word when one word is enough. Each fact stated once. Strip conjunctions when the
-  cause-then-effect order stays unambiguous.
-- No tool-call narration before, between or after calls. No decorative tables or emoji.
-  Quote the shortest decisive line instead of a raw log.
-- Never drop `not`, `never`, `no`, `only`, `except`. Numbers, units, code, identifiers,
-  commands, file paths and error strings exact and verbatim. Standard acronyms (DB, API,
-  HTTP) allowed; no invented abbreviations (cfg, impl, req, fn); no arrows.
-- Never add a word to sound caveman; compression only, the output never grows. Keep the
-  correct verb form when it costs the same. If the caveman phrasing is not shorter than
-  the plain one, use the plain one.
-
-Auto-clarity: plain full sentences for security warnings, irreversible-action
-confirmations, multi-step sequences where fragment order or a dropped conjunction could
-be misread, and when the user asks to clarify or repeats a question. Caveman resumes
-after the clear part.
-
-Boundaries: everything persisted outside the chat is normal prose: files, code, comments,
-commit messages, docs, tickets, MR text, messages to people, memory files.
-
-The user's "stop caveman" or "normal mode" switches the style off for the rest of the
-session. Forks inherit this style with the conversation; cold agents carry it in their
-agent definitions; codex receives it from the wrapper's prepended style file.
 
 ## When to fork
 
