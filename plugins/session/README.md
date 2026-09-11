@@ -11,8 +11,6 @@ skills: read it before changing any of them.
 | `session:pipeline` | on top of the base: a staged pipeline with gates (research, critic, decision, verification, implementation, closure check); shared rules in `skills/pipeline/core.md` | forks + lean cold critic (and cold researcher) |
 | `session:review` | on top of the base: verification-first review of someone else's MR (reads `skills/pipeline/core.md`) | forks + cold researcher |
 | `session:codex` | on top of the base (pipeline or review may also be on): codex heavy axis (sol, astra) and executor axis (luna, terra) | `session:codex-proxy` one-agent workflows (agent, wrapper and style ship with the plugin) |
-| `session:pool-workflow-unstable` | workflows over a pool of warm worker sessions run by the `poold` daemon; each stage a haiku `pool-proxy` (experimental, daemon currently stopped) | pool-proxy agents + forks |
-| `session:pool-unstable` / `session:pool-stop-unstable` | show or start the pool by hand / park it | - |
 | `session:ask` | ask without blocking: questions doc in Russian, Plannotator in the background, continue on reversible defaults (the model may invoke this one) | - |
 
 Loading order (2026-09-06, 0.8.0): the user invokes `/session:base` as the first prompt
@@ -47,13 +45,15 @@ a deny edit is picked up by a running session at its next request and rewrites t
 prompt cache of that session (cache_read 0, about 16K smaller), so edit the file before
 starting the session you need it in, not while warm sessions run in that folder.
 
+0.10.1: dropped unstable pool tooling and dead skills: `session:pool-workflow-unstable`, `session:pool-unstable`, `session:pool-stop-unstable`, the `pool-proxy` agent, the `pool/` daemon and CLI, and the user agent `spec-critic`.
+
 0.10.0: agent descriptions trimmed to 50-100 tokens (details moved into the agent bodies), six new lean agents for heavy work (artifact-publisher, artifact-designer, web-researcher, code-reviewer, simplifier, security-reviewer), `session:reset-counter` hidden from the model, per-project Artifact and DesignSync deny toggle documented.
 
 0.9.1: the keep-warm ping is a `Monitor` instead of a cron: one `ping` event every 59
 minutes, just under the 1-hour prompt-cache TTL, so a long session pays half the ping
 turns of the old 30-minute cron. The base loads `Monitor` as its deferred tool, the reply
 line names a task id, and a `ping` is answered with `pong` whether it arrives as a
-monitor event or as a user message. Teammate and pool sessions keep their own crons.
+monitor event or as a user message. Teammate sessions keep their own crons.
 
 0.9.0: `/session:base sonnet` runs the session without opus: every opus slot (opus-low downscale, opus-medium / opus-high upscale, map rows) goes to sonnet-high, cheap slots stay sonnet-low, pairing `sonnet`. The main session may run any model (sonnet high included); forks copy its model and effort; early fact gathering goes to forks, bulk jobs to lean agents.
 0.8.4: response style (caveman ultra) stated in the base for every chat reply of the main session; the caveman plugin stays optional.
@@ -97,7 +97,7 @@ Removed 2026-09-05 (single, team light/full, team-forks, team-compact, workflow 
 stage agents): the modes fell behind and are not used; their skills and README sections
 live in git history before this change. Their measurements are kept below in
 "Measurements (kept from removed modes)". Peers, delegate and workflow-over-a-crew were
-never built; the pool (mode 9) stays as an unstable experiment.
+never built; the pool (mode 9) was removed in 0.10.1.
 
 Everything below follows from one fact: the prompt cache is the main cost lever on this
 account, and Fable 5.1 makes the gap between a cache read and a cache write very wide.
@@ -218,161 +218,9 @@ out of the main context, which is what makes the main session live longer.
   main session (≈ $0.13 on a 285K fable prefix); notifications landing together are
   batched by Claude Code.
 
-## Mode 9 — Pool (`session:pool-workflow-unstable`, `session:pool-unstable`, `session:pool-stop-unstable`)
+## Mode 9 — Pool (removed in 0.10.1)
 
-Workflow over warm peers without a team: a separate daemon (`poold`) runs a pool of plain `claude`
-sessions in tmux windows, one per model+effort combo or per role, and keeps them warm.
-A workflow script drives the stages; each `agent()` is a `pool-proxy` (haiku, Bash
-only) that hands a task file to a worker through `poolctl` and returns the result file.
-No lead, no teammates, no notifications: the worker writes a file, the proxy waits for
-it, the main session reads it.
-
-Idea in one line: the workflow keeps its visible pipeline, review loops and resume; the
-tool-call volume runs in warm 1-hour contexts instead of cold 35-50K agent starts.
-
-### Pieces
-
-| piece | where | what |
-|---|---|---|
-| `poold` | `pool/poold.py`, HTTP `127.0.0.1:19540` | registry, tmux spawn, task queue, policies, admin page |
-| `poolctl` | `pool/poolctl` | CLI over the HTTP API: `ensure`, `submit`, `wait`, `status`, `park`, `resume`, `compact` |
-| `pool-proxy` | `plugins/session/agents/pool-proxy.md` | haiku agent: `submit` + `wait` rounds, returns `POOL RESULT FILE` + `LAST LINE` |
-| skills | `pool-workflow` (mode), `pool` (show/ensure), `pool-stop` (park) | thin wrappers, all through `poolctl` |
-| state | `~/.claude/pool/<key>/` | `pool.json`, `tasks/`, `results/`, `park/`, `last-turn/` |
-
-Pools: `shared/<sha1(cwd)[:12]>`, one per project, the default; `dedicated/<session id>`
-for one owner session on the user's word (parked 10 minutes after the owner exits).
-Worker names are combos (`opus-low`) or roles (`reviewer=opus-medium`), unique per pool
-(`opus-low-2`).
-
-### Protocol
-
-1. Spawn: `tmux new-window -t pool-<key> -n <name> -c <cwd> "zsh -lic 'claude --model
-   \"<full id>\" --effort <lvl> --session-id <uuid>'"`. Interactive login shell so the
-   `~/.zshrc` exports (MCP tokens) load; `[1m]` quoted or zsh globbing fails. Model and
-   effort by flags only: `settings.json` is not touched (probe 5).
-2. Briefing, typed once: worker name, pool key, combo, roles, forks mode, the task line
-   format, the result dir, `ping` → `pong`, no `/model` `/effort` `/compact` or crons.
-   The daemon re-sends the protocol line after every `/compact` (probe 3: after a compact
-   the worker answered `t2 done.` instead of `DONE t2`).
-3. Task: `poolctl submit` copies the file to `tasks/` and types `POOL TASK <id> <path>`;
-   the worker writes `results/<id>.md`, last line `DONE` or `BLOCKED: …`, and replies
-   `DONE <id>`. `poolctl wait <id> --timeout 150` long-polls for the file.
-4. Proxy: header only (`POOL:`, `POOL WORKER:`, `POOL TASK FILE:`, optional `POOL MAX
-   WAIT:`), identical across a run so proxies share the cached prefix; `submit` then
-   `wait` rounds under the 170 s Bash guard; answer = two lines or `BLOCKED:`.
-5. Task file names carry a content hash: a workflow `resume` replays `agent()` calls
-   with an unchanged prompt from the journal.
-
-### Daemon policies (not the model's job)
-
-- Keep-warm: `ping` typed 45-50 minutes after the worker's last turn (last-turn hook removed in 0.8.0; the pool daemon falls back to JSONL mtime); one cache read per hour.
-  A worker that missed the window is `cold`: not pinged; on the next `ensure` it is
-  woken if its context is under 100K, otherwise parked and replaced.
-- Day end: `/compact` typed to every warm worker an hour before midnight, pings stop
-  until the next `ensure` (flag `--reset-at-day-end` clears instead).
-- Busy: one task at a time per worker, others queue; `ensure` offers `<name>-2` when
-  the queue is longer than one.
-- Limit: 15 workers per account by default.
-- Context ceiling: an idle warm worker whose context passed the family ceiling
-  (opus 120K, fable 200K, sonnet and haiku 300K, `compact_above_tokens`) gets a warm
-  `/compact` plus the protocol reminder, at most once per 30 minutes. Cache reads are
-  paid on every turn (opus $0.5/MTok), so a 150-200K opus fixer costs more per turn
-  than a fresh 60K one.
-- Forks mode: after the briefing the daemon types `/session:forks pool` into the
-  pane (the `pool` argument skips the ping cron) and re-sends the forks rules after
-  every compact. The briefing sentence alone was ignored (benchmark: four workers,
-  zero forks). `poolctl ensure --no-forks` disables it.
-
-### Cost model
-
-- Worker turns are cache reads in the 1h bucket (probe 2 below); a stage costs its new
-  tokens plus one read of the worker context, not a 35-50K start.
-- Proxy: haiku start ≈ $0.07 on the first proxy, less for the next ones (shared prefix);
-  the wait rounds are tiny turns.
-- Keep-warm: one read of the worker context per hour, ≈ $0.05-0.10 per worker; ten
-  workers ≈ $5-10 per day. Compact at day end ≈ $0.1-0.5 per worker while warm.
-
-### Install
-
-Daemon: `python3 pool/poold.py run` (foreground) or the units in `pool/units/`
-(`com.claude-session.poold.plist` for the Mac LaunchAgent, `poold.service` for the VM
-systemd user unit; step 5 of the plan, not written yet). CLI: symlink `pool/poolctl`
-into `~/.local/bin`. Plugin 0.5.0 ships the agent and the three skills (last-turn hook removed in 0.8.0; the pool daemon falls back to JSONL mtime). On the VM the
-admin page is reached with `ssh -L 19541:localhost:19540 claude-vm`.
-
-### Measured 2026-09-04 (probes, sonnet-low worker in a detached tmux on the Mac)
-
-| probe | result |
-|---|---|
-| 1 `--session-id` worker in tmux, `send-keys` task | PASS: task line is a normal turn, `results/t1.md` and `t2.md` with `DONE`, JSONL under `~/.claude/projects/<encoded cwd>/<uuid>.jsonl` |
-| 2 cache after a `send-keys` task | PASS: briefing wrote 58K into the 1h bucket; task turns read 58-59K and wrote 0.1-0.3K each; after `/compact` the next turn read the 42.7K static prefix and wrote the 12K summary |
-| 3 `/compact` typed into the pane, `ping` | PASS: no dialog (`Compacted`), `ping` → `pong`; protocol detail degraded after compact (re-brief needed) |
-| 5 `--model claude-sonnet-5[1m] --effort low` flags | PASS: pane shows `Sonnet 5 with low effort`, status `sonnet:low`; `settings.json` unchanged |
-
-### Benchmark 2026-09-04 (c3 "Orbit Dodge" browser game, 13 stages, fable-opus row)
-
-Same spec and stages through the pool (haiku proxies + four warm workers fable-low,
-opus-medium, opus-low, sonnet-low) and as a plain workflow (one cold agent per stage).
-
-Four runs of the same 13 stages (the second and fourth are reruns with one change):
-
-| metric | plain (5m TTL) | plain (1h TTL) | pool | pool + forks |
-|---|---|---|---|---|
-| $ for the task | 5.00 | 6.42 | 4.20 (+1.98 one-time worker startup) | 6.54 (+1.81 startup) |
-| uncached tokens (input + cache writes) | 453K | 389K | 269K | 366K |
-| cache writes by workers | — | — | 88K, all in the 1h bucket | 58K 1h + 306K 5m (forks) |
-| output tokens | 9.6K | — | 31K | 25K |
-| cache misses | 0 | 0 | 0 | 0 |
-| wall time | 10.0 min | 10.8 min | 10.1 min | 15.6 min |
-| tests passing at the end | 41 | 23 | 17 | 37 |
-| review depth, cycles 1/2/3 (lines) | 55 / 54 / 52 | 55 / 48 / 43 | 31 / 12 / 1 | 51 / 54 / 53 |
-
-What the four runs say:
-
-- The ~20K static prefix (system prompt, CLAUDE.md, tools) is already shared between
-  agents of one model and effort under the 5m TTL: the second and later agents read it
-  and write ~10K of their own. The 1h TTL reused nothing more and paid 1.6x per write,
-  so `subagentPromptCacheTtl` stays at 5m (closed, see below).
-- The 5m writes are the agents' own tool output (files read, test output, diffs).
-  They do not depend on the TTL. The cost floor of a workflow is therefore about
-  "tool-output tokens consumed × write price + the per-turn rereads of the growing
-  context"; the only way down is less tool output per stage and fewer turns.
-- The pool pays off only when there is a big shared project context that every cold
-  agent would otherwise re-read (a corporate repo with 100K+ of orientation). On a
-  greenfield task the shared prefix is just the briefing and the pool is a wash.
-- Forks inside the workers restore the review quality (37 tests, deep reviews in all
-  three cycles) but cost more on small contexts: every fork rereads the worker's
-  50-60K prefix on each of its turns and writes its own suffix at the 5m price.
-
-Two workflow rules that follow from the cost floor (in `session:pool-workflow-unstable`, and
-valid for plain workflows too): a convergence gate (a review with no medium or high
-findings ends the cycles; the fix and check stages of that cycle are skipped) and
-tool-output caps in task files (checkers return PASS/FAIL lines and the tail of failing
-output; the pipeline has no code review stage at all).
-
-Three lessons, now built in:
-
-1. Opus is the most expensive family per cache read ($0.5/MTok): its fixer read
-   150-200K on every one of 32 turns. Hence the per-family context ceiling above.
-2. The workers used no forks at all, so their sessions grew and every write landed in
-   the 1h bucket (twice the 5m price). Hence `/session:forks pool` at spawn.
-3. Proxies plus result files doubled the output: workers answered in the pane and
-   copied deliverables into the result file. Hence the result convention (status,
-   paths, at most 5 lines; deliverables in project files; nothing in the pane but
-   tool calls and `DONE <id>`). tmux capture is not a substitute: pane text is broken
-   and unstable, and `claude -p` carries the usage penalty.
-
-The warm reviewer went shallow after cycle 1 (same context reviewing the same code
-three times); the quality loss came from there, not from the models. `claude --resume
-<id> --fork-session` does not share the parent's cache (probe: first turn read only
-the 26.6K static prefix and rewrote 51.6K in the 1h bucket, then stable), so forked
-sessions are no answer; in-session forks (Agent tool) are.
-
-Gotchas: a new cwd shows the trust-folder dialog (Down + Enter accepts), so the daemon
-handles it or the dir is trusted first; the subagent Bash guard also matches a long
-literal wait written inside a tmux command string. Probes 4 (haiku proxy start size,
-role discipline, shared prefix) and 6 (last-turn mark, JSONL mtime since 0.8.0) run with steps 2-3 of the plan.
+The warm-worker pool (`poold` daemon, `poolctl`, the `pool-proxy` agent and the three `pool-*-unstable` skills) was an unstable experiment and is gone since 0.10.1. Its design, measurements and gotchas live in git history up to commit `f0ee0b4`.
 
 ## Mode 10 — Pipeline (`session:pipeline`)
 
