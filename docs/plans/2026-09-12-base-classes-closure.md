@@ -16,10 +16,12 @@ Session plugin 0.11.0. Plan `2026-09-12-base-classes.md`, critique (5 high, all 
 ## Verification
 
 - Hook tests 81/81 (`tests/session-modes-hook.sh`), new cases for class and submode tokens.
-- Scenarios T0-T7 on an opus-medium main in `~/projects/empty-context-test`, verdicts from raw JSONLs (`$CLAUDE_JOB_DIR/tmp/basecls-T*.jsonl`): all PASS. T0 rejected all three submodes; T1 c3 research → stage-researcher sonnet-high; T2 no-sonnet → opus-medium; T3 c5 critique → stage-reviewer fable-high; T4 c1 → sonnet-low; T5 tiny job → one Bash call, no workflow; T6 c4 no-fable author → opus-high; T7 c5 no-sonnet no-fable → ops-hi in every slot.
+- Scenarios T0-T7 on an opus-medium main in `~/projects/empty-context-test`, verdicts from raw JSONLs (`$CLAUDE_JOB_DIR/tmp/basecls-T*.jsonl`): all PASS. T0 rejected all three submodes; T1 c3 research → stage-researcher sonnet-high; T2 no-sonnet → opus-medium; T3 c5 critique → stage-reviewer fable-high; T4 c1 → sonnet-low; T5 tiny job → one Bash call, no workflow; T6 c4 no-fable author → opus-high; T7 c5 no-sonnet no-fable → reply line `Base on (c5, no-sonnet, no-fable), ping monitor b0xhj8wgv; forks or workflows for every 2+ call job`, slots ops-hi in every position.
 - Two c3 workflows run from this session for cost: Breakout $1.041 (6 agents), FPS $1.601 (8 agents); the fable main-model slot took 38-40% of each run for the plan and critique stages.
 
 ## Open
+
+- Critique medium and low items M2, M4, M5, L1, L3 (see `reviews/2026-09-12-base-classes-critique.md`) and the code review's low item on the fallback-effort sentence for two-submode cells: not addressed in 0.11.0, left for a follow-up.
 
 - The driver's own parser reported FAIL for every scenario (it scanned for tool calls only after the reply text); verdicts were taken from the transcripts by hand. Fix the parser before reusing `basecls-run.sh`.
 - Cost finding for a later decision: at c3 the plan and critique on fable are the expensive stages; moving them to the opus slot would cut about a third of a workflow's cost.
