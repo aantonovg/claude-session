@@ -1,7 +1,7 @@
 # session plugin: modes of the main session
 
 One user-invocable skill per mode. Start a session, pick the model and effort, then run
-`/session:<mode>`; the skill states the rules of the mode, starts the keep-warm cron and
+`/session:<mode>`; the skill states the rules of the mode, starts the keep-warm monitor and
 says what the session may and may not spawn. This README is the reference behind the
 skills: read it before changing any of them.
 
@@ -21,6 +21,12 @@ something) or `/session:review` (someone else's MR); then, optionally,
 `/session:codex <mode>`. `session:workflow` and `session:forks` were folded into the base the same day.
 
 ## Base as a skill (0.8.0)
+
+0.9.1: the keep-warm ping is a `Monitor` instead of a cron: one `ping` event every 59
+minutes, just under the 1-hour prompt-cache TTL, so a long session pays half the ping
+turns of the old 30-minute cron. The base loads `Monitor` as its deferred tool, the reply
+line names a task id, and a `ping` is answered with `pong` whether it arrives as a
+monitor event or as a user message. Teammate and pool sessions keep their own crons.
 
 0.9.0: `/session:base sonnet` runs the session without opus: every opus slot (opus-low downscale, opus-medium / opus-high upscale, map rows) goes to sonnet-high, cheap slots stay sonnet-low, pairing `sonnet`. The main session may run any model (sonnet high included); forks copy its model and effort; early fact gathering goes to forks, bulk jobs to lean agents.
 0.8.4: response style (caveman ultra) stated in the base for every chat reply of the main session; the caveman plugin stays optional.
@@ -101,9 +107,9 @@ Measured on this Mac (2026-09-03, Claude Code 2.1.259) unless marked "docs".
 ## Rules that apply to every mode
 
 1. Pick model and effort before the first message. Never change them mid-session.
-2. A `ping` cron every 30 minutes in every long-lived session (main session, each
-   teammate); every mode skill creates it as its first tool call, teammates create their
-   own from the spawn message.
+2. A keep-warm `ping` in every long-lived session: the main session runs a `Monitor`
+   every 59 minutes, created by the base as its first tool call, just under the 1-hour
+   cache TTL; teammates keep their own 30-minute crons, created from the spawn message.
 3. No `/clear` and no `/compact` mid-task until the task is finished or the context is
    clearly degraded (well above 500K). A warm compact is cheap (rule 7), but every compact
    loses detail and the next turn pays a fresh ~65K start.
@@ -164,7 +170,7 @@ out of the main context, which is what makes the main session live longer.
 - Measured 2026-09-04: in normal auto mode a fork runs Bash with `$var`, `$(…)` and loops
   without any permission prompt; only in plan mode such a command prompts the user
   ("Contains simple_expansion"). Keep forks off Bash expansions during plan mode only.
-- Setup: cron `ping` every 30 minutes in the main session; forks need nothing.
+- Setup: a `ping` monitor every 59 minutes in the main session; forks need nothing.
 - Long waits (2026-09-05): every fork turn re-reads the whole parent prefix at cache-read
   price, so a polling fork on a 500K prefix costs about 0.5M read tokens per poll (18
   polls ≈ 9M); a call over 5 minutes rewrites the fork suffix; a fork re-invoked by a
