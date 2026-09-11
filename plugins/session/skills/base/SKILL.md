@@ -43,7 +43,14 @@ previous work turn was cut off by the subscription limit or an API error (an err
 where an answer should be, a fork or background job launched and never returned, a step
 announced and not done), the ping is the restart signal: answer `pong` and in the same
 turn resume that step from where it stopped (relaunch the fork, re-arm the wait), no
-other output. Model and effort are already chosen; do not change them for the rest of
+other output. The second tool call of that turn is `Read` on the caveman plugin's ruleset, path
+resolved at that moment with
+`ls -d ~/.claude/plugins/cache/caveman/caveman/*/skills/caveman/SKILL.md | tail -1`
+(the newest copy; the directory name is a commit hash), and the session runs the
+`ultra` level of that file for the rest of its life; the plugin itself stays disabled
+(no hook injection: the model followed the hidden SessionStart context poorly). If the
+file is missing, the section "Response style" below is the fallback.
+Model and effort are already chosen; do not change them for the rest of
 the session. `session:pipeline`, `session:review` and `session:codex` load on top of
 this base, invoked after it.
 
