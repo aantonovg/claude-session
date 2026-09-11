@@ -25,17 +25,17 @@ launches with `agentType: session:<name>`, inputs by path):
 
 | agent | model / effort | tools | returns |
 |---|---|---|---|
-| `artifact-publisher` | opus / medium | Artifact, Read, Write, Bash | `URL: <url>`, at most 40 words |
-| `artifact-designer` | opus / medium | Artifact, DesignSync, Read, Write, Bash | `URL: <url>`, at most 40 words |
-| `web-researcher` | sonnet / medium | WebFetch, WebSearch, Read, Write | `FILE: <path>` plus a digest of at most 600 words with sources |
-| `code-reviewer` | sonnet / high | Read, Grep, Glob, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
+| `artifact-publisher` | opus / medium | Artifact, Read, Write | `URL: <url>`, at most 40 words |
+| `artifact-designer` | opus / medium | Artifact, DesignSync, Read, Write | `URL: <url>`, at most 40 words |
+| `web-researcher` | sonnet / medium | WebFetch, WebSearch, Write | `FILE: <path>` plus a digest of at most 600 words with sources |
+| `code-reviewer` | sonnet / high | Read, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
 | `simplifier` | sonnet / medium | Read, Edit, Bash | one line per file plus the check result, at most 150 words |
-| `security-reviewer` | sonnet / high | Read, Grep, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
+| `security-reviewer` | sonnet / high | Read, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
 
-Each agent names its skills in `skills:` (code-review, simplify, security-review, the
-artifact and design skills); those skills are `off` in the user `skillOverrides`, preload
-through the frontmatter was not verified, so every agent body carries its own rules and works
-without the preload.
+Only `code-reviewer` keeps a `skills:` preload (`code-review`, the one skill still on); the
+other agents carry their rules inline because their skills are `off` in the user
+`skillOverrides` and a preload of an off skill is silently skipped. Any other skill reaches an
+agent as a resolved SKILL.md path in the launch prompt (rule in the base, fork prompt template).
 
 Artifact toggle: Artifact and DesignSync are denied per project (`permissions.deny` in
 `.claude/settings.local.json` of every directory under `~/projects`, git-ignored). To publish
@@ -44,6 +44,8 @@ launch `artifact-publisher` or `artifact-designer`, put the entries back. Measur
 a deny edit is picked up by a running session at its next request and rewrites the whole
 prompt cache of that session (cache_read 0, about 16K smaller), so edit the file before
 starting the session you need it in, not while warm sessions run in that folder.
+
+0.10.2: agent tool sets cut to the role minimum (codex-proxy Bash only; artifact agents without Bash, text inputs only; web-researcher without Read; stage agents without Grep, Glob, ToolSearch, WebFetch), dead `skills:` preloads removed (the skills are off by `skillOverrides`, their rules stay inlined; re-adding a skill means re-adding the line), codex-proxy body trimmed from 15.8K to 6.7K chars with the permission-set rationale moved below, stage agents read skill files by path (no `Skill` tool in any plugin agent).
 
 0.10.1: dropped unstable pool tooling and dead skills: `session:pool-workflow-unstable`, `session:pool-unstable`, `session:pool-stop-unstable`, the `pool-proxy` agent, the `pool/` daemon and CLI, and the user agent `spec-critic`.
 
@@ -103,6 +105,30 @@ Everything below follows from one fact: the prompt cache is the main cost lever 
 account, and Fable 5.1 makes the gap between a cache read and a cache write very wide.
 Choose the mode by task size and by how many tool calls the work needs, then keep every
 long-lived context warm.
+
+
+## codex-proxy permission set
+
+Moved out of `agents/codex-proxy.md` in 0.10.2. Every launch runs `codex exec` with the same
+three settings: `-s workspace-write` (the sandbox: writes only inside the workspace, no
+network), `-c approval_policy="on-request"` (codex asks before going beyond the sandbox) and
+`-c approvals_reviewer="auto_review"` (those requests go to codex's built-in risk-based
+reviewer, non-interactively; legacy alias `guardian_subagent`). The reviewer never weakens the
+sandbox: beyond-sandbox capability comes only from per-command escalation, which the shim's
+preamble tells codex to request when a command is denied (out-of-workspace write, network) or
+silently broken (GUI and system-service commands such as `screencapture`, `xcrun simctl`,
+`osascript`, `open`, which fail with "no display" or "service unavailable" inside the
+sandbox). Verified on this machine under the preamble: out-of-workspace writes, HTTPS
+requests, real screenshots and simulator listing all succeed via escalation. Forbidden for
+every launch, whatever the task prompt asks: `-s danger-full-access`,
+`--dangerously-bypass-approvals-and-sandbox`, `--dangerously-bypass-hook-trust` and any other
+bypass. `codex exec` is non-interactive and has no `-a` flag; approval behaviour comes only
+from the `-c` keys above. The wrapper (`bin/codex-exec-logged.sh`) adds `--json`, writes the
+`-o` answer file, returns codex's exit code and appends one usage line to
+`~/.codex/proxy-usage.jsonl`; on failure it prints to stderr only an events-file path and the
+sequence of event types, never task content. In detached mode (`--detach <done-file>`) it
+starts codex with nohup, prints the PID, and on exit writes the answer file, the ledger row
+and the done-file (content = exit code) with stderr in `<done-file>.log`.
 
 ## Facts the modes rest on
 
@@ -535,8 +561,12 @@ on a mismatch. Push only when the task explicitly grants it.
 
 Skills for a worker: the main session names 0-3 skills per stage from the skill-routing
 map (`base/skill-routing.md` in the plugin plus `~/.claude/memory-user/skill-routing.md` when present) and puts them at the end of the prompt
-("Load these skills with the Skill tool before starting: …" or "No skills needed for this
-step."). Never `claude-api`, never a superpowers orchestration skill.
+("Read these skill files with the Read tool before starting, in this order: <resolved SKILL.md
+paths>." or "No skills needed for this step."). A plugin skill is resolved to the newest
+installed version at launch (`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/skills/<name>/SKILL.md | sort -V | tail -1`),
+never a remembered path; a user skill is `~/.claude/skills/<name>/SKILL.md`; the agent skips the
+YAML frontmatter and returns `BLOCKED: <path>` when the file is missing. Never `claude-api`,
+never a superpowers orchestration skill.
 
 ## Verified 2026-09-04 (sonnet sessions in tmux)
 

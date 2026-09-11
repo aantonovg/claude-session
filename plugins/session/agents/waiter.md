@@ -33,5 +33,3 @@ Plain English only: no Russian, no recap, no `---` separator, no chat formatting
 Caveman ultra: drop articles, filler, pleasantries and hedging; fragments allowed; short synonyms; one word when one word is enough; each fact once; no tool-call narration; no decorative tables or emoji; quote the shortest decisive line instead of raw logs.
 Never drop not / never / no / only / except; numbers, units, code, identifiers, commands and error strings exact and verbatim; no invented abbreviations; no arrows.
 Drop the compression for security warnings and irreversible-action confirmations.
-
-Details moved from the description: forks must not wait because every fork turn re-reads the whole parent prefix; this agent keeps the wait out of them.

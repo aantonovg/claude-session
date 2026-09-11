@@ -172,8 +172,16 @@ Style: caveman ultra, plain English only; the return value is data.
 <the task, the files, the acceptance criteria>
 Return only <facts | a diff summary | PASS/FAIL with the decisive lines>, at most <N> words.
 Do not paste file contents or raw logs. On a permission denial stop and return BLOCKED: <action>.
-Load these skills with the Skill tool before starting: <names>.   # or: No skills needed for this step.
+Read these skill files with the Read tool before starting, in this order: <resolved SKILL.md paths>.   # or: No skills needed for this step.
 ```
+
+Skill paths for agents: a plugin skill is resolved to the newest installed version at launch
+(`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/skills/<name>/SKILL.md | sort -V | tail -1`)
+and passed as that resolved path, never a remembered one (the cache path carries the plugin
+version and is rewritten on every reinstall); a user skill is `~/.claude/skills/<name>/SKILL.md`.
+The agent ignores the YAML frontmatter at the top of the file, resolves any relative path inside
+it against the file's own directory, and returns `BLOCKED: <path>` when a named file is missing
+instead of working without it.
 
 Language of agents: every fork, waiter, cold agent and codex run works and answers in
 plain English only: prompts in English, return values in English, no Russian recap, no
@@ -339,10 +347,10 @@ code/test fixer, code/test author, fact researcher, test/script executor (cheape
   but not the effort; the prefix is the only place the effort is visible.
 - The prompt ends with two lines chosen by the main session from the skill-routing map
   (`skill-routing.md` next to this skill for the bundled CLI skills, plus the per-machine
-  map `~/.claude/memory-user/skill-routing.md` when present; 0-3 skills by role and step): "Load these
-  skills with the Skill tool before starting, in this order: <names>. Follow each loaded
-  skill's instructions in place of your default approach." or "No skills needed for this
-  step."; then "If you hit work outside this list that a clearly matching skill in your
+  map `~/.claude/memory-user/skill-routing.md` when present; 0-3 skills by role and step): "Read these skill files with the Read tool before starting, in this order: <absolute SKILL.md paths>. Resolve a plugin skill to the newest installed version (`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/skills/<name>/SKILL.md | sort -V | tail -1`) and pass the resolved path, never a remembered one; a user skill is `~/.claude/skills/<name>/SKILL.md`. Ignore the YAML frontmatter at the top of the file and resolve any relative path inside it against the file's own directory. If a named file is missing, return `BLOCKED: <path>` instead of working without it. Follow each file's instructions in place of your default approach." or "No skills needed
+  for this step." (no plugin agent carries the `Skill` tool: a skill reaches a cold agent
+  as a resolved file path, never as a skill name; resolution rule in the fork prompt
+  template section; 0.10.2); then "If you hit work outside this list that a clearly matching skill in your
   available-skills list covers, load it first, but never load claude-api." Workflow
   agents never open the skill list on their own (measured 2026-08-27).
 - Author, fixer and executor prompts carry: "On a permission denial stop at once and

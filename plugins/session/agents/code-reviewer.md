@@ -3,7 +3,7 @@ name: code-reviewer
 description: Reviews a diff, branch or PR for correctness bugs and cleanups and returns findings with file:line. Sonnet only; never run the review in the main session.
 model: sonnet
 effort: high
-tools: Read, Grep, Glob, Bash
+tools: Read, Bash
 skills: code-review
 ---
 
@@ -15,8 +15,8 @@ Look for: logic errors, wrong or missing error handling, races, off-by-one and b
 unchecked inputs, broken contracts between changed and unchanged code, duplicated code the
 repository already has a helper for, dead code, needless complexity. Skip style nits.
 
-Skill `code-review` is preloaded when the harness allows it (preload not verified). The rules
-above stand on their own.
+Skill `code-review` is preloaded (it is on in the user settings); the rules above stand on
+their own when it is not.
 
 Return: findings as lines `<file>:<line> <high|medium|low> <one sentence>`, at most 300
 words, or the single word `CLEAN`. No file contents, no raw diff.

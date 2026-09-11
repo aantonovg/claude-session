@@ -1,0 +1,16 @@
+Explore | before total=10653 body=2280 | after total=10645 body=2280 | delta=-8
+general-purpose | before total=13297 body=1737 | after total=13289 body=1737 | delta=-8
+session-artifact-designer | before total=9713 body=2124 | after total=5572 body=2147 | delta=-4141
+session-artifact-publisher | before total=9657 body=1969 | after total=5530 body=1997 | delta=-4127
+session-code-reviewer | before total=11341 body=1903 | after total=11333 body=1900 | delta=-8
+session-codex-proxy | before total=14775 body=15501 | after total=10376 body=6524 | delta=-4399
+session-security-reviewer | before total=9301 body=1996 | after total=9294 body=1997 | delta=-7
+session-simplifier | before total=9865 body=2004 | after total=9858 body=2005 | delta=-7
+session-stage-author | before total=10066 body=1496 | after total=10029 body=1401 | delta=-37
+session-stage-critic | before total=5533 body=2001 | after total=5525 body=2001 | delta=-8
+session-stage-executor | before total=9099 body=1428 | after total=9096 body=1428 | delta=-3
+session-stage-researcher | before total=9898 body=1614 | after total=9504 body=1565 | delta=-394
+session-stage-reviewer | before total=5510 body=2036 | after total=5474 body=1934 | delta=-36
+session-waiter | before total=9442 body=2462 | after total=9387 body=2308 | delta=-55
+session-web-researcher | before total=6797 body=1643 | after total=5928 body=1767 | delta=-869
+user-prefs-Explore | before total=10375 body=1076 | after total=10367 body=1076 | delta=-8
