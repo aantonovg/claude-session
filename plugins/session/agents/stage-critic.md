@@ -1,6 +1,6 @@
 ---
 name: stage-critic
-description: Lean clean-context critic for the pipeline mode. Reads the framing and the ledger snapshot the task names, writes reviews/critic.md with severities, may raise the task class, never explores the repository. Tools Read and Write only, no model pin; the workflow script passes model and effort.
+description: Clean-context critic for pipeline mode: reads the framing and ledger snapshot named in the task, writes reviews/critic.md with severities, may raise the task class. Read and Write only, never explores the repo; model and effort from the workflow.
 tools: Read, Write
 ---
 

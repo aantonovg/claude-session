@@ -250,6 +250,16 @@ batched into ONE workflow (`parallel`); a relay between steps (research → crit
 check) is wired as `pipeline()` stages of the same workflow; every `agent()` carries
 explicit model and effort and the `<mod>-<eff>-` label.
 
+Heavy tools live in agents, not in the main session: web pages through `web-researcher`
+(`son-me-web-<job>`), a diff review through `code-reviewer` (`son-hi-review-<job>`), cleanup
+passes through `simplifier` (`son-me-simplify-<job>`), a security pass through
+`security-reviewer` (`son-hi-security-<job>`), a published page through `artifact-publisher`
+or `artifact-designer` (`ops-me-artifact-<job>`). All are one-agent `Workflow` launches with
+`agentType: session:<name>`, explicit model and effort, inputs by path. The main session never
+calls WebFetch, WebSearch or Artifact itself. Artifact and DesignSync are denied per project in
+`.claude/settings.local.json`; an artifact job needs those two entries removed in that project
+and a new session.
+
 ## Mode: sonnet
 
 On `/session:base sonnet`: no opus anywhere in the session. Every slot the base assigns

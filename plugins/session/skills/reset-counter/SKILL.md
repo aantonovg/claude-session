@@ -1,6 +1,7 @@
 ---
 name: reset-counter
 description: "Clear the statusline mode counters for this session. Use after a rewind dropped a session skill out of context, or whenever the statusline segment names modes that are no longer loaded."
+disable-model-invocation: true
 ---
 
 # Reset the mode counters
