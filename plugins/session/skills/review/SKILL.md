@@ -15,7 +15,7 @@ the task and whether the work is verified; findings come from runs, not from rea
 ## Start (do this now)
 
 0. Read `../pipeline/core.md` first. Then the pipeline Start steps, done here:
-   1. The base already created the `ping` cron and answers pings; nothing to start here.
+   1. The base already created the `ping` monitor and answers pings; nothing to start here.
       Limit restart: `core.md`, "Ping and limit restart".
    2. Read `~/.claude/session-map.md` (fallback: `session-map.example.md` in the plugin,
       fable-opus only). Pick the pairing row the user named, else the default pairing of

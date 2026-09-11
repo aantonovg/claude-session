@@ -19,17 +19,21 @@ main session's own model and effort, there is no mixing.
 ## Start (do this now)
 
 This skill is invoked by the user as the first prompt of a session and again after
-`/compact`. On that turn: if `CronCreate` is not among the loaded tools, load it first
-with `ToolSearch` (`select:CronCreate`); the same for any deferred tool the base names
-(`CronList`, `Monitor`, `TaskStop`). Then the first tool call `CronCreate` with
-`cron: "*/30 * * * *"` (this exact expression), `prompt: "ping"`, `recurring: true`,
-unless a `ping` cron already exists in this session. The reply line
-`Base on, ping cron <id>; forks for every 3+ call job` is printed once, only after the
-cron exists; there is no variant of this line without a cron id. With the argument
-`sonnet` (`/session:base sonnet`) the session runs in the sonnet mode (section "Mode:
-sonnet") for its whole life and the reply line is `Base on (sonnet), ping cron <id>;
-forks for every 3+ call job`; without the argument nothing changes. Reply to every `ping`
-with one word. Exception: when the context shows that the
+`/compact`. On that turn: if `Monitor` is not among the loaded tools, load it first
+with `ToolSearch` (`select:Monitor`); the same for any deferred tool the base names
+(`TaskStop`, `TaskList`). Then the first tool call `Monitor` with
+`command: "while true; do sleep 3540; echo ping; done"` (this exact command),
+`description: "keep-warm ping every 59m"`, `persistent: true`, `timeout_ms: 3600000`,
+unless a keep-warm ping monitor already exists in this session; 59 minutes because the
+main session's prompt cache has a 1-hour TTL, so one ping just under the hour keeps it
+warm at half the rate of the older 30-minute cron. The reply line
+`Base on, ping monitor <task id>; forks for every 3+ call job` is printed once, only
+after the monitor exists; there is no variant of this line without a task id. With the
+argument `sonnet` (`/session:base sonnet`) the session runs in the sonnet mode (section
+"Mode: sonnet") for its whole life and the reply line is `Base on (sonnet), ping monitor
+<task id>; forks for every 3+ call job`; without the argument nothing changes. Reply to
+every `ping` with one word, whether it arrives as a monitor event carrying the line
+`ping` or as a user message. Exception: when the context shows that the
 previous work turn was cut off by the subscription limit or an API error (an error line
 where an answer should be, a fork or background job launched and never returned, a step
 announced and not done), the ping is the restart signal: answer `pong` and in the same
@@ -71,9 +75,9 @@ Waiting on the user:
 - Plan mode only when the user is present to approve. Leaving to do something else
   while a plan awaits approval loses the cache: the user exits plan mode first and says
   the task is paused.
-- A message that is exactly `ping` (from the keep-warm cron or the user) is answered
-  with exactly `pong` and nothing else: no work, no status, no resuming of a paused
-  task, no tool calls.
+- A `ping` (a keep-warm monitor event carrying that line, or a user message that is
+  exactly `ping`) is answered with exactly `pong` and nothing else: no work, no status,
+  no resuming of a paused task, no tool calls.
 - Interactive questions through `AskUserQuestion` are written entirely in Russian:
   question text, header chips, every option label and description.
 
@@ -200,8 +204,9 @@ permission prompt there); outside plan mode any Bash is fine.
 
 A fork's own context lives in the 5-minute cache and the clock runs from the start of
 each request, so a fork never waits synchronously for long: every Bash call or MCP call
-inside a fork stays under about 3 minutes. A cron created by a fork fires in the main
-session, not in the fork, so it cannot keep a fork warm. A fork never uses
+inside a fork stays under about 3 minutes. A monitor created by a fork delivers its
+events to the main session, not to the fork, so it cannot keep a fork warm. A fork never
+uses
 `run_in_background` and never ends its turn with a background job running: the
 completion re-invokes the fork, and that re-invocation is a full cache miss (measured:
 409K rewritten, ≈ $5 on fable). What expires after 5 idle minutes is only the fork's own
@@ -424,7 +429,7 @@ directory, and refuses and reports anything outside it (other paths, deletions, 
 settings or plugin changes). It never acts as a general approver for another session.
 
 The main session may start async work itself with `run_in_background` and be woken by
-the completion: its turns are paid for anyway and the ping cron keeps its prefix warm.
+the completion: its turns are paid for anyway and the ping monitor keeps its prefix warm.
 Inside a fork the same call is forbidden: the completion would wake the fork.
 
 ## Launching a codex model
