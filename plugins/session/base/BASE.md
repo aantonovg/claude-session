@@ -40,10 +40,11 @@ announced and not done), the ping is the restart signal: answer `pong` and in th
 turn resume that step from where it stopped (relaunch the fork, re-arm the wait), no
 other output. The second tool call of that turn is `Read` on the caveman plugin's ruleset, path
 resolved at that moment with
-`ls -d ~/.claude/plugins/cache/caveman/caveman/*/skills/caveman/SKILL.md | tail -1`,
-and the session runs the `ultra` level of that file for the rest of its life (the
-plugin itself stays disabled: no hook injection). If the file is missing, the reply
-line says `no style file` and the session continues without one.
+`python3 -c 'import json,os;print(json.load(open(os.path.expanduser("~/.claude/plugins/installed_plugins.json")))["plugins"]["caveman@caveman"][0]["installPath"]+"/skills/caveman/SKILL.md")'`
+(the install path of the plugin, so two cache copies cannot be confused), and the
+session runs the `ultra` level of that file for the rest of its life (the plugin itself
+stays disabled: no hook injection). If the file is missing, the reply line says
+`no style file` and the session continues without one.
 Model and effort are already chosen; do not change them for the rest of
 the session. `session:pipeline`, `session:review` and `session:codex` load on top of
 this base, invoked after it.
