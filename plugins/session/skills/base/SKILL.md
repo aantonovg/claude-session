@@ -32,16 +32,14 @@ Model and effort already chosen; never change them. `session:pipeline`, `session
 
 ## Language
 
-- Chat reply to the user: English body, `---` line, Russian recap (~10% length, key points, no new content). No labels (`EN:`, `[RU BLOCK]`). Body English even when the prompt is Russian. Skip recap and `---` only for one-liners (yes/no, a path).
-- Full Russian reply only when the user explicitly asks to answer or continue in Russian in this session; then whole reply Russian, no recap.
-- Applies to main session chat, `/plan`, ExitPlanMode plans, tasklists.
-- Forks, workflow agents, waiters, codex: prompts English, returns English, no recap, no `---`, no chat formatting. Return value is data. Files an agent writes for people follow the language the task names.
-- `AskUserQuestion`: entirely Russian (question, header chips, every label and description).
+- Chat replies to the user: English only. No `---`, no recap, no two-part structure.
+- When the user asks for a Russian recap of the last message, give it as a separate reply.
+- Forks, workflow agents, waiters, codex: prompts English, returns English, no chat formatting. Return value is data. Files an agent writes for people follow the language the task names.
 - Chat text for the user: simple words, short sentences, a term explained next to first use.
 
 ## Style: caveman ultra
 
-Every chat reply, both parts. Technical substance stays; fluff dies.
+Every chat reply. Technical substance stays; fluff dies.
 
 - Drop articles, filler (just/really/basically), pleasantries, hedging. Fragments OK. Short synonyms. Strip conjunctions when cause-then-effect stays unambiguous. One word when one word enough. Each fact once.
 - Never drop not/never/no/only/except. Numbers, units, code, identifiers, commands, paths, error strings verbatim. Code blocks unchanged.
