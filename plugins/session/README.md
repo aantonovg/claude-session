@@ -45,6 +45,7 @@ a deny edit is picked up by a running session at its next request and rewrites t
 prompt cache of that session (cache_read 0, about 16K smaller), so edit the file before
 starting the session you need it in, not while warm sessions run in that folder.
 
+0.14.0: named workflows `dev`, `review`, `build`, `research` under `workflows/` (section "Named workflows"); agents and skills trimmed (5c73790); base prefers named workflows and lean agent types (1b0afad).
 0.13.0: base trimmed to the rules used in most sessions: fork threshold 20 lines, tests never in a fork, one class/submode table, no codex, pipeline, skill-map or fork-template text, no history notes; caveman block unchanged.
 0.12.1: chat replies English only, no Russian recap and no `---` two-part structure anywhere; a Russian recap of the last message is a separate reply on the user's request; the AskUserQuestion-in-Russian rule dropped.
 0.12.0: the caveman ultra rules live inline in the base ("Style" section) instead of a runtime path resolve and Read of the caveman plugin file; a "Language" section (English body + Russian recap, full Russian only on the user's explicit request, English-only traffic with forks and agents); the base text cut by about a third with no rule, number, table cell, template or command changed.
@@ -112,6 +113,23 @@ account, and Fable 5.1 makes the gap between a cache read and a cache write very
 Choose the mode by task size and by how many tool calls the work needs, then keep every
 long-lived context warm.
 
+
+## Named workflows (0.14.0)
+
+Scripts under `workflows/`, launched by name (`session:dev`, `session:review`, `session:build`,
+`session:research`) with `args`; the meta description is the contract, the body is never read by
+the caller. Shared block in every script: the 35-cell class table, `args.class` (default c3) and
+`args.submodes` pick the row, `opts(slot, job)` turns a slot into explicit `model`, `effort` and a
+`<mod>-<eff>-<job>` label. `args.cwd` is required; outputs go to `args.out` (default `<cwd>/reviews`).
+A `null` or `BLOCKED:` stage result ends the run with a report; reviewers end with `VERDICT: clean`
+or `VERDICT: findings`, which drives the 1-3 review-fix cycles.
+
+| workflow | stages | args | agents |
+|---|---|---|---|
+| `dev` | plan, plan critique+fix (1-3), red tests + review (1-2), implement + code review + tests + fix (1-3), closure + review | `cwd, task, paths, test, class, submodes, out` | stage-author (opus slot), stage-reviewer (main), code-reviewer and stage-executor (sonnet) |
+| `review` | code review, evidence check, fix, tests; 1-3 cycles (1 when `fix: false`) | `cwd, target (diff file / a..b / worktree), test, fix, class, submodes, out` | code-reviewer, stage-researcher (sonnet), stage-author (opus) |
+| `build` | implement a plan, code review + tests + fix (1-3) | `cwd, plan, test, class, submodes, out` | stage-author (opus), code-reviewer and stage-executor (sonnet) |
+| `research` | parallel researchers by direction, critique, synthesis | `cwd, question, directions, paths, class, submodes, out` | stage-researcher (sonnet), stage-critic (main), stage-author (opus) |
 
 ## codex-proxy permission set
 
