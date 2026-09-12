@@ -50,8 +50,8 @@ researchers (workflow agents do not see the session's MCP servers; a fork does).
 MCP, straight into `evidence/raw/`, no relay: the ticket intent, the MR description and
 the author's claims, CI status and job results, the changed-file list with line counts,
 the existing threads; it writes `evidence/EB-1.md` (≤ 80 lines, pointers). A cold
-`session:stage-researcher` (sonnet-low, label `son-lo-research`, a one-agent `Workflow`,
-session base "Launch forms") takes only repository, git history and docs questions. Judgment (what the task really asked, where the claims and the intent
+`session:stage-researcher` (sonnet-low, label `son-lo-research`, a one-agent `Workflow`;
+every cold agent starts through `Workflow`, never `Agent`) takes only repository, git history and docs questions. Judgment (what the task really asked, where the claims and the intent
 disagree) is one short fork (≤ 6 turns) that writes `Framing` and the `Ledger`, whose
 first lines are the `Sources` block: `used:` every source class that produced evidence
 (MCP tools by name, repo paths, CI logs, docs, skills loaded); `wanted, unavailable:`

@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Ask the user without blocking the session: when an AskUserQuestion timed out, several decisions piled up, or the user is likely away. Writes a short Russian options document, opens it in Plannotator in the background, continues on reversible defaults, acts on the annotations when they arrive.
+description: Ask the user without blocking the session: when an AskUserQuestion timed out, several decisions piled up, or the user is likely away. Writes a short options document, opens it in Plannotator in the background, continues on reversible defaults, acts on the annotations when they arrive.
 ---
 
 # Ask without blocking
@@ -27,7 +27,7 @@ AskUserQuestion with the recommended option first is faster.
    (published text, review requests, releases, Jira transitions, messages to people,
    deletions). Reversible ones proceed on the recommended option; the rest wait.
 2. **Write the document** `~/.claude/projects/<encoded-cwd>/questions/<YYYY-MM-DD-HHMM>-<slug>.md`
-   (`<encoded-cwd>` = cwd with `/` → `-`; `mkdir -p`). In Russian, plain words, one
+   (`<encoded-cwd>` = cwd with `/` → `-`; `mkdir -p`). In English, plain words, one
    section per decision:
 
    ```
