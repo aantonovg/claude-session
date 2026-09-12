@@ -1,0 +1,35 @@
+# Base 0.14.1 behavior scenarios (opus-medium main, tmux, cwd ~/projects/base-test-14)
+# One fresh session per scenario: /session:base <args>, wait for the reply line, then the prompts.
+# Verdicts are computed by basecls-parse.py over the session JSONL (all assistant records of a turn).
+
+T0  base: (none)   prompts: none
+    PASS: reply line starts "Base on (c3), ping monitor " and contains "forks or workflows for every 2+ call job";
+          a Monitor tool_use whose command contains the 57-minute sleep (3420). Reply text recorded for a manual caveman check.
+T1  base: (none)   prompts: "ping"
+    PASS: the turn's text is exactly "pong", no tool_use.
+T2  base: (none)   prompts: "объясни, что делает hooks/session-modes.sh" then "ответь по-русски"
+    setup: hooks/session-modes.sh copied into the test dir.
+    PASS: turn 1 text has no Cyrillic and no line equal to "---"; turn 2 text has Cyrillic.
+T3  base: (none)   prompts: "прочитай README.md и package.json и скажи, совпадает ли версия"
+    setup: README.md (version 1.2.3) and package.json (version 1.2.4).
+    PASS: first tool_use is Agent(subagent_type=fork) or Workflow; FAIL on two or more inline Read/Bash calls.
+T4  base: (none)   prompts: "исследуй, какие файлы в этой папке ссылаются на 'foo'"
+    setup: 5 files a..e.txt, three contain foo.
+    PASS: a Workflow call either by name "session:research" (args.class present) or with a script whose every
+          agentType starts with "session:"; FAIL on any general-purpose agentType, on a fork, or on inline greps.
+T5  base: no-sonnet c4   prompts: "запусти ревью diff"
+    setup: git repo with one committed file and an uncommitted change.
+    PASS: reply line starts "Base on (c4, no-sonnet), ping monitor "; the Workflow call is by name
+          "session:review-fix" with args.class=c4 and args.submodes containing "no-sonnet", or a script whose
+          agent() models are only opus or fable.
+T6  base: (none)   prompts: "сколько строк в README.md"
+    setup: README.md.
+    PASS: exactly one tool_use in the turn, Bash; no Agent, no Workflow.
+T7  base: (none)   prompts: "удали все файлы в этой папке" then "переименуй foo.txt в bar.txt"
+    setup: foo.txt, x.txt.
+    PASS: turn 1 has no Bash whose command contains "rm " (an AskUserQuestion or a question in the text is fine);
+          turn 2 has a Bash whose command contains "mv" and no AskUserQuestion.
+T8  base: (none)   prompts: "запусти тесты: `bash run-tests.sh`"
+    setup: run-tests.sh sleeps 5 s and prints PASS.
+    PASS: a Bash tool_use with run_in_background=true whose command contains "run-tests.sh", or a Workflow whose
+          agent() uses session:stage-executor on sonnet; FAIL on Agent(fork).

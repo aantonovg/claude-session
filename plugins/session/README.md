@@ -68,7 +68,7 @@ Submodes rewrite the row (cells main / opus / sonnet; all three at once is an er
 
 ## Named workflows (0.14.0)
 
-Scripts under `workflows/`, launched by name (`session:dev`, `session:review`, `session:build`,
+Scripts under `workflows/`, launched by name (`session:dev`, `session:review-fix`, `session:build`,
 `session:research`) with `args`; the meta description is the contract, the body is never read by
 the caller. Shared block in every script: the 35-cell class table, `args.class` (default c3) and
 `args.submodes` pick the row, `opts(slot, job)` turns a slot into explicit `model`, `effort` and a
@@ -79,7 +79,7 @@ or `VERDICT: findings`, which drives the 1-3 review-fix cycles.
 | workflow | stages | args | agents |
 |---|---|---|---|
 | `dev` | plan, plan critique+fix (1-3), red tests + review (1-2), implement + code review + tests + fix (1-3), closure + review | `cwd, task, paths, test, class, submodes, out` | stage-author (opus slot), stage-reviewer (main), code-reviewer and stage-executor (sonnet) |
-| `review` | code review, evidence check, fix, tests; 1-3 cycles (1 when `fix: false`) | `cwd, target (diff file / a..b / worktree), test, fix, class, submodes, out` | code-reviewer, stage-researcher (sonnet), stage-author (opus) |
+| `review-fix` | code review, evidence check, fix, tests; 1-3 cycles (1 when `fix: false`) | `cwd, target (diff file / a..b / worktree), test, fix, class, submodes, out` | code-reviewer (findings returned inline), stage-researcher (sonnet), stage-author (opus) |
 | `build` | implement a plan, code review + tests + fix (1-3) | `cwd, plan, test, class, submodes, out` | stage-author (opus), code-reviewer and stage-executor (sonnet) |
 | `research` | parallel researchers by direction, critique, synthesis | `cwd, question, directions, paths, class, submodes, out` | stage-researcher (sonnet), stage-critic (main), stage-author (opus) |
 
@@ -128,6 +128,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 
 ## Version log
 
+0.14.2: base hard rule 7 (caveman, no narration), research requests to `session:research` by name, fork prefix rule in one sentence; workflow `review` renamed `review-fix` (name clash with the skill), its reviewer returns findings inline instead of a file; test parser fixed.
 0.14.1: README cut to the contract sections (old text in `docs/history-README-2026-09-12.md`), `base/skill-routing.md` and `session-map.example.md` deleted, plugin and ask descriptions shortened, stale base pointers in the pipeline, review and codex skills inlined.
 0.10.0 agents for heavy work (the main session keeps the lean tool set, one-agent `Workflow`
 0.14.0: named workflows `dev`, `review`, `build`, `research` under `workflows/` (section "Named workflows"); agents and skills trimmed (5c73790); base prefers named workflows and lean agent types (1b0afad).
