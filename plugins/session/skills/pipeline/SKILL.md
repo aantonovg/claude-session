@@ -7,9 +7,7 @@ disable-model-invocation: true
 # Mode: pipeline
 
 The session base (`/session:base`, invoked first) with a fixed order of stages and gates on top. All
-fork rules come from the base and are not repeated here: when to fork, the prompt
-template, the 3-minute limit per call, no background job left running, review and fix in
-different forks. Model and effort of the main session are set at start and forks
+fork rules come from the base and are not repeated here. Model and effort of the main session are set at start and forks
 inherit them; the only stages on another model are the clean-context ones below (the critic, plus a cold researcher when the cold researcher rule in `core.md` sends breadth research there).
 
 ## Start (do this now)
@@ -22,7 +20,7 @@ inherit them; the only stages on another model are the clean-context ones below 
 2. Take the class and submodes from the base reply line (default c3); every role
    takes its slot value from the base's class table.
 3. Reply with one line: "Pipeline mode on, ping monitor <task id>; forks + cold critic."
-4. When the task arrives: propose its class (1-5, criteria in the README) and the path
+4. When the task arrives: propose its class (1-5) and the path
    (class 1-2 fast, 3-4 standard, 5 or weak oracle or the word "full" from the user →
    full). Say both in one line and start; do not wait for approval unless the user asks.
    If the skill was invoked with an argument `fast`, `standard` or `full`
@@ -33,7 +31,7 @@ inherit them; the only stages on another model are the clean-context ones below 
 
 ## Stages and gates
 
-Every stage: forks for anything with 3+ tool calls and for every write into the task
+Every stage: forks for anything with 2+ tool calls and for every write into the task
 directory (except the codex prompt file and ledger rows in codex mode). The main session dictates: it puts the decisions, gate verdicts and paths into
 the fork prompt as short bullets, the fork writes the section and returns the status. The
 main session itself writes only the one-line class/path proposal, the ledger lines and
@@ -67,9 +65,7 @@ user through `session:ask` when a decision-changing unknown stays open.
 reviewer-debugger cell of the class row, budget 5 tool calls at medium, 3 at high, label
 `<mod>-<eff>-critic`), input = the ledger snapshot and the framing only, no repository
 access asked for. Cold agents carry only
-CLAUDE.md, its imports and memory; the main session picks 0-3 skills for the stage from
-the skill-routing map and puts `Read these first: <SKILL.md paths>` into the prompt (resolve
-the paths first: `~/.claude/skills/`, plugin caches). It writes `reviews/critic.md`: missed
+CLAUDE.md, its imports and memory; the main session puts `Read these first: <absolute SKILL.md paths>` into the prompt. It writes `reviews/critic.md`: missed
 decision-changing unknowns, claims without evidence, circular reasoning, hidden
 assumptions, weak verification capabilities, each with severity, and may raise the task
 class (never lower it). Main triages: high-severity claims go to an evidence-audit fork
@@ -146,7 +142,7 @@ decision contract) are the only reviews, and the only ones that may use medium o
 effort, within their tool-call budget.
 
 **7. Closure → Gate C.** Fast path: 5 lines in chat by the main session, nothing else.
-Otherwise a fork writes the `Report` (Russian, plain: what was solved and
+Otherwise a fork writes the `Report` (plain English: what was solved and
 why, what was found, what was changed, how it was verified, what stays unverified,
 rollback, next steps) and marks `task.md` final; the main session gives the same in
 chat from the fork's summary and updates the task status where the task lives (Jira,
@@ -180,9 +176,7 @@ ceiling is hit the stage ends with what it has and the gap goes into the report.
 | report | 5 lines in chat, no report section | `Report` section | `report.md` |
 | ceilings | ≤ 6 forks, ≤ 50 turns, 0 cold agents | ≤ 14 forks, ≤ 120 turns, 1 cold agent | ≤ 24 forks, ≤ 220 turns, ≤ 3 cold agents |
 
-Measured 2026-09-06 (demo game, before this table): fast $5.3, standard $15.2, full
-$11.7-13.0; standard was not cheaper than full because nothing was actually skipped.
-The ceilings above are what makes a lighter path cheaper.
+The ceilings are what makes a lighter path cheaper.
 
 ## Questions to the user
 
@@ -200,7 +194,7 @@ A choice that must be the user's ends the turn with the question restated.
   no other workflow stages, no plain subagents, no teammates (session base, "Launch
   forms").
 - No hard-coded model or effort in prompts: the critic and the full path's decision
-  review take the reviewer-debugger cell of the session map, the cold researcher its
+  review take the reviewer-debugger cell of the class table, the cold researcher its
   researcher cell, the author of a no-verifier package is opus-low (terra-high in terra
   executor mode); everything else is the main session's model. No code review by anyone.
 - No reading of draft task files by the main session (`task.md`, split files, `evidence/`,
@@ -221,8 +215,3 @@ A choice that must be the user's ends the turn with the question restated.
   without its ledger row and `agent_id`.
 - No `/model`, `/effort`, plugin changes or `/compact` in the middle of a task.
 
-## Reference
-
-Shared rules and files: `core.md` next to this file. Class criteria, the role map, what is
-measured and what is still untested for this mode: `plugins/session/README.md`, section
-"Mode 10 — Pipeline".

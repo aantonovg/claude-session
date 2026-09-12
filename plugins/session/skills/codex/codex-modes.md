@@ -10,8 +10,7 @@ axis, heavy agent on request → heavy axis) and the exchange directory is
 
 The shim (`agents/codex-proxy.md` in this plugin) maps targets: `luna` → `gpt-5.6-luna`, `terra` → `gpt-5.6-terra`,
 `sol` → `gpt-5.6-sol`, `luna-reserve` → `gpt-reserve` (luna billed against the separate GPT
-reserve quota, for a 0% main quota). `astra` → `gpt-6-astra` (mapped
-2026-09-05; efforts medium and high, low still accepted; label code `atr`).
+reserve quota, for a 0% main quota). `astra` → `gpt-6-astra` (efforts medium and high, low accepted; label code `atr`).
 
 ## Effort
 
@@ -22,8 +21,6 @@ Executors are fixed at `high`: `luna-high` replaces sonnet-low, `terra-high` rep
 |---|---|---|
 | at most 5 tool calls, pure reasoning over given files (critic) | `sol-medium`, `astra-medium` | opus-medium |
 | hardest document review (decision contract), a gate that must not fail silently, 3 tool calls | `sol-high`, `astra-high` | fable-medium / high |
-
-2026-09-06: astra critic (low) + decision review (medium) cost $0.35 per run at $10 / $1 / $50 per M (unofficial); efforts raised one step after that run.
 
 Heavy runs per path follow the pipeline's heavy document cycle (generate → review →
 evidence → fix, once): fast 0 heavy runs, standard 1 (the review), full ≤ 3 for the
@@ -52,8 +49,7 @@ Pipeline forks all run on the main model, so "slot" means the job a fork would h
 Code review rule: the heavy axis (sol, astra, and any medium or high effort) exists
 only for generating important documents and critiquing them, within 5 tool calls at
 medium and 3 at high. It never reviews volumes of work: no code review, no repository
-read (measured 2026-09-06: sol-high final code reviews took 300-470K input tokens each,
-tens of dollars per run, and those runs count as failed). Code is verified by the
+read. Code is verified by the
 harness and never reviewed; a package without a scenario is authored by opus-low, or
 terra-high in terra executor mode, and not reviewed.
 Executor jobs that go to codex in `luna` / `terra` mode (`luna-high`; in terra mode the
@@ -72,8 +68,7 @@ review. `partial` or a failing harness → one more codex run with the failure p
 failing lines, the hypothesis), never an opus fork; after the second failure the package
 goes to the pipeline's loop guard (failure packet into the ledger, a low fork diagnoses
 from the failure lines only). A harness build is closed the same way: it must fail on the
-negative control and codex reports it. 2026-09-06 sol-terra run: diff-reading opus forks
-around 6 terra packages cost $28 for $1.42 of terra; this rule removes them.
+negative control and codex reports it.
 
 ## Admissibility (the stage stays on Claude when any holds)
 

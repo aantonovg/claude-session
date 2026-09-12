@@ -61,7 +61,7 @@ session; after `/session:pipeline` or `/session:review` when those are used.
    - «terra» — как luna, плюс тяжёлые исполнительские работы на terra-high.
 
 2. One Bash call: `codex --version; CODEX_BIN=$(ls -d ~/.claude/plugins/cache/claude-session/session/*/bin 2>/dev/null | sort -V | tail -1); [ -n "$CODEX_BIN" ] || CODEX_BIN=~/projects/claude-session/plugins/session/bin; [ -x "$CODEX_BIN/codex-exec-logged.sh" ] || CODEX_BIN=~/.claude/bin; ls "$CODEX_BIN/codex-exec-logged.sh" "$CODEX_BIN/codex-style.md" ~/.codex/proxy-usage.jsonl`.
-   The wrapper and the style file ship with this plugin (`bin/`); a local `~/.claude/agents/codex-proxy.md` copy is no longer needed. Missing wrapper → BLOCKED, say so. A `CODEX CLI ERROR` mentioning the quota during the
+   The wrapper and the style file ship with this plugin (`bin/`). Missing wrapper → BLOCKED, say so. A `CODEX CLI ERROR` mentioning the quota during the
    task → executors fall back to `luna-reserve-high`, heavy slots to the Claude agent;
    record `(fallback)` in the ledger label when a ledger exists. Harness gate (pipeline
    skill, when on): the same call runs `codex -p <profile> mcp list` for every MCP server
@@ -76,17 +76,15 @@ session; after `/session:pipeline` or `/session:review` when those are used.
    When a ledger exists, every `ledger.jsonl` row of the task carries `"codex": "<mode>"`.
 5. Exchange directory: `<task dir>/codex/` when pipeline / review has a task directory
    (`mkdir -p` right after it exists); otherwise
-   `$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/` (for cwd
-   `~/projects/demo-game-runs/f-opus-sol-terra` on 2026-09-06:
-   `$TMPDIR/codex-2026-09-06-f-opus-sol-terra/codex/`), created at the first codex job.
+   `$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/`, created at the first codex job.
    Prompt and output files live there. Two sessions never share an exchange directory; a
    session never renames or deletes files it did not create there.
 
 ## How a codex job runs
 
-Envelope as in the session base, section "Launching a codex model": the MAIN session
+Envelope: the MAIN session
 writes the prompt file `<exchange dir>/<job>-<n>.md` (≤ 30 lines of bullets, first line
-`Style: caveman ultra (see AGENTS.md Response style); plain English only, no Russian recap; artifacts in normal prose.`),
+`Style: caveman ultra, plain English only; artifacts in normal prose.`),
 appends the ledger row when a ledger exists (`kind: "codex-agent"`, `model: "<tier>"`,
 `effort`, `codex: "<mode>"`) with one Bash, runs ONE `Workflow` with one `agent()`
 (`agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium'`, label
@@ -103,8 +101,7 @@ implementation-plan section, contract invariants, harness commands, commit messa
 Luna research writes `evidence/EB-<n>.md` directly and appends its own ledger lines; heavy
 jobs write `reviews/<stage>-codex.md` (dual review) or their output file, read by the
 next consumer by path; the artifact stays at `CODEX OUTPUT FILE`, the final message lands
-in `<CODEX OUTPUT FILE>.final.md`, which the shim reads for `LAST LINE`. 2026-09-06: two opus forks per codex call (prompt writer, output
-reader) cost more than the luna call itself on a 150K prefix; this envelope removes them.
+in `<CODEX OUTPUT FILE>.final.md`, which the shim reads for `LAST LINE`.
 
 Executor jobs (luna, terra) run inside codex's workspace-write sandbox, `CODEX CWD` = repo
 root. The package prompt file ends with: run the harness, commit on pass with the given
@@ -116,8 +113,7 @@ the job goes to the loop guard (in pipeline: failure packet into the ledger; in 
 the failure packet in chat), a low fork diagnoses from the failure lines only. A harness
 build in luna / terra mode is closed the same way: the harness must fail on the negative
 control and codex reports it in the status. Choosing an executor mode is the user's
-permission for codex edits in that task. 2026-09-06 sol-terra run: diff-reading opus
-forks around 6 terra packages cost $28 for $1.42 of terra; this rule removes them.
+permission for codex edits in that task.
 
 ## Rules
 

@@ -47,7 +47,7 @@ One directory per task: `~/.claude/projects/<encoded-cwd>/pipeline/<date>-<slug>
   `verification.md`, `implementation.md`, `report.md`) plus `evidence/` and `reviews/`.
 - Forks write and update `task.md` (or the split files) and own only the files their
   prompt names. The directory is the state of the task: a new session continues from it
-  (untested, see README).
+.
 - Draft files are read by forks only. While a file is a draft, the main session never
   reads `task.md`, the split files, `evidence/`, `reviews/` or `ledger.jsonl`: it works
   from the fork return lines (facts, gate verdict, at most the word limit the prompt set)
@@ -107,9 +107,7 @@ Research and verification tools are a hard requirement, not a nice-to-have.
 3. On every following `ping`: `pong`, then in the same turn the same health check runs
    silently; when every wanted tool is back, the stage resumes from the last ledger row
    without asking; when not, one line `still unavailable: <list>` follows `pong`.
-4. MCP reads are never assigned to a cold researcher (measured 2026-09-06: workflow
-   agents do not see the session's MCP servers under the corporate harness; a fork
-   does); a tool that fails in the health check is a harness outage under point 2.
+4. MCP reads are never assigned to a cold researcher (workflow agents do not see the session's MCP servers; a fork does); a tool that fails in the health check is a harness outage under point 2.
 5. The user may override with "continue without <tool>": the stage runs and the
    unavailable list stays in the block and in the report.
 
@@ -118,8 +116,7 @@ Research and verification tools are a hard requirement, not a nice-to-have.
 Fork or cold researcher: a fork re-reads the whole main prefix on every turn (150K
 prefix × 8 turns = 1.2M read tokens), a cold `session:stage-researcher` (Workflow agent,
 researcher cell of the class row, usually sonnet-low, label `<mod>-<eff>-research`)
-costs a fixed ~15-20K start (lean agent: no Skill tool, few tool schemas; measured 13K
-bare) and nothing per turn, but knows nothing of the chat and reasons at sonnet level.
+costs a fixed ~10-15K start and nothing per turn, but knows nothing of the chat and reasons at sonnet level.
 The choice is price for quality, made per research job, not by prefix size:
 - Breadth research → cold researcher: inventories, grep sweeps, reading docs or
   history, collecting file:line pointers, anything whose inputs are files, repositories
@@ -139,9 +136,7 @@ The cold researcher writes the same `evidence/EB-<n>.md` and gets the same ledge
 never several launches; the main session appends its stop line. MCP reads (Jira,
 GitLab, Confluence, Grafana, Kubernetes) are done by short forks (≤ 6 turns, the payload
 written straight to `evidence/raw/`, no relay), never by cold researchers; cold
-researchers get repository, git history, docs and file inputs only. Measured 2026-09-06:
-workflow agents do not see the session's MCP servers under the corporate harness; a fork
-does.
+researchers get repository, git history, docs and file inputs only.
 
 ## Sources and Oracles blocks
 

@@ -44,8 +44,7 @@ unavailable` lines go into the `Sources` block, one chat line per tool with the 
 failure, and the turn ends; every following `ping` re-runs the check silently and resumes
 from the last ledger row when the tools are back, else adds `still unavailable: <list>`;
 "continue without <tool>" from the user overrides. MCP reads are fork jobs, never cold
-researchers (measured 2026-09-06: workflow agents do not see the session's MCP servers
-under the corporate harness; a fork does).
+researchers (workflow agents do not see the session's MCP servers; a fork does).
 
 **1. Research → Gate R** (every path). One short fork (≤ 6 turns) fetches once through
 MCP, straight into `evidence/raw/`, no relay: the ticket intent, the MR description and
@@ -134,7 +133,7 @@ report. Every message is posted through the tool as a draft note, in plain
 professional English; the harness delta is offered as a patch attached to the note.
 The draft set is submitted, and "request changes" is used, only on the user's explicit
 word or by the user in the UI. When no `critical` or `important` finding remains (only
-`minor` ones, or none), the session approves the MR. The chat report is in Russian: what the author claimed, what
+`minor` ones, or none), the session approves the MR. The chat report: what the author claimed, what
 was proven, what the review added, what was found, what stays unverified and the
 harness failures. Remove `pipeline/current`.
 
@@ -177,5 +176,3 @@ stays open.
   finding", "findings only: no verified / not verified lists, no procedure"; the main
   session rejects a `threads.md` or a note over the cap, with grouped findings or with
   verification text and sends it back once.
-Reference: `skills/pipeline/core.md` (shared rules, files), `skills/pipeline/SKILL.md`
-(stages, Forbidden), `plugins/session/README.md` (classes, measurements).
