@@ -82,7 +82,7 @@ runs and calibrates the fast / standard / full paths. Remove `pipeline/current` 
 ## Cost rules (from test 1)
 
 Test 1 (B2CT-22116, opus-low, full, through Gate D): $17.9, 63% of it prefix re-reads over
-197 turns, one miss. The session base's turn cap and read-once rule apply; on top of them:
+197 turns, one miss. A fork reads all its inputs in one command and writes once, at most 8 turns; on top of that:
 
 - Terse main session: one status line per gate in chat, short ledger lines and fork
   prompts, no restating of fork results; its 29K of chat became prefix for ~120 turns.
