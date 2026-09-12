@@ -1,6 +1,6 @@
 {
   "name": "session",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "description": "Rules for the main Claude Code session: /session:base (forks, named workflows, lean agents, classes and slots, waits, style) plus the pipeline, review, codex, ask and reset-counter modes.",
   "keywords": [
     "session",

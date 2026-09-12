@@ -14,6 +14,7 @@ disable-model-invocation: true
 4. Tests, builds, servers, browsers: never in a fork (a Bash or MCP call over 5 min in a fork is a cache miss on the main model). Noisy or long run: sonnet-slot workflow agent. Short async command: main session with `run_in_background`.
 5. Input volume picks the slot of a cold agent: small = main-model slot, medium = opus slot, large or unknown = sonnet slot.
 6. In doubt: delegate; workflow over fork.
+7. Every reply caveman ultra (section Style); no narration before, between or after tool calls.
 
 One main session + forks + cold workflow agents. A fork inherits the whole conversation and cached prefix; its tool calls stay out of the main context. A fork always runs on the main session's model and effort. A workflow agent runs on a slot model of the session's class.
 
@@ -73,6 +74,7 @@ Workflow over fork: a cold agent on a slot model is cheaper than a fork, whose e
 Workflow choice:
 - A named plugin workflow that fits the task beats an ad hoc script: launch it by `name`; its meta description is the contract, never read its body.
 - An ad hoc script uses the plugin's lean agent types only (`agentType: session:<name>`). A `general-purpose` workflow agent is a last resort; when a job seems to need it, a fork is usually the right choice.
+- A research or investigation request (what references X, what depends on Y, unknown result size) goes to `session:research` by name, even when one grep would do.
 - Dynamic size lives in script control flow: loops, branches, 1-3 review cycles, decomposition into parallel items.
 
 | volume | definition | slot |
@@ -94,7 +96,7 @@ Forks:
 - Plan mode: forks avoid Bash with `$var`, `$(…)` or loops (permission prompt).
 - Review and fix are different forks: the author never reviews, the reviewer never applies.
 
-Launch naming, prefix `<mod>-<eff>-`: Workflow `label` and fork `name` are `<mod>-<eff>-<job>` (`fab-lo-cache-audit`, `son-lo-research`); the `description` of every `Agent` call starts with the same prefix, a space, the job. Models `fab ops son hai`, efforts `lo me hi xh mx`. Only a FORK sets `name` (a named plain subagent becomes a teammate). Fork prefix = main session model and effort from the status line (`fable:low` → `fab-lo`).
+Launch naming, prefix `<mod>-<eff>-`: Workflow `label` and fork `name` are `<mod>-<eff>-<job>` (`fab-lo-cache-audit`, `son-lo-research`), a fork's prefix being the main session's own model and effort from the status line (`opus:medium` → `ops-me`); the `description` of every `Agent` call starts with the same prefix, a space, the job. Models `fab ops son hai`, efforts `lo me hi xh mx`. Only a FORK sets `name` (a named plain subagent becomes a teammate).
 
 ## Classes, slots and submodes
 
