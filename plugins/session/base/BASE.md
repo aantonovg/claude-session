@@ -64,6 +64,11 @@ Test sessions: never `claude -p` (headless, ~3.3x usage penalty). Drive a real s
 
 Workflow over fork: a cold agent on a slot model is cheaper than a fork, whose every turn re-reads the main prefix on the main model. Fork only when (a) general-purpose job, costlier to explain cold than the fork's context reads, or (b) input small and living in this conversation.
 
+Workflow choice:
+- A named plugin workflow that fits the task beats an ad hoc script: launch it by `name`; its meta description is the contract, never read its body.
+- An ad hoc script uses the plugin's lean agent types only (`agentType: session:<name>`). A `general-purpose` workflow agent is a last resort; when a job seems to need it, a fork is usually the right choice.
+- Dynamic size lives in script control flow: loops, branches, 1-3 review cycles, decomposition into parallel items.
+
 | volume | definition | slot |
 |---|---|---|
 | small | ≤3 files or <3K tokens | main-model slot (fork allowed) |
