@@ -52,7 +52,8 @@ const Q = A.question
 if (!Q) throw new Error('args.question is required')
 const DIRS = A.directions && A.directions.length ? A.directions : [Q]
 const PATHS = (A.paths || []).join('\n')
-log(`research: ${CLS} ${SUBS.join(' ') || 'no submodes'} slots ${ROW.join(' / ')}; ${DIRS.length} directions`)
+const NAME = [CLS, ...SUBS, 'research'].join('-')
+log(`${NAME} | cwd=${CWD} out=${OUT} directions=${DIRS.length} paths=${(A.paths || []).length} slots=${ROW.join('/')}`)
 
 phase('Research')
 const notes = await parallel(DIRS.map((d, n) => () => agent(`Fact researcher, direction ${n + 1} of ${DIRS.length}: ${d}

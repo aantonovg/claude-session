@@ -51,7 +51,8 @@ async function cycle(max, review, fix) {
 const PLAN = A.plan
 if (!PLAN) throw new Error('args.plan (absolute path to the plan file) is required')
 const TEST = A.test || '(the command named in the plan under "Test command")'
-log(`build: ${CLS} ${SUBS.join(' ') || 'no submodes'} slots ${ROW.join(' / ')}; plan ${PLAN}`)
+const NAME = [CLS, ...SUBS, 'build'].join('-')
+log(`${NAME} | cwd=${CWD} out=${OUT} plan=${String(PLAN).split('/').pop()} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Implement')
 const impl = await agent(`Code author. Implement the plan ${PLAN} in ${CWD}, step by step, until "${TEST}" passes. Read the plan and the files it lists first. Touch only the files the plan lists plus what a step strictly needs; note any extra file in your return. Existing tests stay as they are unless one contradicts the plan (say so). Do not commit.

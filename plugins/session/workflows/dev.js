@@ -52,7 +52,8 @@ const TASK = A.task
 if (!TASK) throw new Error('args.task is required')
 const PATHS = (A.paths || []).join('\n')
 const TEST = A.test || '(the command named in plan.md under "Test command")'
-log(`dev: ${CLS} ${SUBS.join(' ') || 'no submodes'} slots ${ROW.join(' / ')}`)
+const NAME = [CLS, ...SUBS, 'dev'].join('-')
+log(`${NAME} | cwd=${CWD} out=${OUT} paths=${(A.paths || []).length} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Plan')
 const plan = await agent(`Plan author. Write an implementation plan for the task below into ${OUT}/plan.md (create ${OUT} if missing).
