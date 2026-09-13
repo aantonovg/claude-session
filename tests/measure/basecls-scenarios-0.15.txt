@@ -1,0 +1,30 @@
+# Base 0.15 behavior scenarios: do the new user-level assets fire? (tmux, one fresh session per run)
+# Driver: MODEL=<sonnet|opus|fable> EFFORT=<lo..> REPEAT=<n> basecls-run.sh S1 ... S9
+# Default cwd ~/projects/base-test-15-<MODEL>; a "cwd:" line overrides it for one scenario.
+# Verdicts by basecls-parse.py <jsonl> <ID> [files-dir] over every assistant record of the turn.
+# Skill call = tool_use Skill whose input.skill ends with the name; Workflow name = tool_use Workflow input.name.
+
+S1  base: (none)   prompts: "Count the human user messages (not tool results, not meta records) in the Claude Code transcript sample-transcript.jsonl in this folder; it is a copy of a session file from ~/.claude/projects."
+    setup: sample-transcript.jsonl generated (4 human prompts, 1 meta, 2 tool_result records, 3 assistant records).
+    PASS: a Skill call transcripts-jsonl, or a Workflow call named session:research whose args mention "transcript" or "jsonl".
+S2  base: (none)   prompts: "Plan a behavior test of the shell-gotchas skill in a fresh Claude Code session on sonnet: describe the launch and how you would read the result. Describe only, do not launch anything."
+    PASS: reply text or a Skill call names tmux-sessions or test-session.
+S3  base: (none)   prompts: "Write run-jobs.zsh (about 15 lines, zsh, set -e): start three background jobs (sleep 1, sleep 2, sleep 3), count finished jobs with a counter, wait for each job by pid and exit non-zero if any failed."
+    PASS: a Skill call shell-gotchas, or the script (Write content, Bash heredoc, or a .zsh/.sh file copied from the test dir) has no "(( var++ ))" form and waits on a pid ("wait $pid" or "wait ${...}").
+S4  base: (none)   prompts: "Write an ad hoc Workflow script that reviews a.py, b.py and c.py in parallel with one reviewer agent each and merges the findings. Show the script only, do not launch it."
+    setup: a.py, b.py, c.py.
+    PASS: Skill calls include both workflow-authoring and workflow-reliability, or the script text (Write content or reply) sets model: and effort: on every agent call.
+S5  base: (none)   prompts: "What does one fork turn cost compared with one cold sonnet workflow agent on this account? Short answer with the numbers you know."
+    PASS: a Skill call harness-cost.
+S6  base: (none)   prompts: "Turn notes/a.md and notes/b.md from this folder into a user-level skill named demo-notes. Describe the exact launch you would use, do not launch."
+    setup: notes/a.md, notes/b.md.
+    PASS: reply text names skill-author and both "name" and "sources" (or a Workflow call named skill-author with those args).
+S7  base: (none)   prompts: "Apply memory-trim.md from this folder. Describe the launch only, do not run it."
+    setup: memory-trim.md with one SHORTEN line and a skill: line.
+    PASS: reply text or a Workflow call names memory-gc.
+S8  base: (none)   prompts: "Run scenarios.txt with runner.sh from this folder against sonnet sessions and judge the results. Describe the launch only, do not run it."
+    setup: scenarios.txt, runner.sh.
+    PASS: reply text or a Workflow call names test-session together with scenarios, runner and out.
+S9  base: (none)   prompts: "Bump and reinstall the session plugin. Describe the steps only, do not execute anything."
+    cwd: /Users/aleksandr.antonov/projects/claude-session
+    PASS: a Skill call plugin-release, or reply text contains "install session@claude-session".

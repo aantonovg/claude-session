@@ -142,6 +142,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.3: every synchronous Bash call in an agent sets `timeout` ≤ 120000; commands that may run over 2 minutes run detached only.
 0.15.4: the self-ping is a 30-second step loop (`for i in $(seq 6); do test -f <done> && break; sleep 30; done`), so a finished job is noticed within 30 s; background jobs write their own done-file.
 0.15.5: poll step 5 seconds (`for i in $(seq 36); do test -f <done> && break; sleep 5; done`); a finished job is noticed within 5 s.
+0.15.6: base "Skill first, then delegate" bullet (transcripts-jsonl, shell-gotchas, workflow-reliability, harness-cost, tmux-sessions); tests/measure: S1-S9 scenarios for the 0.15 assets, driver env matrix (MODEL EFFORT CWD OUT REPEAT IDS), parser S3 scans script files only.
 0.15.0: prompt-time skill injection (`skillLine`) in the four workflows; `code-reviewer` no longer names the bundled `code-review` skill (frontmatter cannot preload bundled skills); base lists the five user skills.
 0.14.6: agent descriptions under 100 tokens, workflow descriptions type every arg (limit 200 tokens).
 0.14.5: every skill and workflow description under 100 tokens; whenToUse under 25 words.
