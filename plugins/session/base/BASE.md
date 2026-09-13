@@ -123,7 +123,7 @@ Main-model-slot critique, ALWAYS at: before implementation (plan or contract); a
 
 - `model` and `effort` explicit, the effective cell values (class row, then submodes), never inherited; `agentType` launches too.
 - Label prefix `<mod>-<eff>-` (`fab-hi-review-plan`, `ops-lo-fast-tests`); the prefix is the only place effort is visible.
-- Skills reach a cold agent only as resolved absolute paths to read (`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/skills/<name>/SKILL.md | sort -V | tail -1`; user skill `~/.claude/skills/<name>/SKILL.md`), never as skill names; missing file → `BLOCKED: <path>`. Prompt ends with "Read these skill files with the Read tool before starting: <paths>." or "No skills needed for this step."
+- Skills reach a cold agent only as resolved absolute paths to read (`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/skills/<name>/SKILL.md | sort -V | tail -1`; user skill `~/.claude/skills/<name>/SKILL.md`), never as skill names; missing file → `BLOCKED: <path>`. Prompt ends with "Read these skill files with the Read tool before starting: <paths>." or "No skills needed for this step." User skills a main session names for stage agents when the task touches their domain: `transcripts-jsonl`, `tmux-sessions`, `shell-gotchas`, `workflow-reliability`, `harness-cost`.
 - Independent agents in ONE workflow (`parallel`); a relay (research → critique → check) as `pipeline()` stages of the same workflow.
 - Check a saved script before launch: explicit model+effort, labels, skill line, class and submodes in `meta.name`. After editing a saved script launch by `scriptPath`, not `name`. Load `workflow-authoring` before writing a script.
 

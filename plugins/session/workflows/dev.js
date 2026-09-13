@@ -34,7 +34,11 @@ const OUT = A.out || `${CWD}/reviews`
 const blocked = r => r == null || /BLOCKED:/.test(String(r))
 const clean = r => /VERDICT:\s*clean/i.test(String(r))
 const last = r => String(r || '').trim().split('\n').pop()
-const STYLE = 'Plain English, caveman ultra; the return value is data. No skills needed for this step. On a permission denial stop at once and return BLOCKED: <denied action>.'
+const SK = '/Users/aleksandr.antonov/.claude/skills'
+const skillLine = paths => paths.length ? `Read these skill files with the Read tool before starting: ${paths.join(', ')}.` : 'No skills needed for this step.'
+const mentions = (re, ...xs) => xs.some(x => re.test(String(x || '')))
+const style = sk => `Plain English, caveman ultra; the return value is data. ${skillLine(sk)} On a permission denial stop at once and return BLOCKED: <denied action>.`
+const STYLE = style([])
 // cycle: review -> fix, up to max rounds; stops on clean, blocked or max
 async function cycle(max, review, fix) {
   for (let i = 1; i <= max; i++) {
@@ -53,6 +57,8 @@ if (!TASK) throw new Error('args.task is required')
 const PATHS = (A.paths || []).join('\n')
 const TEST = A.test || '(the command named in plan.md under "Test command")'
 const NAME = [CLS, ...SUBS, 'dev'].join('-')
+const AUTH_SK = [...(mentions(/workflow/i, TASK) ? [`${SK}/workflow-reliability/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST, PATHS) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
+const EXEC_SK = [...(mentions(/tmux/i, TEST) ? [`${SK}/tmux-sessions/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
 log(`${NAME} | cwd=${CWD} out=${OUT} paths=${(A.paths || []).length} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Plan')
@@ -62,7 +68,7 @@ Task: ${TASK}
 Inputs (absolute paths):
 ${PATHS || '(none named: locate the relevant files yourself, at most 10 reads)'}
 Plan sections, in order: Goal (2 lines); Acceptance criteria (numbered, each testable); Files to change (path, what changes); Test command (one shell line, or "${A.test || 'to be decided'}"); Steps (numbered, each one commit-sized); Risks (what may break, how to check). At most 120 lines.
-Return: DONE plus the criteria count, or BLOCKED: <reason>. ${STYLE}`, opts('opus', 'plan', { agentType: 'session:stage-author', phase: 'Plan' }))
+Return: DONE plus the criteria count, or BLOCKED: <reason>. ${style(AUTH_SK)}`, opts('opus', 'plan', { agentType: 'session:stage-author', phase: 'Plan' }))
 if (blocked(plan)) return { stage: 'plan', blocked: last(plan) }
 
 const planLoop = await cycle(3,
@@ -70,25 +76,25 @@ const planLoop = await cycle(3,
 Task for reference: ${TASK}
 Last line of your return: "VERDICT: clean" when there is no high or medium finding, else "VERDICT: findings <n high> <m medium>". ${STYLE}`, opts('main', `plan-review-${i}`, { agentType: 'session:stage-reviewer', phase: 'Plan' })),
   (i, r) => agent(`Plan fixer. Apply ${OUT}/plan-review-${i}.md to ${OUT}/plan.md: every high and medium finding, low ones when cheap. Keep the section order. Do not change the task scope. Read both files in one pass, write once.
-Return: DONE plus the count of findings applied, or BLOCKED: <reason>. ${STYLE}`, opts('opus', `plan-fix-${i}`, { agentType: 'session:stage-author', phase: 'Plan' })))
+Return: DONE plus the count of findings applied, or BLOCKED: <reason>. ${style(AUTH_SK)}`, opts('opus', `plan-fix-${i}`, { agentType: 'session:stage-author', phase: 'Plan' })))
 if (planLoop.blocked) return { stage: 'plan-review', blocked: planLoop.blocked }
 if (!planLoop.clean) log(`plan: not clean after ${planLoop.round} rounds, continuing on the last version (${planLoop.last})`)
 
 phase('Red tests')
 const red = await agent(`Test author. Read ${OUT}/plan.md. Write failing tests in ${CWD} that map one to one onto its acceptance criteria, in the project's existing test framework and layout (look at one existing test file first). Do not implement the feature. Run "${TEST}" once and confirm the new tests fail for the right reason (missing behaviour, not a syntax error).
-Return: DONE plus "<n> tests, <m> criteria covered, run: <the failing summary line>", or BLOCKED: <reason>. ${STYLE}`, opts('opus', 'red-tests', { agentType: 'session:stage-author', phase: 'Red tests' }))
+Return: DONE plus "<n> tests, <m> criteria covered, run: <the failing summary line>", or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', 'red-tests', { agentType: 'session:stage-author', phase: 'Red tests' }))
 if (blocked(red)) return { stage: 'red-tests', blocked: last(red) }
 
 const redLoop = await cycle(2,
   i => agent(`Test reviewer. In ${CWD} run "git diff" plus "git status --short" to see the new tests; read ${OUT}/plan.md for the acceptance criteria. Check: every criterion has a test, every test checks behaviour (not implementation details), no test passes before the feature exists, fixtures are minimal. Never edit files. Write ${OUT}/tests-review-${i}.md with findings by severity and file:line.
 Last line of your return: "VERDICT: clean" or "VERDICT: findings <n high> <m medium>". ${STYLE}`, opts('sonnet', `tests-review-${i}`, { agentType: 'session:code-reviewer', phase: 'Red tests' })),
   (i, r) => agent(`Test fixer. Apply ${OUT}/tests-review-${i}.md to the test files in ${CWD}: high and medium findings. Run "${TEST}" once; the new tests must still fail for the right reason.
-Return: DONE plus the count applied and the failing summary line, or BLOCKED: <reason>. ${STYLE}`, opts('opus', `tests-fix-${i}`, { agentType: 'session:stage-author', phase: 'Red tests' })))
+Return: DONE plus the count applied and the failing summary line, or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', `tests-fix-${i}`, { agentType: 'session:stage-author', phase: 'Red tests' })))
 if (redLoop.blocked) return { stage: 'red-tests-review', blocked: redLoop.blocked }
 
 phase('Implement')
 const impl = await agent(`Code author. Implement ${OUT}/plan.md in ${CWD}, step by step, until "${TEST}" passes. Touch only the files the plan lists plus what a step strictly needs; note any extra file in your return. Do not edit the tests except to fix a test that contradicts the plan (say so). Do not commit.
-Return: DONE plus "files: <list>, run: <the passing summary line>", or BLOCKED: <reason>. ${STYLE}`, opts('opus', 'implement', { agentType: 'session:stage-author', phase: 'Implement' }))
+Return: DONE plus "files: <list>, run: <the passing summary line>", or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', 'implement', { agentType: 'session:stage-author', phase: 'Implement' }))
 if (blocked(impl)) return { stage: 'implement', blocked: last(impl) }
 
 let tests = null
@@ -98,12 +104,12 @@ const implLoop = await cycle(3,
 Last line: "VERDICT: clean" or "VERDICT: findings <n high> <m medium>". ${STYLE}`, opts('sonnet', `code-review-${i}`, { agentType: 'session:code-reviewer', phase: 'Implement' }))
     if (blocked(rev)) return rev
     tests = await agent(`Test executor. In ${CWD} run "${TEST}". Write ${OUT}/tests-${i}.md: one PASS/FAIL line for the run plus the last 20 lines of output on failure. Never edit code.
-Last line of your return: "VERDICT: clean" when the run passed, else "VERDICT: findings 1 high" plus the failing summary line. ${STYLE}`, opts('sonnet', `tests-${i}`, { agentType: 'session:stage-executor', phase: 'Implement' }))
+Last line of your return: "VERDICT: clean" when the run passed, else "VERDICT: findings 1 high" plus the failing summary line. ${style(EXEC_SK)}`, opts('sonnet', `tests-${i}`, { agentType: 'session:stage-executor', phase: 'Implement' }))
     if (blocked(tests)) return tests
     return clean(rev) && clean(tests) ? 'VERDICT: clean' : `${last(rev)} | ${last(tests)}`
   },
   (i, r) => agent(`Code fixer. In ${CWD} apply ${OUT}/code-review-${i}.md (high and medium findings) and fix the failures in ${OUT}/tests-${i}.md. Run "${TEST}" until it passes. Do not commit.
-Return: DONE plus the count applied and the passing summary line, or BLOCKED: <reason>. ${STYLE}`, opts('opus', `code-fix-${i}`, { agentType: 'session:stage-author', phase: 'Implement' })))
+Return: DONE plus the count applied and the passing summary line, or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', `code-fix-${i}`, { agentType: 'session:stage-author', phase: 'Implement' })))
 if (implLoop.blocked) return { stage: 'implement-review', blocked: implLoop.blocked }
 
 phase('Closure')

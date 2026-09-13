@@ -75,6 +75,11 @@ the caller. Shared block in every script: the 35-cell class table, `args.class` 
 `<mod>-<eff>-<job>` label. `args.cwd` is required; outputs go to `args.out` (default `<cwd>/reviews`).
 A `null` or `BLOCKED:` stage result ends the run with a report; reviewers end with `VERDICT: clean`
 or `VERDICT: findings`, which drives the 1-3 review-fix cycles.
+Skill injection is prompt-time: `skillLine()` in each script adds `~/.claude/skills/<name>/SKILL.md`
+paths to a stage prompt only when the args touch that domain (`transcripts-jsonl` for researchers on
+transcripts, `tmux-sessions` for tmux test commands, `workflow-reliability` for workflow tasks,
+`shell-gotchas` for `.sh` inputs); otherwise the prompt says "No skills needed for this step". No
+agent preloads a skill in frontmatter.
 
 | workflow | stages | args | agents |
 |---|---|---|---|
@@ -132,6 +137,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 
 ## Version log
 
+0.15.0: prompt-time skill injection (`skillLine`) in the four workflows; `code-reviewer` no longer names the bundled `code-review` skill (frontmatter cannot preload bundled skills); base lists the five user skills.
 0.14.6: agent descriptions under 100 tokens, workflow descriptions type every arg (limit 200 tokens).
 0.14.5: every skill and workflow description under 100 tokens; whenToUse under 25 words.
 0.14.4: every named workflow logs `c<class>[-<submodes>]-<name>` plus its launch args as its first line; base scopes the `meta.name` class rule to ad hoc scripts.

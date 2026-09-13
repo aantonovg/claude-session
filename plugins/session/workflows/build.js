@@ -34,7 +34,11 @@ const OUT = A.out || `${CWD}/reviews`
 const blocked = r => r == null || /BLOCKED:/.test(String(r))
 const clean = r => /VERDICT:\s*clean/i.test(String(r))
 const last = r => String(r || '').trim().split('\n').pop()
-const STYLE = 'Plain English, caveman ultra; the return value is data. No skills needed for this step. On a permission denial stop at once and return BLOCKED: <denied action>.'
+const SK = '/Users/aleksandr.antonov/.claude/skills'
+const skillLine = paths => paths.length ? `Read these skill files with the Read tool before starting: ${paths.join(', ')}.` : 'No skills needed for this step.'
+const mentions = (re, ...xs) => xs.some(x => re.test(String(x || '')))
+const style = sk => `Plain English, caveman ultra; the return value is data. ${skillLine(sk)} On a permission denial stop at once and return BLOCKED: <denied action>.`
+const STYLE = style([])
 // cycle: review -> fix, up to max rounds; stops on clean, blocked or max
 async function cycle(max, review, fix) {
   for (let i = 1; i <= max; i++) {
@@ -52,11 +56,13 @@ const PLAN = A.plan
 if (!PLAN) throw new Error('args.plan (absolute path to the plan file) is required')
 const TEST = A.test || '(the command named in the plan under "Test command")'
 const NAME = [CLS, ...SUBS, 'build'].join('-')
+const AUTH_SK = [...(mentions(/workflow/i, PLAN) ? [`${SK}/workflow-reliability/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST, PLAN) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
+const EXEC_SK = [...(mentions(/tmux/i, TEST) ? [`${SK}/tmux-sessions/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
 log(`${NAME} | cwd=${CWD} out=${OUT} plan=${String(PLAN).split('/').pop()} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Implement')
 const impl = await agent(`Code author. Implement the plan ${PLAN} in ${CWD}, step by step, until "${TEST}" passes. Read the plan and the files it lists first. Touch only the files the plan lists plus what a step strictly needs; note any extra file in your return. Existing tests stay as they are unless one contradicts the plan (say so). Do not commit.
-Return: DONE plus "files: <list>, run: <the passing summary line>", or BLOCKED: <reason>. ${STYLE}`, opts('opus', 'implement', { agentType: 'session:stage-author', phase: 'Implement' }))
+Return: DONE plus "files: <list>, run: <the passing summary line>", or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', 'implement', { agentType: 'session:stage-author', phase: 'Implement' }))
 if (blocked(impl)) return { stage: 'implement', blocked: last(impl) }
 
 const loop = await cycle(3,
@@ -65,12 +71,12 @@ const loop = await cycle(3,
 Last line of your return: "VERDICT: clean" or "VERDICT: findings <n high> <m medium>". ${STYLE}`, opts('sonnet', `code-review-${i}`, { agentType: 'session:code-reviewer', phase: 'Implement' }))
     if (blocked(rev)) return rev
     const tests = await agent(`Test executor. In ${CWD} run "${TEST}". Write ${OUT}/tests-${i}.md: one PASS/FAIL line plus the last 20 lines of output on failure. Never edit code.
-Last line of your return: "VERDICT: clean" when the run passed, else "VERDICT: findings 1 high" plus the failing summary line. ${STYLE}`, opts('sonnet', `tests-${i}`, { agentType: 'session:stage-executor', phase: 'Implement' }))
+Last line of your return: "VERDICT: clean" when the run passed, else "VERDICT: findings 1 high" plus the failing summary line. ${style(EXEC_SK)}`, opts('sonnet', `tests-${i}`, { agentType: 'session:stage-executor', phase: 'Implement' }))
     if (blocked(tests)) return tests
     return clean(rev) && clean(tests) ? 'VERDICT: clean' : `${last(rev)} | ${last(tests)}`
   },
   (i, r) => agent(`Code fixer. In ${CWD} apply ${OUT}/code-review-${i}.md (high and medium findings) and fix the failures in ${OUT}/tests-${i}.md. Run "${TEST}" until it passes. Do not commit.
-Return: DONE plus the count applied and the passing summary line, or BLOCKED: <reason>. ${STYLE}`, opts('opus', `code-fix-${i}`, { agentType: 'session:stage-author', phase: 'Implement' })))
+Return: DONE plus the count applied and the passing summary line, or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', `code-fix-${i}`, { agentType: 'session:stage-author', phase: 'Implement' })))
 
 if (loop.blocked) return { stage: 'implement-review', blocked: loop.blocked }
 return {
