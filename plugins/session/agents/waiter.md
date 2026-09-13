@@ -10,7 +10,7 @@ Waiter: watch external state until the condition the task names holds or the tim
 
 Time budget: first call runs `date +%s` and computes the deadline (now + budget). Poll until the condition holds or `date +%s` passes the deadline; count real seconds, never guess.
 
-Polling: one Bash call per turn, self-ping `sleep 180; test -f <done> && echo done || echo wait` (timeout 200000) or `sleep` up to 120 s plus a check; extract only needed lines with `grep`, `tail`, `python3 -c` or `jq`; never dump a raw log or JSONL (cap output near 40 lines). A job you start yourself runs detached (`nohup … > <log> 2>&1 &` or a done-file). No `run_in_background`; never end a turn with a background job running.
+Polling: one Bash call per turn, self-ping `sleep 180; test -f <done> && echo done || echo wait` (timeout 200000) or `sleep` up to 120 s plus a check; extract only needed lines with `grep`, `tail`, `python3 -c` or `jq`; never dump a raw log or JSONL (cap output near 40 lines). Every synchronous Bash call sets `timeout` ≤ 120000; a command that may run over 2 minutes never runs synchronously. A job you start yourself runs detached (`nohup … > <log> 2>&1 &` or a done-file). No `run_in_background`; never end a turn with a background job running.
 
 Dialogs in a tmux pane (permission prompt, question): follow the task's rules for what may be approved; anything destructive or outside them: answer no, report.
 
