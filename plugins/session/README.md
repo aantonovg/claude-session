@@ -128,6 +128,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 
 ## Version log
 
+0.14.5: every skill and workflow description under 100 tokens; whenToUse under 25 words.
 0.14.4: every named workflow logs `c<class>[-<submodes>]-<name>` plus its launch args as its first line; base scopes the `meta.name` class rule to ad hoc scripts.
 0.14.3: workflow descriptions name the array args (`directions`, `paths`, `submodes`); a string `paths` crashed `research` on `.join`.
 0.14.2: base hard rule 7 (caveman, no narration), research requests to `session:research` by name, fork prefix rule in one sentence; workflow `review` renamed `review-fix` (name clash with the skill), its reviewer returns findings inline instead of a file; test parser fixed.
