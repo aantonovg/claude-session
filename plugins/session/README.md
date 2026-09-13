@@ -78,10 +78,10 @@ or `VERDICT: findings`, which drives the 1-3 review-fix cycles.
 
 | workflow | stages | args | agents |
 |---|---|---|---|
-| `dev` | plan, plan critique+fix (1-3), red tests + review (1-2), implement + code review + tests + fix (1-3), closure + review | `cwd, task, paths, test, class, submodes, out` | stage-author (opus slot), stage-reviewer (main), code-reviewer and stage-executor (sonnet) |
-| `review-fix` | code review, evidence check, fix, tests; 1-3 cycles (1 when `fix: false`) | `cwd, target (diff file / a..b / worktree), test, fix, class, submodes, out` | code-reviewer (findings returned inline), stage-researcher (sonnet), stage-author (opus) |
-| `build` | implement a plan, code review + tests + fix (1-3) | `cwd, plan, test, class, submodes, out` | stage-author (opus), code-reviewer and stage-executor (sonnet) |
-| `research` | parallel researchers by direction, critique, synthesis | `cwd, question, directions, paths, class, submodes, out` | stage-researcher (sonnet), stage-critic (main), stage-author (opus) |
+| `dev` | plan, plan critique+fix (1-3), red tests + review (1-2), implement + code review + tests + fix (1-3), closure + review | `cwd, task, paths (array), test, class, submodes (array), out` | stage-author (opus slot), stage-reviewer (main), code-reviewer and stage-executor (sonnet) |
+| `review-fix` | code review, evidence check, fix, tests; 1-3 cycles (1 when `fix: false`) | `cwd, target (diff file / a..b / worktree), test, fix, class, submodes (array), out` | code-reviewer (findings returned inline), stage-researcher (sonnet), stage-author (opus) |
+| `build` | implement a plan, code review + tests + fix (1-3) | `cwd, plan, test, class, submodes (array), out` | stage-author (opus), code-reviewer and stage-executor (sonnet) |
+| `research` | parallel researchers by direction, critique, synthesis | `cwd, question, directions (array), paths (array), class, submodes (array), out` | stage-researcher (sonnet), stage-critic (main), stage-author (opus) |
 
 
 ## codex-proxy permission set
@@ -128,6 +128,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 
 ## Version log
 
+0.14.3: workflow descriptions name the array args (`directions`, `paths`, `submodes`); a string `paths` crashed `research` on `.join`.
 0.14.2: base hard rule 7 (caveman, no narration), research requests to `session:research` by name, fork prefix rule in one sentence; workflow `review` renamed `review-fix` (name clash with the skill), its reviewer returns findings inline instead of a file; test parser fixed.
 0.14.1: README cut to the contract sections (old text in `docs/history-README-2026-09-12.md`), `base/skill-routing.md` and `session-map.example.md` deleted, plugin and ask descriptions shortened, stale base pointers in the pipeline, review and codex skills inlined.
 0.10.0 agents for heavy work (the main session keeps the lean tool set, one-agent `Workflow`
