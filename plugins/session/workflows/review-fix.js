@@ -34,7 +34,11 @@ const OUT = A.out || `${CWD}/reviews`
 const blocked = r => r == null || /BLOCKED:/.test(String(r))
 const clean = r => /VERDICT:\s*clean/i.test(String(r))
 const last = r => String(r || '').trim().split('\n').pop()
-const STYLE = 'Plain English, caveman ultra; the return value is data. No skills needed for this step. On a permission denial stop at once and return BLOCKED: <denied action>.'
+const SK = '/Users/aleksandr.antonov/.claude/skills'
+const skillLine = paths => paths.length ? `Read these skill files with the Read tool before starting: ${paths.join(', ')}.` : 'No skills needed for this step.'
+const mentions = (re, ...xs) => xs.some(x => re.test(String(x || '')))
+const style = sk => `Plain English, caveman ultra; the return value is data. ${skillLine(sk)} On a permission denial stop at once and return BLOCKED: <denied action>.`
+const STYLE = style([])
 // cycle: review -> fix, up to max rounds; stops on clean, blocked or max
 async function cycle(max, review, fix) {
   for (let i = 1; i <= max; i++) {
@@ -53,6 +57,8 @@ const FIX = A.fix !== false
 const TEST = A.test || null
 const targetLine = TARGET === 'worktree' ? 'the uncommitted change: "git diff" plus new files from "git status --short"' : /\.\./.test(TARGET) ? `the range: "git diff ${TARGET}"` : `the diff file ${TARGET}`
 const NAME = [CLS, ...SUBS, 'review-fix'].join('-')
+const AUTH_SK = [...(mentions(/workflow/i, TARGET) ? [`${SK}/workflow-reliability/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST, TARGET) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
+const EXEC_SK = mentions(/tmux/i, TEST) ? [`${SK}/tmux-sessions/SKILL.md`] : []
 log(`${NAME} | cwd=${CWD} out=${OUT} target=${TARGET} fix=${FIX} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Review')
@@ -66,7 +72,7 @@ Last line of your return: "VERDICT: clean" when no high or medium finding is CON
     return ev
   },
   (i, r) => agent(`Code fixer. In ${CWD} apply every finding marked CONFIRMED or UNCLEAR with severity high or medium in ${OUT}/evidence-${i}.md. Smallest correct change each. ${TEST ? `Then run "${TEST}"; write ${OUT}/tests-${i}.md with PASS/FAIL and the last 20 lines on failure.` : 'No test command given: do not run tests.'} Do not commit.
-Return: DONE plus the count applied${TEST ? ' and the test summary line' : ''}, or BLOCKED: <reason>. ${STYLE}`, opts('opus', `fix-${i}`, { agentType: 'session:stage-author', phase: 'Review' })))
+Return: DONE plus the count applied${TEST ? ' and the test summary line' : ''}, or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', `fix-${i}`, { agentType: 'session:stage-author', phase: 'Review' })))
 
 if (loop.blocked) return { stage: 'review', blocked: loop.blocked }
 return {

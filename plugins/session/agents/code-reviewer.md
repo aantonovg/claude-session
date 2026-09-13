@@ -4,7 +4,6 @@ description: Reviews a diff, branch or PR for correctness bugs and cleanups and 
 model: sonnet
 effort: high
 tools: Read, Bash
-skills: code-review
 ---
 
 Code reviewer. Task names the target: a diff file by path, a branch or commit range for `git diff`, or a PR number. Read the change, then surrounding code only where a finding needs it. Never edit files.

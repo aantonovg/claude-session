@@ -34,7 +34,11 @@ const OUT = A.out || `${CWD}/reviews`
 const blocked = r => r == null || /BLOCKED:/.test(String(r))
 const clean = r => /VERDICT:\s*clean/i.test(String(r))
 const last = r => String(r || '').trim().split('\n').pop()
-const STYLE = 'Plain English, caveman ultra; the return value is data. No skills needed for this step. On a permission denial stop at once and return BLOCKED: <denied action>.'
+const SK = '/Users/aleksandr.antonov/.claude/skills'
+const skillLine = paths => paths.length ? `Read these skill files with the Read tool before starting: ${paths.join(', ')}.` : 'No skills needed for this step.'
+const mentions = (re, ...xs) => xs.some(x => re.test(String(x || '')))
+const style = sk => `Plain English, caveman ultra; the return value is data. ${skillLine(sk)} On a permission denial stop at once and return BLOCKED: <denied action>.`
+const STYLE = style([])
 // cycle: review -> fix, up to max rounds; stops on clean, blocked or max
 async function cycle(max, review, fix) {
   for (let i = 1; i <= max; i++) {
@@ -53,6 +57,7 @@ if (!Q) throw new Error('args.question is required')
 const DIRS = A.directions && A.directions.length ? A.directions : [Q]
 const PATHS = (A.paths || []).join('\n')
 const NAME = [CLS, ...SUBS, 'research'].join('-')
+const RES_SK = [...(mentions(/transcript|jsonl/i, Q, PATHS) ? [`${SK}/transcripts-jsonl/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, PATHS) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
 log(`${NAME} | cwd=${CWD} out=${OUT} directions=${DIRS.length} paths=${(A.paths || []).length} slots=${ROW.join('/')}`)
 
 phase('Research')
@@ -62,7 +67,7 @@ Repository: ${CWD}. Start from the inputs below, then git log and grep as needed
 Inputs (absolute paths):
 ${PATHS || '(none named)'}
 Write ${OUT}/notes-${n + 1}.md (create ${OUT} if missing): Direction; Facts (each with file:line or commit hash as evidence); Unknowns (what you could not establish and why); at most 80 lines. Never edit repository files.
-Return: DONE plus the fact count, or BLOCKED: <reason>. ${STYLE}`, opts('sonnet', `notes-${n + 1}`, { agentType: 'session:stage-researcher', phase: 'Research' }))))
+Return: DONE plus the fact count, or BLOCKED: <reason>. ${style(RES_SK)}`, opts('sonnet', `notes-${n + 1}`, { agentType: 'session:stage-researcher', phase: 'Research' }))))
 const done = notes.map((r, n) => ({ n: n + 1, r })).filter(x => !blocked(x.r))
 notes.forEach((r, n) => { if (blocked(r)) log(`direction ${n + 1} blocked: ${last(r)}`) })
 if (!done.length) return { stage: 'research', blocked: 'every direction blocked', directions: DIRS }
