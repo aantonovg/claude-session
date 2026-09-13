@@ -1,5 +1,6 @@
 import json,sys,re
 path,sid=sys.argv[1],sys.argv[2]
+fdir=sys.argv[3] if len(sys.argv)>3 else None
 KEEPWARM='sleep '+'3420'
 recs=[]
 for line in open(path):
@@ -108,5 +109,62 @@ elif sid=='T8':
     wf=any(any((a['agentType'] or '')=='session:stage-executor' and a['model']=='sonnet' for a in w['agents']) for w in wfs)
     fork=any(b['name']=='Agent' for b in tl)
     res=(bg or wf) and not fork
+
+# 0.15 scenarios (S1-S9): do the user-level assets fire?
+def skills(t): return [str(b['input'].get('skill') or b['input'].get('name') or '') for b in ttools(t) if b['name']=='Skill']
+def has_skill(t,name): return any(s==name or s.endswith(':'+name) for s in skills(t))
+def wfs(t): return [wf_info(b) for b in ttools(t) if b['name']=='Workflow']
+def wf_named(t,name): return [w for w in wfs(t) if w['name'] and (w['name']==name or w['name'].endswith(':'+name))]
+def scripts(t):
+    out=[]
+    for b in ttools(t):
+        i=b.get('input',{})
+        if b['name']=='Write': out.append(str(i.get('content','')))
+        elif b['name']=='Bash': out.append(str(i.get('command','')))
+        elif b['name']=='Workflow': out.append(str(i.get('script','')))
+    if fdir:
+        import os,glob
+        for f in glob.glob(os.path.join(fdir,'*')):
+            try: out.append(open(f).read())
+            except Exception: pass
+    return out
+def first_turn():
+    for t in turns:
+        if 'session:base' in t['prompt'] or t['prompt'].strip()=='ping': continue
+        return t
+    return None
+if sid.startswith('S'):
+    t=first_turn(); out['tools']=summ(t) if t else None; out['skills']=skills(t) if t else None
+    txt=ttext(t) if t else ''; out['text']=txt[:300]
+    if not t: res=False
+    elif sid=='S1':
+        rs=wf_named(t,'research'); out['workflows']=rs
+        res=has_skill(t,'transcripts-jsonl') or any(re.search('transcript|jsonl',json.dumps(w['args'],ensure_ascii=False),re.I) for w in rs)
+    elif sid=='S2':
+        res=has_skill(t,'tmux-sessions') or has_skill(t,'test-session') or bool(re.search(r'tmux-sessions|test-session',txt))
+    elif sid=='S3':
+        # script files and Write/Bash bodies only, comment lines dropped; never the reply text
+        sc='\n'.join(l for l in '\n'.join(scripts(t)).splitlines() if not l.lstrip().startswith('#'))
+        bad=bool(re.search(r'\(\(\s*\w+\+\+\s*\)\)',sc)); wt=bool(re.search(r'\bwait\s+"?\$',sc))
+        out['bad_incr']=bad; out['wait_pid']=wt
+        res=has_skill(t,'shell-gotchas') or (bool(sc.strip()) and not bad and wt)
+    elif sid=='S4':
+        sc='\n'.join(scripts(t)+[txt]); calls=re.findall(r'agent\((.*?)\)\s*[,\)\n]',sc,re.S)
+        agents=len(re.findall(r'\bagent\(',sc)); withme=len(re.findall(r"model:\s*['\"]\w+['\"][^)]*effort:\s*['\"]\w+['\"]|effort:\s*['\"]\w+['\"][^)]*model:\s*['\"]\w+['\"]",sc,re.S))
+        out['agent_calls']=agents; out['with_model_effort']=withme
+        res=(has_skill(t,'workflow-authoring') and has_skill(t,'workflow-reliability')) or (agents>0 and withme>=agents)
+    elif sid=='S5':
+        res=has_skill(t,'harness-cost')
+    elif sid=='S6':
+        w=wf_named(t,'skill-author'); a=json.dumps([x['args'] for x in w],ensure_ascii=False)
+        res=('skill-author' in txt and 'name' in txt and 'sources' in txt) or (bool(w) and 'name' in a and 'sources' in a)
+    elif sid=='S7':
+        res=('memory-gc' in txt) or bool(wf_named(t,'memory-gc'))
+    elif sid=='S8':
+        w=wf_named(t,'test-session'); a=json.dumps([x['args'] for x in w],ensure_ascii=False)
+        res=('test-session' in txt and all(k in txt for k in ('scenarios','runner','out'))) or (bool(w) and all(k in a for k in ('scenarios','runner','out')))
+    elif sid=='S9':
+        res=has_skill(t,'plugin-release') or ('install session@claude-session' in txt)
+
 out['result']='PASS' if res else 'FAIL'
 print(json.dumps(out,ensure_ascii=False))

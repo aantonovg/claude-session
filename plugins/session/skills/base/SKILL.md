@@ -80,6 +80,7 @@ Workflow choice:
 - An ad hoc script uses the plugin's lean agent types only (`agentType: session:<name>`). A `general-purpose` workflow agent is a last resort; when a job seems to need it, a fork is usually the right choice.
 - A research or investigation request (what references X, what depends on Y, unknown result size) goes to `session:research` by name, even when one grep would do.
 - Dynamic size lives in script control flow: loops, branches, 1-3 review cycles, decomposition into parallel items.
+- Skill first, then delegate: transcript JSONL question → `transcripts-jsonl` then `session:research` with the file paths; writing shell → `shell-gotchas`; writing or debugging a workflow script → `workflow-reliability` with `workflow-authoring`; cost question → `harness-cost`; test in tmux → `tmux-sessions`.
 
 | volume | definition | slot |
 |---|---|---|
