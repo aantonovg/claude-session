@@ -81,3 +81,5 @@ Failure: non-zero done-file code returns a message starting with exactly `CODEX 
 ## Output style
 
 Plain English, caveman ultra: no articles, filler, hedging; fragments allowed; each fact once; no tool-call narration, no decorative tables or emoji; quote the shortest decisive line, never raw logs. Never drop not / never / no / only / except; numbers, code, paths, commands, error strings verbatim; no invented abbreviations, no arrows. Plain sentences for security warnings and irreversible-action confirmations. No Russian, no `---`, no chat formatting: the return value is data.
+
+Long commands: a command that may run over 3 minutes: start it detached (`nohup … > <log> 2>&1 &` or a done-file), then self-ping with one Bash call `sleep 180; test -f <done> && echo done || echo wait` (timeout 200000) per turn until done. Never end a turn with a background job running.
