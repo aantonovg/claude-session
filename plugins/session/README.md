@@ -140,6 +140,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.1: chat replies in A2 English (word list, grammar, verbatim identifiers) in the base Language section; caveman uses common synonyms.
 0.15.2: self-ping rule for long commands in every Bash-capable agent (detach, then `sleep 180` per turn; no background job at turn end).
 0.15.3: every synchronous Bash call in an agent sets `timeout` ≤ 120000; commands that may run over 2 minutes run detached only.
+0.15.4: the self-ping is a 30-second step loop (`for i in $(seq 6); do test -f <done> && break; sleep 30; done`), so a finished job is noticed within 30 s; background jobs write their own done-file.
 0.15.0: prompt-time skill injection (`skillLine`) in the four workflows; `code-reviewer` no longer names the bundled `code-review` skill (frontmatter cannot preload bundled skills); base lists the five user skills.
 0.14.6: agent descriptions under 100 tokens, workflow descriptions type every arg (limit 200 tokens).
 0.14.5: every skill and workflow description under 100 tokens; whenToUse under 25 words.
