@@ -118,6 +118,10 @@ and the done-file (content = exit code) with stderr in `<done-file>.log`.
   `/model` back (small reset), restore the settings.json default afterwards.
 - The compact call leaves no usage entry in the JSONL; its cost is the status-line delta
 
+## Description limits
+
+Skill description: 100 tokens. Agent description: 100 tokens. Workflow `meta.description`: 200 tokens, every arg named with its type (string, absolute path, array of strings, boolean) and default.
+
 ## Session mode counters
 
 `hooks/session-modes.sh` writes `~/.claude/session-modes/<session_id>.json`: a JSON object keyed by
@@ -128,6 +132,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 
 ## Version log
 
+0.14.6: agent descriptions under 100 tokens, workflow descriptions type every arg (limit 200 tokens).
 0.14.5: every skill and workflow description under 100 tokens; whenToUse under 25 words.
 0.14.4: every named workflow logs `c<class>[-<submodes>]-<name>` plus its launch args as its first line; base scopes the `meta.name` class rule to ad hoc scripts.
 0.14.3: workflow descriptions name the array args (`directions`, `paths`, `submodes`); a string `paths` crashed `research` on `.join`.
