@@ -52,7 +52,8 @@ const TARGET = A.target || 'worktree'
 const FIX = A.fix !== false
 const TEST = A.test || null
 const targetLine = TARGET === 'worktree' ? 'the uncommitted change: "git diff" plus new files from "git status --short"' : /\.\./.test(TARGET) ? `the range: "git diff ${TARGET}"` : `the diff file ${TARGET}`
-log(`review-fix: ${CLS} ${SUBS.join(' ') || 'no submodes'} slots ${ROW.join(' / ')}; target ${TARGET}; fix ${FIX}`)
+const NAME = [CLS, ...SUBS, 'review-fix'].join('-')
+log(`${NAME} | cwd=${CWD} out=${OUT} target=${TARGET} fix=${FIX} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Review')
 const loop = await cycle(FIX ? 3 : 1,
