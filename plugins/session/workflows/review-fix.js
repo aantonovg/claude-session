@@ -1,6 +1,6 @@
 export const meta = {
   name: 'review-fix',
-  description: 'Review-fix loop on an existing change: critique, evidence check of every finding by a second agent, fixes of confirmed ones, test run; 1-3 cycles until clean. Args { cwd, target (diff file, "a..b" range or "worktree"), class, submodes (array), test, out, fix (default true) }. Output: evidence-N.md, tests-N.md under out (default <cwd>/reviews); fixes in the working tree when fix. BLOCKED stage stops with a report.',
+  description: 'Review-fix loop on an existing change: critique, evidence check of every finding by a second agent, fixes of confirmed ones, test run; 1-3 cycles until clean. Args: cwd (string, absolute repo path, required), target (string: a diff file path, an "a..b" git range, or "worktree", default worktree), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []), test (string, one shell line, default none), out (string, absolute dir, default <cwd>/reviews), fix (boolean, default true). Output: evidence-N.md, tests-N.md under out; fixes in the working tree when fix is true. BLOCKED stage stops with a report.',
   whenToUse: 'Finished diff, branch or MR needs a verified review, with or without fixes. Authoring from a plan: build.',
   phases: [{ title: 'Review' }],
 }

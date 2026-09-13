@@ -1,6 +1,6 @@
 export const meta = {
   name: 'dev',
-  description: 'Full development run: plan with critique and fix (1-3), red tests with review (1-3), implementation with code review, tests and fix (1-3), closure review. Args { cwd, task, class, submodes (array), paths (array of absolute paths), test, out }. Output: plan, reviews, closure under out (default <cwd>/reviews); working-tree changes, no commit. BLOCKED stage stops with a report.',
+  description: 'Full development run: plan with critique and fix (1-3), red tests with review (1-3), implementation with code review, tests and fix (1-3), closure review. Args: cwd (string, absolute repo path, required), task (string, the task with acceptance criteria, required), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []), paths (array of absolute paths to read first, default []), test (string, one shell line, default: decided in the plan), out (string, absolute dir, default <cwd>/reviews). Output: plan, reviews, closure under out; working-tree changes, no commit. BLOCKED stage stops with a report.',
   whenToUse: 'Code change c2-c5 with acceptance criteria: feature, non-trivial fix, refactor with tests. Research only: research. Existing plan: build.',
   phases: [{ title: 'Plan' }, { title: 'Red tests' }, { title: 'Implement' }, { title: 'Closure' }],
 }
