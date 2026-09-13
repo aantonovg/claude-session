@@ -1,7 +1,7 @@
 export const meta = {
   name: 'build',
-  description: 'Implement an existing plan: code author works through the plan, code review, test run, fixer; 1-3 cycles until the review is clean and tests pass. Input args { cwd, plan (absolute path), class, submodes (array of strings), test, out }. Output: code changed in the working tree (no commit), code-review-N.md and tests-N.md under out (default <cwd>/reviews). Stops with a report on any BLOCKED stage.',
-  whenToUse: 'A reviewed plan file exists and only the implementation is missing. Use dev when there is no plan yet, review when the code already exists.',
+  description: 'Implement an existing plan: author, code review, test run, fixer; 1-3 cycles until clean and green. Args { cwd, plan (absolute path), class, submodes (array), test, out }. Output: working-tree changes (no commit), code-review-N.md and tests-N.md under out (default <cwd>/reviews). BLOCKED stage stops with a report.',
+  whenToUse: 'A reviewed plan exists, only implementation missing. No plan yet: dev. Code already exists: review-fix.',
   phases: [{ title: 'Implement' }],
 }
 

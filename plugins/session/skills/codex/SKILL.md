@@ -1,6 +1,6 @@
 ---
 name: codex
-description: Extra skill loaded on top of the session base; routes heavy roles and/or executor jobs to the codex stack (luna, terra, sol, astra) through the session:codex-proxy shim (ships with this plugin). Pipeline or review may also be on; then their stages are mapped as well.
+description: Loaded on top of the session base: routes heavy roles or executor jobs to the codex stack (luna, terra, sol, astra) through the session:codex-proxy shim. Maps pipeline or review stages too when those are on.
 disable-model-invocation: true
 ---
 

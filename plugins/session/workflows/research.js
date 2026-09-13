@@ -1,7 +1,7 @@
 export const meta = {
   name: 'research',
-  description: 'Fact research on one question: one stage-researcher per direction in parallel, each writes a notes file; one critique of all notes; one synthesis. Input args { cwd, question, directions (array of strings, 2-6), paths (array of absolute paths), class, submodes (array of strings), out }. Output: notes-N.md, critique.md and research.md under out (default <cwd>/reviews). Read-only on the repository. Stops with a report when every direction is BLOCKED.',
-  whenToUse: 'The task needs facts from the repository, git history or docs before a plan can be written, and the question splits into directions. Web questions belong to web-researcher, not here.',
+  description: 'Fact research on one question: one researcher per direction in parallel, one critique, one synthesis. Args { cwd, question, directions (array of strings, 2-6), paths (array of absolute paths), class, submodes (array), out }. Output: notes-N.md, critique.md, research.md under out (default <cwd>/reviews). Read-only. All directions BLOCKED stops with a report.',
+  whenToUse: 'Facts from repository, git history or docs needed before a plan; question splits into directions. Web questions: web-researcher.',
   phases: [{ title: 'Research' }, { title: 'Synthesis' }],
 }
 

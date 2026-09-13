@@ -1,6 +1,6 @@
 ---
 name: review
-description: Skill for reviewing someone else's MR or PR; replaces the pipeline stages with a verification-first review (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path for an MR revisited after the author's replies or fixes. Reads skills/pipeline/core.md first; does not need session:pipeline.
+description: Review someone else's MR or PR: verification-first stages (research, verification audit, verification delta, harness delta, threads, publish) and a re-review path after the author's replies or fixes. Reads skills/pipeline/core.md first; does not need session:pipeline.
 disable-model-invocation: true
 ---
 

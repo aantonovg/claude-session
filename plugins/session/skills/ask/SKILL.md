@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Ask the user without blocking the session: when an AskUserQuestion timed out, several decisions piled up, or the user is likely away. Writes a short options document, opens it in Plannotator in the background, continues on reversible defaults, acts on the annotations when they arrive.
+description: Ask the user without blocking the session: AskUserQuestion timed out, several decisions piled up, or the user is away. Writes an options document, opens it in Plannotator in the background, continues on reversible defaults, acts on the annotations.
 ---
 
 # Ask without blocking
