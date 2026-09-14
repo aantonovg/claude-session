@@ -127,6 +127,34 @@ and the done-file (content = exit code) with stderr in `<done-file>.log`.
 
 Skill description: 100 tokens. Agent description: 100 tokens. Workflow `meta.description`: 200 tokens, every arg named with its type (string, absolute path, array of strings, boolean) and default.
 
+## Workflow args and outputs
+
+Details trimmed from `meta.description`; classes and submodes are described in "Classes, slots and submodes".
+
+### dev
+
+Defaults: `class` c3, `submodes` `[]`, `paths` `[]`, `test` the command decided in the plan, `out` `<cwd>/reviews`.
+Outputs: `plan.md`, review files and the closure review under `out`; working-tree changes, no commit.
+Stop conditions: plan critique-fix, red-test review and implementation review each run 1-3 rounds; a BLOCKED stage stops the run with a report.
+
+### build
+
+Defaults: `class` c3, `submodes` `[]`, `test` the plan's "Test command", `out` `<cwd>/reviews`.
+Outputs: working-tree changes (no commit), `code-review-N.md` and `tests-N.md` under `out`.
+Stop conditions: 1-3 author/review/test cycles until clean and green; a BLOCKED stage stops the run with a report.
+
+### research
+
+Defaults: `directions` `[question]`, `paths` `[]`, `class` c3, `submodes` `[]`, `out` `<cwd>/reviews`.
+Outputs: `notes-N.md` per direction, `critique.md`, `research.md` under `out`. Read-only, no file in the repo is changed.
+Stop conditions: every direction BLOCKED stops the run with a report.
+
+### review-fix
+
+Defaults: `target` `worktree`, `class` c3, `submodes` `[]`, `test` none, `out` `<cwd>/reviews`, `fix` true.
+Outputs: `evidence-N.md` and `tests-N.md` under `out`; fixes in the working tree when `fix` is true.
+Stop conditions: 1-3 review/evidence/fix cycles until clean; a BLOCKED stage stops the run with a report.
+
 ## Session mode counters
 
 `hooks/session-modes.sh` writes `~/.claude/session-modes/<session_id>.json`: a JSON object keyed by
@@ -143,6 +171,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.4: the self-ping is a 30-second step loop (`for i in $(seq 6); do test -f <done> && break; sleep 30; done`), so a finished job is noticed within 30 s; background jobs write their own done-file.
 0.15.5: poll step 5 seconds (`for i in $(seq 36); do test -f <done> && break; sleep 5; done`); a finished job is noticed within 5 s.
 0.15.6: base "Skill first, then delegate" bullet (transcripts-jsonl, shell-gotchas, workflow-reliability, harness-cost, tmux-sessions); tests/measure: S1-S9 scenarios for the 0.15 assets, driver env matrix (MODEL EFFORT CWD OUT REPEAT IDS), parser S3 scans script files only.
+0.15.7: shorter workflow descriptions; README documents workflow args; plugin-dev workflows (test-session, skill-author, memory-gc) tracked in .claude/workflows/.
 0.15.0: prompt-time skill injection (`skillLine`) in the four workflows; `code-reviewer` no longer names the bundled `code-review` skill (frontmatter cannot preload bundled skills); base lists the five user skills.
 0.14.6: agent descriptions under 100 tokens, workflow descriptions type every arg (limit 200 tokens).
 0.14.5: every skill and workflow description under 100 tokens; whenToUse under 25 words.
