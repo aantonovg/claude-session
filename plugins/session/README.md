@@ -172,6 +172,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.5: poll step 5 seconds (`for i in $(seq 36); do test -f <done> && break; sleep 5; done`); a finished job is noticed within 5 s.
 0.15.6: base "Skill first, then delegate" bullet (transcripts-jsonl, shell-gotchas, workflow-reliability, harness-cost, tmux-sessions); tests/measure: S1-S9 scenarios for the 0.15 assets, driver env matrix (MODEL EFFORT CWD OUT REPEAT IDS), parser S3 scans script files only.
 0.15.7: shorter workflow descriptions; README documents workflow args; plugin-dev workflows (test-session, skill-author, memory-gc) tracked in .claude/workflows/.
+0.15.13: workflow slot tables match the base table (c3 no-sonnet no-opus fab-lo/fab-lo/fab-lo, c4 fab-me/fab-me/fab-lo) in the four plugin workflows and the three project workflows.
 0.15.12: base keep-warm pings are four scheduled background Bash jobs (57 min apart, re-armed from the last live job, no target after 23:59, the one before it at 23:03 or earlier); monitors.json `when` is `on-skill-invoke:session:base`.
 0.15.11: `/session:stop-ping` pauses the ping (pause file per session, monitor keeps running), `/session:resume-ping` resumes; status line shows `base+ping` or `base+ping(paused)`.
 0.15.10: keep-warm ping as plugin monitor `keep-warm-ping` (starts on /session:base, 57 min, stop file per session) with `/session:stop-ping`; base no longer launches ping jobs.
