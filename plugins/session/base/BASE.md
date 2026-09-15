@@ -16,12 +16,11 @@ One main session + forks + cold workflow agents. A fork inherits the whole conve
 
 Invoked by the user as the first prompt and again after `/compact`.
 
-1. `Monitor` not loaded: `ToolSearch` `select:Monitor` (same for `TaskStop`, `TaskList` when named).
-2. Keep-warm: `Monitor` cap 30 min (`timeout_ms` above 1800000 capped; a 57-minute sleep never fires), so pings run as background Bash sleeps, one turn per exit. First tool calls, one message, four `Bash` with `run_in_background: true`, `timeout: 14400000`, `description: "keep-warm ping at <HH:MM>"`: `sleep 3420; echo ping`, `sleep 6840; echo ping`, `sleep 10260; echo ping`, `sleep 13680; echo ping`. At the fourth ping start the next four (Bash cap 14400000 ms). No ping job starts after 23:00 local. A `Monitor` for a ping only with `timeout_ms: 1800000` and a sleep under 1800 s. Skip when keep-warm ping jobs already exist.
-3. Arguments, any order: `/session:base [no-sonnet] [no-opus] [no-fable] [c1|c2|c3|c4|c5]`; `/base` same. Default `c3`, no submodes. Two classes, an unknown word, or all three submodes: reply line `invalid arguments`, previous class and submodes stay. Class and submodes hold for the session's life.
-4. Reply line, once, only after the ping jobs exist: `Base on (c3), ping jobs <first task id>..<last task id>; forks or workflows for every 2+ call job`. Submodes after the class in order no-sonnet, no-opus, no-fable: `Base on (c4, no-sonnet, no-fable), …`. No variant without task ids.
+1. Keep-warm: plugin monitor `keep-warm-ping` starts with this skill, pings every 57 min for the session's life; `/session:stop-ping` stops it. No ping tool calls from the main session.
+2. Arguments, any order: `/session:base [no-sonnet] [no-opus] [no-fable] [c1|c2|c3|c4|c5]`; `/base` same. Default `c3`, no submodes. Two classes, an unknown word, or all three submodes: reply line `invalid arguments`, previous class and submodes stay. Class and submodes hold for the session's life.
+3. Reply line, once: `Base on (c3); forks or workflows for every 2+ call job`. Submodes after the class in order no-sonnet, no-opus, no-fable: `Base on (c4, no-sonnet, no-fable); …`.
 
-Pings: every `ping` (background job exit, monitor event or user message) gets exactly `pong`: no work, no status, no tool calls. Exception: previous work turn cut off (error line in place of an answer, fork or background job never returned, step announced not done): `pong` and in the same turn resume that step, no other output.
+Pings: every `ping` (plugin monitor event or user message) gets exactly `pong`: no work, no status, no tool calls. Exception: previous work turn cut off (error line in place of an answer, fork or background job never returned, step announced not done): `pong` and in the same turn resume that step, no other output.
 
 Model and effort already chosen; never change them.
 
