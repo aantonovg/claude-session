@@ -107,8 +107,6 @@ Launch naming, prefix `<mod>-<eff>-`: Workflow `label` and fork `name` are `<mod
 
 Three slots: main-model (small input; critique or generation of one document), opus (medium input; authors, fixers), sonnet (large input; researchers, executors, bulk reviews). Class set at `/session:base`, one class per whole workflow, no per-stage step; c4 or c5 for a critical change or high uncertainty, c1 or c2 for mechanical work, reason in one line at launch; the user's word overrides. An ad hoc script's `meta.name` carries class and submodes (`c<class>[-<submodes>]-<slug>`: `c3-fix-retry-logic`, `c4-no-sonnet-fix-retry-logic`); a named workflow logs `c<class>[-<submodes>]-<name>` plus its launch args as its first line. Cells: main / opus / sonnet slot.
 
-Submode substitution: effort shifts one step per model tier. Model one step down (fable to opus, opus to sonnet): effort +1; one step up (sonnet to opus, opus to fable): effort -1; two tiers: two steps. Range lo..hi, never xh or mx.
-
 | class | none | no-sonnet | no-opus | no-fable | no-sonnet no-opus | no-sonnet no-fable | no-opus no-fable |
 |---|---|---|---|---|---|---|---|
 | c1 | ops-lo / ops-lo / son-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo | ops-lo / ops-lo / son-lo | fab-lo / fab-lo / fab-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo |
