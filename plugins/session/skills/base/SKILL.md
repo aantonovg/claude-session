@@ -23,11 +23,11 @@ One main session + forks + cold workflow agents. A fork inherits the whole conve
 Invoked by the user as the first prompt and again after `/compact`.
 
 1. `Monitor` not loaded: `ToolSearch` `select:Monitor` (same for `TaskStop`, `TaskList` when named).
-2. First tool call `Monitor`: `command: "while true; do sleep 3420; echo ping; done"` (exact), `description: "keep-warm ping every 57m"`, `persistent: true`, `timeout_ms: 3600000`. Skip when a keep-warm ping monitor already exists.
+2. Keep-warm: `Monitor` cap 30 min (`timeout_ms` above 1800000 capped; a 57-minute sleep never fires), so pings run as background Bash sleeps, one turn per exit. First tool calls, one message, four `Bash` with `run_in_background: true`, `timeout: 14400000`, `description: "keep-warm ping at <HH:MM>"`: `sleep 3420; echo ping`, `sleep 6840; echo ping`, `sleep 10260; echo ping`, `sleep 13680; echo ping`. At the fourth ping start the next four (Bash cap 14400000 ms). No ping job starts after 23:00 local. A `Monitor` for a ping only with `timeout_ms: 1800000` and a sleep under 1800 s. Skip when keep-warm ping jobs already exist.
 3. Arguments, any order: `/session:base [no-sonnet] [no-opus] [no-fable] [c1|c2|c3|c4|c5]`; `/base` same. Default `c3`, no submodes. Two classes, an unknown word, or all three submodes: reply line `invalid arguments`, previous class and submodes stay. Class and submodes hold for the session's life.
-4. Reply line, once, only after the monitor exists: `Base on (c3), ping monitor <task id>; forks or workflows for every 2+ call job`. Submodes after the class in order no-sonnet, no-opus, no-fable: `Base on (c4, no-sonnet, no-fable), …`. No variant without a task id.
+4. Reply line, once, only after the ping jobs exist: `Base on (c3), ping jobs <first task id>..<last task id>; forks or workflows for every 2+ call job`. Submodes after the class in order no-sonnet, no-opus, no-fable: `Base on (c4, no-sonnet, no-fable), …`. No variant without task ids.
 
-Pings: every `ping` (monitor event or user message) gets exactly `pong`: no work, no status, no tool calls. Exception: previous work turn cut off (error line in place of an answer, fork or background job never returned, step announced not done): `pong` and in the same turn resume that step, no other output.
+Pings: every `ping` (background job exit, monitor event or user message) gets exactly `pong`: no work, no status, no tool calls. Exception: previous work turn cut off (error line in place of an answer, fork or background job never returned, step announced not done): `pong` and in the same turn resume that step, no other output.
 
 Model and effort already chosen; never change them.
 
@@ -107,12 +107,14 @@ Launch naming, prefix `<mod>-<eff>-`: Workflow `label` and fork `name` are `<mod
 
 Three slots: main-model (small input; critique or generation of one document), opus (medium input; authors, fixers), sonnet (large input; researchers, executors, bulk reviews). Class set at `/session:base`, one class per whole workflow, no per-stage step; c4 or c5 for a critical change or high uncertainty, c1 or c2 for mechanical work, reason in one line at launch; the user's word overrides. An ad hoc script's `meta.name` carries class and submodes (`c<class>[-<submodes>]-<slug>`: `c3-fix-retry-logic`, `c4-no-sonnet-fix-retry-logic`); a named workflow logs `c<class>[-<submodes>]-<name>` plus its launch args as its first line. Cells: main / opus / sonnet slot.
 
+Submode substitution: effort shifts one step per model tier. Model one step down (fable to opus, opus to sonnet): effort +1; one step up (sonnet to opus, opus to fable): effort -1; two tiers: two steps. Range lo..hi, never xh or mx.
+
 | class | none | no-sonnet | no-opus | no-fable | no-sonnet no-opus | no-sonnet no-fable | no-opus no-fable |
 |---|---|---|---|---|---|---|---|
 | c1 | ops-lo / ops-lo / son-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo | ops-lo / ops-lo / son-lo | fab-lo / fab-lo / fab-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo |
 | c2 | fab-lo / ops-lo / son-me | fab-lo / ops-lo / ops-lo | fab-lo / son-me / son-me | ops-me / ops-lo / son-me | fab-lo / fab-lo / fab-lo | ops-me / ops-lo / ops-lo | son-me / son-me / son-me |
-| c3 | fab-lo / ops-me / son-hi | fab-lo / ops-me / ops-me | fab-lo / son-hi / son-hi | ops-me / ops-me / son-hi | fab-lo / fab-me / fab-me | ops-me / ops-me / ops-me | son-me / son-hi / son-hi |
-| c4 | fab-me / ops-hi / son-hi | fab-me / ops-hi / ops-me | fab-me / fab-me / son-hi | ops-hi / ops-hi / son-hi | fab-me / fab-me / fab-me | ops-hi / ops-hi / ops-me | son-hi / son-hi / son-hi |
+| c3 | fab-lo / ops-me / son-hi | fab-lo / ops-me / ops-me | fab-lo / son-hi / son-hi | ops-me / ops-me / son-hi | fab-lo / fab-lo / fab-lo | ops-me / ops-me / ops-me | son-me / son-hi / son-hi |
+| c4 | fab-me / ops-hi / son-hi | fab-me / ops-hi / ops-me | fab-me / fab-me / son-hi | ops-hi / ops-hi / son-hi | fab-me / fab-me / fab-lo | ops-hi / ops-hi / ops-me | son-hi / son-hi / son-hi |
 | c5 | fab-hi / ops-hi / ops-hi | fab-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | son-hi / son-hi / son-hi |
 
 Roles onto slots:
