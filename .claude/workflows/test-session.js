@@ -1,6 +1,6 @@
 export const meta = {
   name: 'test-session',
-  description: 'Runs a scenarios file against real Claude Code sessions in tmux and judges the transcripts: session-driver starts the driver detached and waits on its done-file, transcript-analyst writes verdicts.md, the run returns the failing scenario ids. Args: scenarios (string, absolute path, required), runner (string, absolute path to the driver script, required), out (string, absolute artifact dir the driver writes result.log, *.jsonl and done into, required), ids (array of strings, default all scenarios), parser (string, absolute path to a verdict script, default none), budget (number, minutes, default 120), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: <out>/verdicts.md. BLOCKED stage stops with a report.',
+  description: 'Runs a scenarios file against real Claude Code sessions in tmux and judges the transcripts: session-driver starts the driver detached and waits on its done-file, transcript-analyst returns verdict lines inline, the run returns the failing scenario ids. Args: scenarios (string, absolute path, required), runner (string, absolute path to the driver script, required), out (string, absolute artifact dir the driver writes result.log, *.jsonl and done into, required), ids (array of strings, default all scenarios), parser (string, absolute path to a verdict script, default none), budget (number, minutes, default 120), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: verdictLines and failing ids in the result. BLOCKED stage stops with a report.',
   whenToUse: 'Behavior test of a skill, agent or base rule in fresh sessions on a chosen model; replaces the manual driver plus parser loop.',
   phases: [{ title: 'Drive' }, { title: 'Judge' }],
 }
@@ -51,7 +51,7 @@ if (blocked(drive)) return { stage: 'drive', blocked: last(drive), out: OUT }
 
 phase('Judge')
 const judge = await agent(`Transcript analyst. Judge the session run in ${OUT}: scenario definitions and PASS rules in ${SCN}; transcripts ${OUT}/<id>.jsonl; the driver's own verdict lines in ${OUT}/result.log${PARSER ? `; verdict script ${PARSER} (usage: python3 ${PARSER} <jsonl> <id>)` : ''}.
-For every scenario decide PASS, FAIL or UNKNOWN over the whole turn (all assistant records after the prompt), quoting the decisive line. Write ${OUT}/verdicts.md: one line per scenario, then a "FAIL:" line listing the failing ids or "FAIL: none".
+For every scenario decide PASS, FAIL or UNKNOWN over the whole turn (all assistant records after the prompt), quoting the decisive line. Never write files; return the verdicts inline.
 Return: the per-scenario lines, then DONE or BLOCKED: <reason>, then exactly one final line "FAIL: <ids separated by commas, or none>". ${STYLE}`, opts('sonnet', 'judge', { agentType: 'transcript-analyst', phase: 'Judge' }))
 if (blocked(judge)) return { stage: 'judge', blocked: last(judge), out: OUT }
 
@@ -59,6 +59,6 @@ const failLines = String(judge).split('\n').filter(l => /^\s*FAIL\b/.test(l))
 const lastFail = failLines.length ? failLines[failLines.length - 1] : ''
 const failing = /^\s*FAIL:\s*none/i.test(lastFail) ? [] : [...new Set(lastFail.match(/\bS\d+\b/g) || [])]
 return {
-  class: CLS, submodes: SUBS, slots: SLOT, out: OUT, verdicts: `${OUT}/verdicts.md`,
-  failing, next: failing.length ? `Read verdicts.md; fix the rule behind ${failing.join(', ')}; rerun with ids.` : 'All scenarios pass.',
+  class: CLS, submodes: SUBS, slots: SLOT, out: OUT, verdictLines: String(judge).trim().slice(0, 12000),
+  failing, next: failing.length ? `Read verdictLines; fix the rule behind ${failing.join(', ')}; rerun with ids.` : 'All scenarios pass.',
 }

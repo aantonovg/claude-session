@@ -33,7 +33,7 @@ explicit model and effort, inputs by path. Frontmatter holds the c3 default.
 | `stage-researcher` | sonnet / high | Bash, Read, Write | facts to a notes file |
 | `stage-executor` | sonnet / high | Bash, Read | runs named commands, PASS/FAIL with decisive lines |
 | `waiter` | sonnet / low | Bash, Read | long waits with judgment |
-| `codex-proxy` | haiku / medium | Bash | runs one codex job by header block, returns a file path |
+| `codex-proxy` | haiku / medium (fixed) | Bash | runs one codex job by header block, returns a file path |
 
 Only `code-reviewer` keeps a `skills:` preload (`code-review`); other skills reach an agent as a
 resolved SKILL.md path in the prompt. Artifact and DesignSync are denied per project in
@@ -45,7 +45,7 @@ The class comes from `/session:base` (default c3) and holds for the session; eve
 takes one row. Main-model slot: document critique and generation (stage-reviewer, stage-critic).
 Opus slot: authors and fixers (stage-author, simplifier, artifact agents). Sonnet slot: researchers,
 executors, bulk code and security review, web research. Large input moves a role one slot down,
-never up. Fixed: waiter sonnet-low; codex-proxy and claude-code-guide haiku-medium. Forks run on the
+never up. Fixed: waiter sonnet-low; claude-code-guide haiku-medium; codex-proxy fixed haiku medium. Forks run on the
 main session's model and effort.
 
 | class | main-model slot (small input; document critique and generation) | opus slot (medium input; plan and code authors, fixers) | sonnet slot (large input; researchers, executors, bulk reviews) |
@@ -96,8 +96,8 @@ three settings: `-s workspace-write` (the sandbox: writes only inside the worksp
 network), `-c approval_policy="on-request"` (codex asks before going beyond the sandbox) and
 `-c approvals_reviewer="auto_review"` (those requests go to codex's built-in risk-based
 reviewer, non-interactively; legacy alias `guardian_subagent`). The reviewer never weakens the
-sandbox: beyond-sandbox capability comes only from per-command escalation, which the shim's
-preamble tells codex to request when a command is denied (out-of-workspace write, network) or
+sandbox: beyond-sandbox capability comes only from per-command escalation, which the
+preamble at the end of `bin/codex-style.md` tells codex to request when a command is denied (out-of-workspace write, network) or
 silently broken (GUI and system-service commands such as `screencapture`, `xcrun simctl`,
 `osascript`, `open`, which fail with "no display" or "service unavailable" inside the
 sandbox). Verified on this machine under the preamble: out-of-workspace writes, HTTPS
@@ -110,7 +110,10 @@ from the `-c` keys above. The wrapper (`bin/codex-exec-logged.sh`) adds `--json`
 `~/.codex/proxy-usage.jsonl`; on failure it prints to stderr only an events-file path and the
 sequence of event types, never task content. In detached mode (`--detach <done-file>`) it
 starts codex with nohup, prints the PID, and on exit writes the answer file, the ledger row
-and the done-file (content = exit code) with stderr in `<done-file>.log`.
+and the done-file (content = exit code) with stderr in `<done-file>.log`. With a trailing `-` or
+`--prompt-file <path>` the wrapper composes codex's stdin in memory, never on disk: the
+agent body for `--role <name>`, user and project `CLAUDE.md`, the memory index, `bin/codex-style.md`
+(style plus the escalation preamble), then the task; `CODEX_LABEL` lands in the ledger row's `label`.
 
 
 ## Compact prices
@@ -172,6 +175,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.5: poll step 5 seconds (`for i in $(seq 36); do test -f <done> && break; sleep 5; done`); a finished job is noticed within 5 s.
 0.15.6: base "Skill first, then delegate" bullet (transcripts-jsonl, shell-gotchas, workflow-reliability, harness-cost, tmux-sessions); tests/measure: S1-S9 scenarios for the 0.15 assets, driver env matrix (MODEL EFFORT CWD OUT REPEAT IDS), parser S3 scans script files only.
 0.15.7: shorter workflow descriptions; README documents workflow args; plugin-dev workflows (test-session, skill-author, memory-gc) tracked in .claude/workflows/.
+0.15.14: codex jobs get role body, CLAUDE.md, project memory and style from `codex-exec-logged.sh --role` (optional `CODEX ROLE:` header), dry-run test tests/codex/wrapper-test.sh; codex-proxy fixed haiku medium, label `<mod>-<eff>-<tier>-<job>`; workflow stages pass reviewer, executor and note returns inline instead of report files; build and review-fix drop the unused `out` arg, memory-gc drops `reviews`.
 0.15.13: workflow slot tables match the base table (c3 no-sonnet no-opus fab-lo/fab-lo/fab-lo, c4 fab-me/fab-me/fab-lo) in the four plugin workflows and the three project workflows.
 0.15.12: base keep-warm pings are four scheduled background Bash jobs (57 min apart, re-armed from the last live job, no target after 23:59, the one before it at 23:03 or earlier); monitors.json `when` is `on-skill-invoke:session:base`.
 0.15.11: `/session:stop-ping` pauses the ping (pause file per session, monitor keeps running), `/session:resume-ping` resumes; status line shows `base+ping` or `base+ping(paused)`.

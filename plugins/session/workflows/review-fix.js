@@ -1,6 +1,6 @@
 export const meta = {
   name: 'review-fix',
-  description: 'Review-fix loop on an existing change: critique, evidence check of every finding by a second agent, fixes of confirmed findings, test run, cycles until clean. Args: cwd (string, absolute repo path, required), target (string: a diff file path, an "a..b" git range, or \"worktree\", optional), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), test (string, one shell line, optional), out (string, absolute dir, optional), fix (boolean, optional).',
+  description: 'Review-fix loop on an existing change: critique, evidence check of every finding by a second agent, fixes of confirmed findings, test run, cycles until clean. Args: cwd (string, absolute repo path, required), target (string: a diff file path, an "a..b" git range, or \"worktree\", optional), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), test (string, one shell line, optional), fix (boolean, optional).',
   whenToUse: 'Finished diff, branch or MR needs a verified review, with or without fixes. Authoring from a plan: build.',
   phases: [{ title: 'Review' }],
 }
@@ -30,7 +30,6 @@ const opts = (slot, job, extra) => {
 }
 const CWD = A.cwd
 if (!CWD) throw new Error('args.cwd (absolute repo path) is required')
-const OUT = A.out || `${CWD}/reviews`
 const blocked = r => r == null || /BLOCKED:/.test(String(r))
 const clean = r => /VERDICT:\s*clean/i.test(String(r))
 const last = r => String(r || '').trim().split('\n').pop()
@@ -39,6 +38,9 @@ const skillLine = paths => paths.length ? `Read these skill files with the Read 
 const mentions = (re, ...xs) => xs.some(x => re.test(String(x || '')))
 const style = sk => `Plain English, caveman ultra; the return value is data. ${skillLine(sk)} On a permission denial stop at once and return BLOCKED: <denied action>.`
 const STYLE = style([])
+// report(r): full reviewer or executor return, capped; stages pass it inline, no stage reads a subagent-written report file
+const report = (r, cap = 12000) => { const s = String(r || '').trim(); return s.length > cap ? `${s.slice(0, cap)}\n[truncated at ${cap} chars]` : s }
+const unclean = s => String(s || '').replace(/VERDICT:\s*clean/gi, 'verdict clean')
 // cycle: review -> fix, up to max rounds; stops on clean, blocked or max
 async function cycle(max, review, fix) {
   for (let i = 1; i <= max; i++) {
@@ -59,24 +61,29 @@ const targetLine = TARGET === 'worktree' ? 'the uncommitted change: "git diff" p
 const NAME = [CLS, ...SUBS, 'review-fix'].join('-')
 const AUTH_SK = [...(mentions(/workflow/i, TARGET) ? [`${SK}/workflow-reliability/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST, TARGET) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
 const EXEC_SK = mentions(/tmux/i, TEST) ? [`${SK}/tmux-sessions/SKILL.md`] : []
-log(`${NAME} | cwd=${CWD} out=${OUT} target=${TARGET} fix=${FIX} test=${TEST} slots=${ROW.join('/')}`)
+log(`${NAME} | cwd=${CWD} target=${TARGET} fix=${FIX} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Review')
+let lastEv = ''
 const loop = await cycle(FIX ? 3 : 1,
   async i => {
     const rev = await agent(`Code reviewer. In ${CWD} review ${targetLine}. Findings with file:line by severity (high / medium / low): logic errors, wrong or missing error handling, races, boundaries, unchecked inputs, broken contracts with unchanged code, duplicated helpers, dead code, needless complexity. Skip style. Read surrounding code only where a finding needs it. Never edit, never write files. Return the findings as one numbered list, one line each: "<n>. <severity> <file>:<line> <what is wrong>".
 Last line of your return: "VERDICT: clean" when no high or medium finding, else "VERDICT: findings <n high> <m medium>". ${STYLE}`, opts('sonnet', `review-${i}`, { agentType: 'session:code-reviewer', phase: 'Review' }))
     if (blocked(rev) || clean(rev)) return rev
-    const ev = await agent(`Evidence checker. Findings from the code reviewer:\n${String(rev).trim()}\nFor every numbered finding open the named file at the named line in ${CWD} and decide: CONFIRMED (the code does what the finding says), REFUTED (it does not; say why in one line), UNCLEAR (needs a run to tell). Do not fix anything. Write ${OUT}/evidence-${i}.md (create ${OUT} if missing): the same numbering, the finding text, the verdict, the decisive line quoted.
+    const ev = await agent(`Evidence checker. Findings from the code reviewer:\n${String(rev).trim()}\nFor every numbered finding open the named file at the named line in ${CWD} and decide: CONFIRMED (the code does what the finding says), REFUTED (it does not; say why in one line), UNCLEAR (needs a run to tell). Do not fix anything, never write files. Return the same numbering, the finding text, the verdict, the decisive line quoted.
 Last line of your return: "VERDICT: clean" when no high or medium finding is CONFIRMED or UNCLEAR, else "VERDICT: findings <n confirmed> <m unclear>". ${STYLE}`, opts('sonnet', `evidence-${i}`, { agentType: 'session:stage-researcher', phase: 'Review' }))
+    lastEv = report(ev)
     return ev
   },
-  (i, r) => agent(`Code fixer. In ${CWD} apply every finding marked CONFIRMED or UNCLEAR with severity high or medium in ${OUT}/evidence-${i}.md. Smallest correct change each. ${TEST ? `Then run "${TEST}"; write ${OUT}/tests-${i}.md with PASS/FAIL and the last 20 lines on failure.` : 'No test command given: do not run tests.'} Do not commit.
+  (i, r) => agent(`Code fixer. In ${CWD} apply every finding marked CONFIRMED or UNCLEAR with severity high or medium in the evidence list below. Smallest correct change each. ${TEST ? `Then run "${TEST}"; put PASS/FAIL and the last 20 lines on failure in your return.` : 'No test command given: do not run tests.'} Do not commit.
+Evidence ${i}:
+${report(r)}
 Return: DONE plus the count applied${TEST ? ' and the test summary line' : ''}, or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', `fix-${i}`, { agentType: 'session:stage-author', phase: 'Review' })))
 
 if (loop.blocked) return { stage: 'review', blocked: loop.blocked }
 return {
-  class: CLS, submodes: SUBS, slots: SLOT, out: OUT, target: TARGET, fixed: FIX,
+  class: CLS, submodes: SUBS, slots: SLOT, target: TARGET, fixed: FIX,
   result: loop.clean ? `clean after round ${loop.round}` : `not clean after ${loop.round} rounds: ${loop.last}`,
-  next: FIX ? 'Read the newest evidence-N.md; commit from the main session.' : 'Read evidence-1.md.',
+  evidence: lastEv,
+  next: FIX ? 'Read the evidence field; commit from the main session.' : 'Read the evidence field.',
 }

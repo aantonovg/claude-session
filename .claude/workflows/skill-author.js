@@ -1,6 +1,6 @@
 export const meta = {
   name: 'skill-author',
-  description: 'Writes one SKILL.md from source files: author, reviewer, fix cycles (1-3); round 2+ re-checks the previous findings and is clean when no high remains (medium accepted); then a memory-trim list. Args: name (string, required; directory name), purpose (string, required; one line), sources (array of absolute paths, required), cap (number, tokens, default 4000), out (string, absolute dir holding <name>/SKILL.md, default ~/.claude/skills), reviews (string, absolute dir, default ~/.claude/reviews/skill-<name>), absorbs (array of absolute memory file paths, default []), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: <out>/<name>/SKILL.md, review-N.md and memory-trim.md under reviews. BLOCKED stage stops with a report.',
+  description: 'Writes one SKILL.md from source files: author, reviewer, fix cycles (1-3); round 2+ re-checks the previous findings and is clean when no high remains (medium accepted); then a memory-trim list. Args: name (string, required; directory name), purpose (string, required; one line), sources (array of absolute paths, required), cap (number, tokens, default 4000), out (string, absolute dir holding <name>/SKILL.md, default ~/.claude/skills), reviews (string, absolute dir, default ~/.claude/reviews/skill-<name>), absorbs (array of absolute memory file paths, default []), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: <out>/<name>/SKILL.md, memory-trim.md under reviews, review text in the result. BLOCKED stage stops with a report.',
   whenToUse: 'A new or rewritten user or project skill with named sources: memory files, notes, scripts, existing skills.',
   phases: [{ title: 'Author' }, { title: 'Trim list' }],
 }
@@ -45,6 +45,8 @@ async function cycle(max, review, fix) {
   }
 }
 // ---- end shared block ----
+// report(r): full reviewer return, capped; stages pass it inline, no stage reads a subagent-written report file
+const report = (r, cap = 12000) => { const s = String(r || '').trim(); return s.length > cap ? `${s.slice(0, cap)}\n[truncated at ${cap} chars]` : s }
 
 const SK = A.name
 if (!SK) throw new Error('args.name (skill directory name) is required')
@@ -71,36 +73,42 @@ if (blocked(draft)) return { stage: 'author', blocked: last(draft) }
 
 const SEV = 'Severity: high = invented or wrong statement, or a rule the purpose requires that is missing; medium = duplicate, contradiction, rule that cannot be applied as written; low = wording.'
 let lastReview = ''
+let lastReviewRaw = ''
 const reviewPrompt = i => i === 1
   ? `Skill reviewer, round 1. Draft: ${FILE}. Cap: ${CAP} tokens. Purpose: ${A.purpose}
 Sources (absolute paths):
 ${SRC}
-${SEV} Write ${REV}/review-1.md (create ${REV} if missing): findings numbered under High / Medium / Low, each with draft line, source line and fix.
+${SEV} Never write files. Return the findings numbered under High / Medium / Low, each with draft line, source line and fix.
 Last line of your return: "VERDICT: clean" or "VERDICT: findings <n high> <m medium>". ${STYLE}`
-  : `Skill reviewer, round ${i}. Draft: ${FILE}. Previous review: ${REV}/review-${i - 1}.md. Sources (absolute paths):
+  : `Skill reviewer, round ${i}. Draft: ${FILE}. Previous review is below. Sources (absolute paths):
 ${SRC}
-Re-check only the previous findings: mark each applied, not applied or regressed (the fix broke something). Then scan the edited passages for regressions only: a new contradiction, an invented statement, cap overflow (${CAP} tokens). Raise no other new finding unless it is high. ${SEV} Write ${REV}/review-${i}.md.
+Re-check only the previous findings: mark each applied, not applied or regressed (the fix broke something). Then scan the edited passages for regressions only: a new contradiction, an invented statement, cap overflow (${CAP} tokens). Raise no other new finding unless it is high. ${SEV} Never write files; return the re-check and the findings.
+Previous review:
+${lastReview}
 Verdict: clean when no high remains; unresolved medium and low are listed as accepted, not counted. Last line of your return: "VERDICT: clean (<m> medium accepted)" or "VERDICT: findings <n high> <m medium>". ${STYLE}`
 const loop = await cycle(3,
-  i => agent(reviewPrompt(i), opts('main', `review-${i}`, { agentType: 'skill-reviewer', phase: 'Author' })).then(r => { lastReview = String(r || ''); return r }),
-  (i, r) => agent(`Skill author, fix round ${i}. Apply every open finding (not applied, regressed, new) in ${REV}/review-${i}.md to ${FILE} in place; keep the cap of ${CAP} tokens (at most ${Math.floor(CAP / 1.4)} body words) and the 10-30 token description. Sources for reference:
+  i => agent(reviewPrompt(i), opts('main', `review-${i}`, { agentType: 'skill-reviewer', phase: 'Author' })).then(r => { lastReviewRaw = r; lastReview = report(r); return r }),
+  (i, r) => agent(`Skill author, fix round ${i}. Apply every open finding (not applied, regressed, new) in the review below to ${FILE} in place; keep the cap of ${CAP} tokens (at most ${Math.floor(CAP / 1.4)} body words) and the 10-30 token description. Sources for reference:
 ${SRC}
+Review ${i}:
+${report(r)}
 Return: DONE plus the count of findings applied and the body word count, or BLOCKED: <reason>. ${STYLE}`, opts('opus', `fix-${i}`, { agentType: 'skill-author', phase: 'Author' })))
 if (loop.blocked) return { stage: 'review', blocked: loop.blocked, file: FILE }
-const accepted = loop.clean ? (last(lastReview).match(/(\d+)\s+medium accepted/) || [])[1] : null
+const accepted = loop.clean ? (last(lastReviewRaw).match(/(\d+)\s+medium accepted/) || [])[1] : null
 
-let trim = null
+let trim = null, trimText = null
 if (ABS.length) {
   phase('Trim list')
   const t = await agent(`Memory trim list. Skill: ${FILE}. Absorbed memory candidates (absolute paths, read all in one pass):
 ${ABS.join('\n')}
 For each file decide: DELETE (every fact now lives in the skill), SHORTEN (some facts absorbed; list the lines to keep, at most 3), KEEP (nothing absorbed or the file carries a why that a skill must not carry). Write ${REV}/memory-trim.md: one line per file "<verdict> <path> | <kept lines or reason>", then a line "skill: ${FILE}". Never edit the memory files.
-Return: DONE plus counts per verdict, or BLOCKED: <reason>. ${STYLE}`, opts('opus', 'trim-list', { agentType: 'skill-author', phase: 'Trim list' }))
+Return: the trim lines, then DONE plus counts per verdict, or BLOCKED: <reason>. ${STYLE}`, opts('opus', 'trim-list', { agentType: 'skill-author', phase: 'Trim list' }))
   trim = blocked(t) ? `BLOCKED ${last(t)}` : `${REV}/memory-trim.md`
+  trimText = blocked(t) ? null : report(t)
 }
 
 return {
   class: CLS, submodes: SUBS, slots: SLOT, file: FILE, reviews: REV,
   result: loop.clean ? `clean after round ${loop.round}${accepted ? ` with ${accepted} medium accepted` : ''}` : `not clean after ${loop.round} rounds: ${loop.last}`,
-  trim, next: trim ? 'Check SKILL.md; then memory-gc with the trim file.' : 'Check SKILL.md.',
+  trim, trimText, lastReview, next: trim ? 'Check SKILL.md; then memory-gc with the trim file.' : 'Check SKILL.md.',
 }

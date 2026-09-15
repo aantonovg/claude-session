@@ -39,6 +39,9 @@ const skillLine = paths => paths.length ? `Read these skill files with the Read 
 const mentions = (re, ...xs) => xs.some(x => re.test(String(x || '')))
 const style = sk => `Plain English, caveman ultra; the return value is data. ${skillLine(sk)} On a permission denial stop at once and return BLOCKED: <denied action>.`
 const STYLE = style([])
+// report(r): full reviewer or executor return, capped; stages pass it inline, no stage reads a subagent-written report file
+const report = (r, cap = 12000) => { const s = String(r || '').trim(); return s.length > cap ? `${s.slice(0, cap)}\n[truncated at ${cap} chars]` : s }
+const unclean = s => String(s || '').replace(/VERDICT:\s*clean/gi, 'verdict clean')
 // cycle: review -> fix, up to max rounds; stops on clean, blocked or max
 async function cycle(max, review, fix) {
   for (let i = 1; i <= max; i++) {
@@ -66,26 +69,35 @@ Question: ${Q}
 Repository: ${CWD}. Start from the inputs below, then git log and grep as needed; read only what the direction needs. No web.
 Inputs (absolute paths):
 ${PATHS || '(none named)'}
-Write ${OUT}/notes-${n + 1}.md (create ${OUT} if missing): Direction; Facts (each with file:line or commit hash as evidence); Unknowns (what you could not establish and why); at most 80 lines. Never edit repository files.
-Return: DONE plus the fact count, or BLOCKED: <reason>. ${style(RES_SK)}`, opts('sonnet', `notes-${n + 1}`, { agentType: 'session:stage-researcher', phase: 'Research' }))))
+Never write files. Your return value is the notes: Direction; Facts (each with file:line or commit hash as evidence); Unknowns (what you could not establish and why); at most 80 lines. Never edit repository files.
+Return: the notes, then a last line DONE plus the fact count, or BLOCKED: <reason>. ${style(RES_SK)}`, opts('sonnet', `notes-${n + 1}`, { agentType: 'session:stage-researcher', phase: 'Research' }))))
 const done = notes.map((r, n) => ({ n: n + 1, r })).filter(x => !blocked(x.r))
 notes.forEach((r, n) => { if (blocked(r)) log(`direction ${n + 1} blocked: ${last(r)}`) })
 if (!done.length) return { stage: 'research', blocked: 'every direction blocked', directions: DIRS }
 
 phase('Synthesis')
-const files = done.map(x => `${OUT}/notes-${x.n}.md`).join(', ')
-const critique = await agent(`Critic. Read ${files} in one pass (at most ${done.length + 1} tool calls: the reads and one write). Write ${OUT}/critique.md: facts without evidence, contradictions between notes, unknowns that change the answer to the question, directions that missed the point. Ordered by severity. No praise, no summary.
+// aggregate notes budget 12000 chars, split across completed directions
+const NOTE_CAP = Math.floor(12000 / done.length)
+const NOTES = done.map(x => `### Notes ${x.n}: ${DIRS[x.n - 1]}\n${report(x.r, NOTE_CAP)}`).join('\n\n')
+const critique = await agent(`Critic. The research notes are below; open a cited file only to check a doubtful fact (at most 3 reads, no write; never write files). Return: facts without evidence, contradictions between notes, unknowns that change the answer to the question, directions that missed the point. Ordered by severity. No praise, no summary.
 Question: ${Q}
+Notes:
+${NOTES}
 Last line of your return: "VERDICT: clean" or "VERDICT: findings <n high> <m medium>". ${STYLE}`, opts('main', 'critique', { agentType: 'session:stage-critic', phase: 'Synthesis' }))
-if (blocked(critique)) return { stage: 'critique', blocked: last(critique), notes: files }
+if (blocked(critique)) return { stage: 'critique', blocked: last(critique), notes: NOTES }
 
-const synth = await agent(`Synthesis author. Read ${files} and ${OUT}/critique.md in one pass. Write ${OUT}/research.md: Answer (to the question, 5-10 lines, each claim with its evidence pointer); Facts by direction (deduplicated, with evidence); Open unknowns (from the notes and the critique); Recommended next step. At most 120 lines. Do not add facts of your own; do not edit repository files.
+const synth = await agent(`Synthesis author. The notes and the critique are below. Write ${OUT}/research.md (create ${OUT} if missing; if the Write tool refuses, return the full research text instead of DONE): Answer (to the question, 5-10 lines, each claim with its evidence pointer); Facts by direction (deduplicated, with evidence); Open unknowns (from the notes and the critique); Recommended next step. At most 120 lines. Do not add facts of your own; do not edit repository files.
 Question: ${Q}
+Notes:
+${NOTES}
+Critique:
+${report(critique, 4000)}
 Return: DONE, or BLOCKED: <reason>. ${STYLE}`, opts('opus', 'synthesis', { agentType: 'session:stage-author', phase: 'Synthesis' }))
-if (blocked(synth)) return { stage: 'synthesis', blocked: last(synth), notes: files }
+if (blocked(synth)) return { stage: 'synthesis', blocked: last(synth), notes: NOTES, critique: report(critique) }
 
 return {
   class: CLS, submodes: SUBS, slots: SLOT, out: OUT,
   directions: DIRS.length, completed: done.length, critique: last(critique),
+  synthesis: /DONE\s*$/.test(String(synth).trim()) ? null : report(synth, 20000),
   file: `${OUT}/research.md`, next: 'Read research.md; plan from it (dev or build).',
 }
