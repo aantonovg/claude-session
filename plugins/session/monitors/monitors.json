@@ -3,6 +3,6 @@
     "name": "keep-warm-ping",
     "command": "\"${CLAUDE_PLUGIN_ROOT}/monitors/ping.sh\" \"${CLAUDE_PLUGIN_DATA}\"",
     "description": "keep-warm ping every 57m",
-    "when": "on-skill-invoke:base"
+    "when": "on-skill-invoke:session:base"
   }
 ]
