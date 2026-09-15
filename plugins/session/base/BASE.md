@@ -60,6 +60,8 @@ Waiting on the user:
 
 Questions about Claude Code, the Agent SDK or the Anthropic API: `claude-code-guide` as a one-agent `Workflow` (`agentType: "claude-code-guide"`, `model: "haiku"`, `effort: "medium"`, label `hai-me-guide`); never the `/claude-api` skill.
 
+Codex jobs: `session:codex-proxy` as a one-agent `Workflow`, fixed haiku medium (`model: "haiku"`, `effort: "medium"`), label `hai-me-<tier>-<job>` (`hai-me-luna-research`); details `session:codex`.
+
 Test sessions: never `claude -p` (headless, ~3.3x usage penalty). Drive a real session in the foreground inside tmux via `tmux send-keys`; read answers from the JSONL under `~/.claude/projects/<encoded-cwd>/`, not `capture-pane`. Kill the tmux session when done.
 
 ## When to delegate
@@ -73,7 +75,7 @@ Workflow choice:
 - An ad hoc script uses the plugin's lean agent types only (`agentType: session:<name>`). A `general-purpose` workflow agent is a last resort; when a job seems to need it, a fork is usually the right choice.
 - A research or investigation request (what references X, what depends on Y, unknown result size) goes to `session:research` by name, even when one grep would do.
 - Dynamic size lives in script control flow: loops, branches, 1-3 review cycles, decomposition into parallel items.
-- Skill first, then delegate: transcript JSONL question → `transcripts-jsonl` then `session:research` with the file paths; writing shell → `shell-gotchas`; writing or debugging a workflow script → `workflow-reliability` with `workflow-authoring`; cost question → `harness-cost`; test in tmux → `tmux-sessions`.
+- Skill first, then delegate: transcript JSONL question → `transcripts-jsonl` then `session:research` with the file paths; writing shell → `shell-gotchas`; writing or debugging a workflow script → `workflow-reliability` with `workflow-authoring`; cost question, codex cost included → `harness-cost`; test in tmux → `tmux-sessions`.
 
 | volume | definition | slot |
 |---|---|---|
@@ -113,7 +115,7 @@ Roles onto slots:
 - opus slot: plan author/fixer, code/test author and fixer (`session:stage-author`, `session:simplifier`, `session:artifact-publisher`, `session:artifact-designer`).
 - sonnet slot: fact researcher, test/script executor, bulk code and security review, web research (`session:stage-researcher`, `session:stage-executor`, `session:code-reviewer`, `session:security-reviewer`, `session:web-researcher`).
 - Large input moves a role one slot down, never up.
-- Fixed: `session:waiter` sonnet-low; `claude-code-guide` haiku-medium.
+- Fixed: `session:waiter` sonnet-low; `claude-code-guide` haiku-medium; `session:codex-proxy` haiku-medium.
 
 Heavy tools live in agents, never in the main session: web pages `web-researcher`, diff review `code-reviewer`, cleanup `simplifier`, security `security-reviewer`, published page `artifact-publisher` / `artifact-designer`. Main session never calls WebFetch, WebSearch, Artifact.
 

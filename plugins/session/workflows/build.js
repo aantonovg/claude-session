@@ -1,6 +1,6 @@
 export const meta = {
   name: 'build',
-  description: 'Implement an existing plan: author, code review, test run, fixer, cycles until clean and green. Args: cwd (string, absolute repo path, required), plan (string, absolute path to the plan file, required), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), test (string, one shell line, optional), out (string, absolute dir, optional).',
+  description: 'Implement an existing plan: author, code review, test run, fixer, cycles until clean and green. Args: cwd (string, absolute repo path, required), plan (string, absolute path to the plan file, required), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), test (string, one shell line, optional).',
   whenToUse: 'A reviewed plan exists, only implementation missing. No plan yet: dev. Code already exists: review-fix.',
   phases: [{ title: 'Implement' }],
 }
@@ -30,7 +30,6 @@ const opts = (slot, job, extra) => {
 }
 const CWD = A.cwd
 if (!CWD) throw new Error('args.cwd (absolute repo path) is required')
-const OUT = A.out || `${CWD}/reviews`
 const blocked = r => r == null || /BLOCKED:/.test(String(r))
 const clean = r => /VERDICT:\s*clean/i.test(String(r))
 const last = r => String(r || '').trim().split('\n').pop()
@@ -39,6 +38,9 @@ const skillLine = paths => paths.length ? `Read these skill files with the Read 
 const mentions = (re, ...xs) => xs.some(x => re.test(String(x || '')))
 const style = sk => `Plain English, caveman ultra; the return value is data. ${skillLine(sk)} On a permission denial stop at once and return BLOCKED: <denied action>.`
 const STYLE = style([])
+// report(r): full reviewer or executor return, capped; stages pass it inline, no stage reads a subagent-written report file
+const report = (r, cap = 12000) => { const s = String(r || '').trim(); return s.length > cap ? `${s.slice(0, cap)}\n[truncated at ${cap} chars]` : s }
+const unclean = s => String(s || '').replace(/VERDICT:\s*clean/gi, 'verdict clean')
 // cycle: review -> fix, up to max rounds; stops on clean, blocked or max
 async function cycle(max, review, fix) {
   for (let i = 1; i <= max; i++) {
@@ -58,29 +60,37 @@ const TEST = A.test || '(the command named in the plan under "Test command")'
 const NAME = [CLS, ...SUBS, 'build'].join('-')
 const AUTH_SK = [...(mentions(/workflow/i, PLAN) ? [`${SK}/workflow-reliability/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST, PLAN) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
 const EXEC_SK = [...(mentions(/tmux/i, TEST) ? [`${SK}/tmux-sessions/SKILL.md`] : []), ...(mentions(/\.sh(\s|$)/, TEST) ? [`${SK}/shell-gotchas/SKILL.md`] : [])]
-log(`${NAME} | cwd=${CWD} out=${OUT} plan=${String(PLAN).split('/').pop()} test=${TEST} slots=${ROW.join('/')}`)
+log(`${NAME} | cwd=${CWD} plan=${String(PLAN).split('/').pop()} test=${TEST} slots=${ROW.join('/')}`)
 
 phase('Implement')
 const impl = await agent(`Code author. Implement the plan ${PLAN} in ${CWD}, step by step, until "${TEST}" passes. Read the plan and the files it lists first. Touch only the files the plan lists plus what a step strictly needs; note any extra file in your return. Existing tests stay as they are unless one contradicts the plan (say so). Do not commit.
 Return: DONE plus "files: <list>, run: <the passing summary line>", or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', 'implement', { agentType: 'session:stage-author', phase: 'Implement' }))
 if (blocked(impl)) return { stage: 'implement', blocked: last(impl) }
 
+let lastRev = '', lastTests = ''
 const loop = await cycle(3,
   async i => {
-    const rev = await agent(`Code reviewer. In ${CWD} review the uncommitted change: "git diff" plus new files from "git status --short"; read ${PLAN} for intent. Findings with file:line by severity: logic errors, error handling, races, boundaries, unchecked inputs, broken contracts with unchanged code, duplicated helpers, dead code, steps of the plan not done. Skip style. Never edit. Write ${OUT}/code-review-${i}.md (create ${OUT} if missing).
+    const rev = await agent(`Code reviewer. In ${CWD} review the uncommitted change: "git diff" plus new files from "git status --short"; read ${PLAN} for intent. Findings with file:line by severity: logic errors, error handling, races, boundaries, unchecked inputs, broken contracts with unchanged code, duplicated helpers, dead code, steps of the plan not done. Skip style. Never edit or write files. Return the findings as your return value.
 Last line of your return: "VERDICT: clean" or "VERDICT: findings <n high> <m medium>". ${STYLE}`, opts('sonnet', `code-review-${i}`, { agentType: 'session:code-reviewer', phase: 'Implement' }))
     if (blocked(rev)) return rev
-    const tests = await agent(`Test executor. In ${CWD} run "${TEST}". Write ${OUT}/tests-${i}.md: one PASS/FAIL line plus the last 20 lines of output on failure. Never edit code.
+    lastRev = report(rev)
+    const tests = await agent(`Test executor. In ${CWD} run "${TEST}". Return one PASS/FAIL line plus the last 20 lines of output on failure. Never edit code, never write files.
 Last line of your return: "VERDICT: clean" when the run passed, else "VERDICT: findings 1 high" plus the failing summary line. ${style(EXEC_SK)}`, opts('sonnet', `tests-${i}`, { agentType: 'session:stage-executor', phase: 'Implement' }))
     if (blocked(tests)) return tests
-    return clean(rev) && clean(tests) ? 'VERDICT: clean' : `${last(rev)} | ${last(tests)}`
+    lastTests = report(tests)
+    return clean(rev) && clean(tests) ? 'VERDICT: clean' : unclean(`review: ${last(rev)} | tests: ${last(tests)}`)
   },
-  (i, r) => agent(`Code fixer. In ${CWD} apply ${OUT}/code-review-${i}.md (high and medium findings) and fix the failures in ${OUT}/tests-${i}.md. Run "${TEST}" until it passes. Do not commit.
+  (i, r) => agent(`Code fixer. In ${CWD} apply the code review below (high and medium findings) and fix the failures in the test run below. Run "${TEST}" until it passes. Do not commit.
+Code review ${i}:
+${lastRev}
+Test run ${i}:
+${lastTests}
 Return: DONE plus the count applied and the passing summary line, or BLOCKED: <reason>. ${style([...AUTH_SK, ...EXEC_SK])}`, opts('opus', `code-fix-${i}`, { agentType: 'session:stage-author', phase: 'Implement' })))
 
 if (loop.blocked) return { stage: 'implement-review', blocked: loop.blocked }
 return {
-  class: CLS, submodes: SUBS, slots: SLOT, out: OUT, plan: PLAN,
+  class: CLS, submodes: SUBS, slots: SLOT, plan: PLAN,
   result: loop.clean ? `clean after round ${loop.round}` : `not clean after ${loop.round} rounds: ${loop.last}`,
-  next: 'Read the newest code-review-N.md and tests-N.md; commit from the main session.',
+  lastCodeReview: lastRev, lastTests,
+  next: 'Read the lastCodeReview and lastTests fields; commit from the main session.',
 }

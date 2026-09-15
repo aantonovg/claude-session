@@ -1,15 +1,41 @@
 #!/usr/bin/env bash
-# codex-exec-logged.sh — a thin logging wrapper around `codex exec`.
+# codex-exec-logged.sh — a thin logging and context-composing wrapper around
+# `codex exec`.
 #
-# Drop-in for `codex exec`: it forwards every argument verbatim and only adds
-# `--json`, so the caller's flags (-m, -c, -s, -C, -o, --ephemeral, the trailing
-# `-` with stdin redirection) keep working unchanged. codex's exit code is the
-# wrapper's exit code, and the answer still lands only in the `-o` file.
+# Usage: codex-exec-logged.sh [--detach <done-file>] [--role <name>]
+#                             [--prompt-file <path>] <codex exec args...> [-]
+# The three wrapper options come first, in any order; everything after them is
+# forwarded to `codex exec` verbatim with `--json` added, so the caller's flags
+# (-m, -c, -s, -C, -o, --ephemeral, the trailing `-`) keep working unchanged.
+# codex's exit code is the wrapper's exit code, and the answer still lands only
+# in the `-o` file. `--role`, `--prompt-file` and `--detach` never reach codex.
+#
+# Context composition: when the prompt comes on stdin (trailing `-`) or from
+# `--prompt-file <path>` (the wrapper then appends `-`), codex's stdin is built
+# in memory as header-delimited sections, in this order; a missing or empty
+# optional file drops its section and header:
+#   [ROLE: <name>]       body of <script real dir>/../agents/<name>.md (no frontmatter)
+#   [USER CLAUDE.md]     $HOME/.claude/CLAUDE.md
+#   [PROJECT CLAUDE.md]  <codex cwd>/CLAUDE.md
+#   [MEMORY INDEX]       $HOME/.claude/projects/<codex cwd, / and . as ->/memory/MEMORY.md
+#   [RESPONSE STYLE]     codex-style.md next to this script (CODEX_STYLE_FILE overrides)
+#   [TASK]               the caller's prompt
+# codex cwd = the -C / --cd / --cd= value (relative to $PWD), else $PWD; logical
+# path. The composed text is never written to disk.
+#
+# Exit codes of the wrapper itself (codex not started):
+#   2   unknown role, agents dir not found, --role without - or --prompt-file
+#   3   prompt file not found
+#   127 codex not found on the inherited PATH
+#
+# CODEX_EXEC_DRY_RUN=1 prints the composed stdin and one line
+# `CODEX ARGV: exec --json <args>` and exits 0; it never runs codex, never
+# detaches and never writes the ledger (test hook).
 #
 # Side effect: one JSON line per run is appended to ~/.codex/proxy-usage.jsonl
-#   {"ts","model","effort","input","cached_input","output","reasoning_output"}
-# The claude-cost SwiftBar plugin reads that ledger for its "Codex this week"
-# section.
+#   {"ts","model","effort","input","cached_input","output","reasoning_output","label"}
+# `label` comes from env CODEX_LABEL (empty string when unset). The claude-cost
+# SwiftBar plugin reads that ledger for its "Codex this week" section.
 #
 # Token semantics (verified against ~/.codex usage records):
 #   * input_tokens INCLUDES cached_input_tokens, so billable input = input - cached.
@@ -34,32 +60,86 @@
 
 set -euo pipefail
 
-# --detach <done-file>: run codex in the background. The wrapper composes the
-# stdin (style block + prompt) into a temp file, re-executes itself with nohup
-# in foreground mode reading that file, and returns at once with the PID on
-# stdout. The background run writes the -o answer file and the ledger row as
-# usual, then touches <done-file> (its content is the codex exit code). The
-# caller polls for the done-file; it never re-runs codex for a job that has no
-# done-file yet.
+# Real directory of this script, through any chain of symlinks (plugin cache,
+# a symlink in a bin dir). Agents live at <real dir>/../agents.
+src="${BASH_SOURCE[0]}"
+while [[ -L "$src" ]]; do
+  link_dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$link_dir/$src" ;; esac
+done
+self_dir="$(cd -P "$(dirname "$src")" && pwd)"
+self="$self_dir/$(basename "$src")"
+
+# Wrapper options, any order, before the codex args.
+# --detach <done-file>: run codex in the background. The parent writes only the
+# caller's prompt into a temp file and re-executes this script with nohup in
+# foreground mode; that child composes the context in memory, runs codex, and
+# touches <done-file> (content = codex exit code). The parent returns at once
+# with the PID on stdout. The caller polls for the done-file; it never re-runs
+# codex for a job that has no done-file yet.
 detach_done=""
-if [[ "${1:-}" == "--detach" ]]; then
-  detach_done="${2:?--detach needs a done-file path}"
-  shift 2
+role=""
+prompt_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --detach)      detach_done="${2:?--detach needs a done-file path}"; shift 2 ;;
+    --role)        role="${2:?--role needs a name}"; shift 2 ;;
+    --prompt-file) prompt_file="${2:?--prompt-file needs a path}"; shift 2 ;;
+    *) break ;;
+  esac
+done
+
+# Detached child: role and resolved codex cwd arrive via env from the parent.
+ctx_cwd=""
+if [[ -n "${CODEX_CTX_CWD:-}" ]]; then
+  ctx_cwd="$CODEX_CTX_CWD"
+  role="${CODEX_ROLE:-}"
+  unset CODEX_CTX_CWD CODEX_ROLE
 fi
 
-# mktemp template: the X's must be LAST — BSD mktemp does not substitute a
-# "...XXXXXX.jsonl" template, which would make parallel runs share one file.
-events="$(mktemp "${TMPDIR:-/tmp}/codex-events.XXXXXX")"
-trap 'rm -f "$events"' EXIT
+if [[ -n "$prompt_file" ]]; then
+  if [[ ! -f "$prompt_file" ]]; then
+    echo "codex-exec-logged: prompt file not found: $prompt_file" >&2
+    exit 3
+  fi
+fi
+last_arg=""
+[[ $# -gt 0 ]] && last_arg="${!#}"
+if [[ -n "$prompt_file" && "$last_arg" != "-" ]]; then
+  set -- "$@" -
+  last_arg="-"
+fi
+compose=0
+[[ "$last_arg" == "-" ]] && compose=1
+if [[ -n "$role" && "$compose" != 1 ]]; then
+  echo "codex-exec-logged: --role needs - or --prompt-file" >&2
+  exit 2
+fi
 
-# Failure diagnostics from earlier runs are kept on purpose (see the rc != 0 path
-# below), but they hold the full JSONL stream and must not accumulate forever.
-# Prune anything older than a day; TMPDIR cleanup is otherwise the only reaper.
-find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'codex-events-failed.*.jsonl' -mtime +1 -delete 2>/dev/null || true
+# Role file: name must match ^[a-z][a-z-]*$ and exist in the sibling agents dir.
+role_file=""
+if [[ -n "$role" ]]; then
+  if [[ ! "$role" =~ ^[a-z][a-z-]*$ ]]; then
+    echo "codex-exec-logged: unknown role $role" >&2
+    exit 2
+  fi
+  agents_dir="$self_dir/../agents"
+  if [[ ! -d "$agents_dir" ]]; then
+    echo "codex-exec-logged: agents dir not found: $agents_dir" >&2
+    exit 2
+  fi
+  role_file="$agents_dir/$role.md"
+  if [[ ! -f "$role_file" ]]; then
+    echo "codex-exec-logged: unknown role $role" >&2
+    exit 2
+  fi
+fi
 
-# Scan the argv for ledger metadata without consuming it.
+# Scan the argv for ledger metadata and the codex cwd without consuming it.
 model=""
 effort=""
+cd_arg=""
 prev=""
 unquote() {
   local v="$1"
@@ -75,14 +155,110 @@ for arg in "$@"; do
     --model=*) model="$(unquote "${arg#--model=}")" ;;
     -m=*)      model="$(unquote "${arg#-m=}")" ;;
     model_reasoning_effort=*) effort="$(unquote "${arg#model_reasoning_effort=}")" ;;
+    --cd=*)    cd_arg="${arg#--cd=}" ;;
   esac
   case "$prev" in
-    -m|--model)
-      model="$(unquote "$arg")"
-      ;;
+    -m|--model) model="$(unquote "$arg")" ;;
+    -C|--cd)    cd_arg="$arg" ;;
   esac
   prev="$arg"
 done
+
+# codex cwd, logical path (cd resolves a relative value against $PWD).
+if [[ -z "$ctx_cwd" && "$compose" == 1 ]]; then
+  if [[ -n "$cd_arg" ]]; then
+    ctx_cwd="$(cd "$cd_arg" 2>/dev/null && pwd)" || ctx_cwd=""
+  else
+    ctx_cwd="$PWD"
+  fi
+fi
+
+style="${CODEX_STYLE_FILE:-$self_dir/codex-style.md}"
+
+# section <header> <file>: header line plus file content, only for a non-empty file.
+section() {
+  if [[ -s "$2" ]]; then
+    printf '[%s]\n%s\n\n' "$1" "$(cat "$2")"
+  fi
+}
+# Agent body: drop a leading `---` frontmatter block and the single separator
+# newline after it.
+role_body() {
+  awk 'NR == 1 && $0 == "---" { fm = 1; next }
+       fm == 1 { if ($0 == "---") { fm = 2; sep = 1 } ; next }
+       sep == 1 { sep = 0; if ($0 == "") next }
+       { print }' "$1"
+}
+compose_stdin() {
+  if [[ "$compose" != 1 ]]; then
+    cat
+    return 0
+  fi
+  if [[ -n "$role" ]]; then
+    printf '[ROLE: %s]\n%s\n\n' "$role" "$(role_body "$role_file")"
+  fi
+  section "USER CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+  if [[ -n "$ctx_cwd" ]]; then
+    section "PROJECT CLAUDE.md" "$ctx_cwd/CLAUDE.md"
+    section "MEMORY INDEX" "$HOME/.claude/projects/$(printf '%s' "$ctx_cwd" | tr '/.' '--')/memory/MEMORY.md"
+  fi
+  section "RESPONSE STYLE" "$style"
+  printf '[TASK]\n'
+  if [[ -n "$prompt_file" ]]; then
+    cat "$prompt_file"
+  else
+    cat
+  fi
+}
+
+if [[ "${CODEX_EXEC_DRY_RUN:-0}" == 1 ]]; then
+  compose_stdin
+  echo
+  printf 'CODEX ARGV: exec --json'
+  for arg in "$@"; do printf ' %q' "$arg"; done
+  printf '\n'
+  exit 0
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "codex-exec-logged: codex not found" >&2
+  exit 127
+fi
+
+if [[ -n "$detach_done" ]]; then
+  # The parent never composes: the temp file holds the caller's prompt only.
+  # The child opens it, unlinks it at once, and composes in memory.
+  rm -f "$detach_done"
+  stdin_file="$(mktemp "${TMPDIR:-/tmp}/codex-stdin.XXXXXX")"
+  if [[ -n "$prompt_file" ]]; then
+    cat "$prompt_file" >"$stdin_file"
+  else
+    cat >"$stdin_file"
+  fi
+  detach_log="${detach_done}.log"
+  CODEX_ROLE="$role" CODEX_CTX_CWD="${ctx_cwd:-$PWD}" CODEX_STYLE_FILE="$style" \
+  nohup bash -c '
+    done_file="$1"; stdin_file="$2"; wrapper="$3"; shift 3
+    rc=0
+    exec 3<"$stdin_file"
+    rm -f "$stdin_file"
+    "$wrapper" "$@" <&3 || rc=$?
+    exec 3<&-
+    printf "%s\n" "$rc" >"$done_file"
+  ' _ "$detach_done" "$stdin_file" "$self" "$@" >"$detach_log" 2>&1 &
+  echo "$!"
+  exit 0
+fi
+
+# mktemp template: the X's must be LAST — BSD mktemp does not substitute a
+# "...XXXXXX.jsonl" template, which would make parallel runs share one file.
+events="$(mktemp "${TMPDIR:-/tmp}/codex-events.XXXXXX")"
+trap 'rm -f "$events"' EXIT
+
+# Failure diagnostics from earlier runs are kept on purpose (see the rc != 0 path
+# below), but they hold the full JSONL stream and must not accumulate forever.
+# Prune anything older than a day; TMPDIR cleanup is otherwise the only reaper.
+find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'codex-events-failed.*.jsonl' -mtime +1 -delete 2>/dev/null || true
 
 log_usage() {
   if ! command -v jq >/dev/null 2>&1; then
@@ -136,10 +312,11 @@ log_usage() {
 
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   line="$(jq -c -n --arg ts "$ts" --arg model "$model" --arg effort "$effort" \
-            --argjson u "$usage" \
+            --arg label "${CODEX_LABEL:-}" --argjson u "$usage" \
             '{ts:$ts, model:$model, effort:$effort,
               input:$u.input, cached_input:$u.cached_input,
-              output:$u.output, reasoning_output:$u.reasoning_output}')"
+              output:$u.output, reasoning_output:$u.reasoning_output,
+              label:$label}')"
   if [[ -z "$line" ]]; then
     echo "codex-exec-logged: could not compose ledger line, usage not logged" >&2
     return 0
@@ -151,42 +328,6 @@ log_usage() {
 }
 
 rc=0
-# Style block: when the prompt comes on stdin (trailing `-`) and the style file
-# exists next to this wrapper, it is prepended to the prompt so every codex run
-# gets the same response-style rules as the Claude agents. The prompt text never
-# passes through the calling agent: the concatenation happens here, in the shell.
-# CODEX_STYLE_FILE overrides the path; CODEX_EXEC_DRY_RUN=1 prints the composed
-# stdin and exits without running codex (test hook).
-style="${CODEX_STYLE_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/codex-style.md}"
-last_arg=""
-[[ $# -gt 0 ]] && last_arg="${!#}"
-if [[ "$last_arg" == "-" && -f "$style" ]]; then
-  compose_stdin() { cat "$style"; echo; cat; }
-else
-  compose_stdin() { cat; }
-fi
-if [[ "${CODEX_EXEC_DRY_RUN:-0}" == 1 ]]; then
-  compose_stdin
-  exit 0
-fi
-if [[ -n "$detach_done" ]]; then
-  # Compose once here (style + prompt), then hand the composed file to a
-  # foreground child that runs codex; the child's stdin is that file, so the
-  # style prepend must not run twice: the child sees no style file.
-  rm -f "$detach_done"
-  stdin_file="$(mktemp "${TMPDIR:-/tmp}/codex-stdin.XXXXXX")"
-  compose_stdin >"$stdin_file"
-  detach_log="${detach_done}.log"
-  nohup bash -c '
-    done_file="$1"; stdin_file="$2"; wrapper="$3"; shift 3
-    rc=0
-    CODEX_STYLE_FILE=/nonexistent "$wrapper" "$@" <"$stdin_file" || rc=$?
-    rm -f "$stdin_file"
-    printf "%s\n" "$rc" >"$done_file"
-  ' _ "$detach_done" "$stdin_file" "${BASH_SOURCE[0]}" "$@" >"$detach_log" 2>&1 &
-  echo "$!"
-  exit 0
-fi
 # stderr is intentionally NOT redirected: the caller's error contract reads it.
 compose_stdin | codex exec --json "$@" >"$events" || rc=$?
 

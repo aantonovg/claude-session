@@ -27,25 +27,6 @@ evidence → fix, once): fast 0 heavy runs, standard 1 (the review), full ≤ 3 
 decision contract (generate, review, fix) and only the review for the ledger; sol / astra
 fill exactly those slots, never more.
 
-## Slots per pipeline stage
-
-| stage | Claude default | executor axis luna / terra | heavy axis sol / astra | heavy axis +sol / +astra |
-|---|---|---|---|---|
-| 1 framing, ledger merges | forks | forks (write task files) | forks | forks |
-| 1 research waves | forks | `luna-high` (sonnet-low slots) / `terra-high` (opus-low slots, terra mode) for repo-only questions, luna writes `evidence/EB-<n>.md` and its ledger lines itself; MCP reads are forks (cold agents and codex do not see the session's MCP servers) | unchanged | unchanged |
-| 2 critic (cold) | `stage-critic`, reviewer cell | unchanged | `sol-medium` / `astra-medium` instead | Claude critic + codex critic, merge fork |
-| 3 decision contract | fork | fork | fork | fork |
-| 3 decision review (full path only; standard = low fork check, fast none) | cold `stage-reviewer` | unchanged | `sol-high` / `astra-high` | paired, merge fork |
-| 4 verification plan | fork | fork | fork | fork |
-| 4 harness build, health checks | fork | `luna-high` / `terra-high` when repo-only | unchanged | unchanged |
-| 5 implementation plan | fork | fork | fork | fork |
-| 5 packages, mechanical checks | forks | `luna-high` (sonnet-low slots) / `terra-high` (opus-low slots) | unchanged | unchanged |
-| 5 no-verifier packages | opus-low author (a fork), no review | `terra-high` author in terra mode, else an opus-low fork; no review; luna-high only writes packages with a verifier | unchanged | unchanged |
-| 6 closure check (mechanical) | fork, low | unchanged | unchanged | unchanged |
-| 7 report, closure | fork | fork | fork | fork |
-
-Pipeline forks all run on the main model, so "slot" means the job a fork would have done.
-
 Code review rule: the heavy axis (sol, astra, and any medium or high effort) exists
 only for generating important documents and critiquing them, within 5 tool calls at
 medium and 3 at high. It never reviews volumes of work: no code review, no repository
@@ -89,8 +70,8 @@ negative control and codex reports it.
 
 One `agent()` per codex stage inside a `Workflow`:
 `agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium'` (the workflow opts pick haiku;
-the agent file's own model pin does not apply inside a Workflow), label `<code>-<eff>-<stage>`
-with codes `lun`, `lur` (reserve), `ter`, `sol`, `ast`. The prompt is the header block and
+the agent file's own model pin does not apply inside a Workflow), label `hai-me-<tier>-<stage>`
+with tiers `luna`, `luna-reserve`, `terra`, `sol`, `astra`. The prompt is the header block and
 nothing else:
 
 ```
@@ -110,7 +91,7 @@ by a relay fork; the shim's `LAST LINE` is the gate signal. Per workflow: `meta.
 
 ```
 export const meta = { name: 'c3-fable-opus-critic-codex', description: 'sol critic', phases: [{ title: 'Critic' }] }
-return await agent(args.header, { agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium', label: 'sol-me-critic', phase: 'Critic' })
+return await agent(args.header, { agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium', label: 'hai-me-sol-critic', phase: 'Critic' })
 ```
 with `args: { header: "CODEX TARGET: sol-medium\nCODEX CWD: <repo>\nCODEX PROMPT FILE: <…>\nCODEX OUTPUT FILE: <…>" }`.
 
@@ -145,4 +126,6 @@ project `~/projects/b2connect/tools/codex-context-sync.sh` generates `AGENTS.md`
 the repo and the workspace, git-excluded there) from the Claude sources: CLAUDE.md with its
 imports, the workspace rules, a skills catalog with paths to read, the memory directory and
 index. Profile `codex -p b2connect` carries the bw MCP servers (`--with-mcp`). The shim runs
-the sync before every codex run under the workspace; git hooks rerun it after merges.
+the sync before every codex run under the workspace; git hooks rerun it after merges. Independently of that mirror,
+`bin/codex-exec-logged.sh` composes codex's stdin at every run from the Claude sources: the
+`--role` agent body, user and project `CLAUDE.md`, the memory index and `codex-style.md`.

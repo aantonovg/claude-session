@@ -1,20 +1,17 @@
 ---
 name: codex
-description: Loaded on top of the session base: routes heavy roles or executor jobs to the codex stack (luna, terra, sol, astra) through the session:codex-proxy shim. Maps pipeline or review stages too when those are on.
+description: Loaded on top of the session base: routes heavy roles or executor jobs to the codex stack (luna, terra, sol, astra) through the session:codex-proxy shim.
 disable-model-invocation: true
 ---
 
 # Codex axis
 
-Loaded on top of the session base; `session:pipeline` or `session:review` may also be on.
-Those skills know nothing about codex. Only the agent running a job changes; jobs, gates,
-files and ledger stay as defined by the base or by the pipeline / review skill.
+Loaded on top of the session base. Only the agent running a job changes; jobs and files
+stay as defined by the base.
 
-A job is a fork job in the base, a stage in pipeline / review. The heavy axis replaces or
-pairs the base's "upscale agent" and, when pipeline / review is on, their critic
-and decision-review stages. The executor axis routes executor-kind fork jobs (repository
-research, harness, package edits, mechanical checks) to `luna-high` / `terra-high` in any
-session, and the pipeline / review executor stages when those are on.
+A job is a fork job in the base. The heavy axis replaces or pairs the base's "upscale
+agent". The executor axis routes executor-kind fork jobs (repository research, harness,
+package edits, mechanical checks) to `luna-high` / `terra-high`.
 
 ## Modes
 
@@ -35,44 +32,37 @@ session; after `/session:pipeline` or `/session:review` when those are used.
 
 ## Start (do this now)
 
-0. The base is present in every session; no check. If pipeline or review is on, the stage
-   mapping of `codex-modes.md` applies; otherwise the base mapping applies: executor-kind
-   fork job → executor axis, upscale agent → heavy axis. The review points (plan critique, verification-plan critique, closure review,
-   test-suite job) fire in every mode; only the agent behind each point changes.
+0. The base is present in every session; no check. The base mapping applies: executor-kind
+   fork job → executor axis, upscale agent → heavy axis. The review points (plan critique,
+   verification-plan critique, closure review, test-suite job) fire in every mode; only the
+   agent behind each point changes.
 1. Parse the argument. `<mode>` present → split at the `-` before `luna`/`terra`:
    `sol-luna` = heavy `sol`, exec `luna`; `sol` = heavy `sol`, exec `none`; `luna` = heavy
    `none`, exec `luna`. With an argument there is NO question to the user. Only without an
-   argument ask two questions with `AskUserQuestion`, entirely in Russian, recommended
-   option first:
+   argument ask two questions with `AskUserQuestion`, in A2 English, recommended option
+   first:
 
-   Q1, header «Тяжёлые агенты», question «Кем делать критику и ревью решения (только документы)?»
-   - «Claude (по умолчанию)» — тяжёлые работы на агентах Claude по слоту класса.
-   - «Пара Claude + codex» — к каждому тяжёлому агенту Claude в пару codex-агент, слияние отдельным форком (`+sol` / `+astra`).
-   - «Заменить на codex» — тяжёлые агенты заменить на codex (`sol` / `astra`).
+   Q1, header "Heavy agents", question "Who does critique and decision review (documents only)?"
+   - "Claude (default)" — heavy jobs on Claude agents by class slot.
+   - "Claude + codex pair" — each heavy Claude agent gets a codex agent as a pair, a separate fork merges (`+sol` / `+astra`).
+   - "Replace with codex" — heavy agents replaced by codex (`sol` / `astra`).
 
-   Q1b (only when Q1 chose codex), header «Какая codex-модель», question «Какой набор тяжёлых codex-моделей?»
-   - «sol» — sol-medium / sol-high.
-   - «astra» — astra-medium / astra-high (sol не используется).
+   Q1b (only when Q1 chose codex), header "Codex model", question "Which heavy codex model set?"
+   - "sol" — sol-medium / sol-high.
+   - "astra" — astra-medium / astra-high (no sol).
 
-   Q2, header «Исполнители», question «Кем делать дешёвые исполнительские работы (исследование по репозиторию, тесты, проверки)?»
-   - «Форки Claude (по умолчанию)» — как в базе.
-   - «luna» — исполнительские форки заменить на luna-high, где допустимо.
-   - «terra» — как luna, плюс тяжёлые исполнительские работы на terra-high.
+   Q2, header "Executors", question "Who does cheap executor jobs (repository research, tests, checks)?"
+   - "Claude forks (default)" — as in the base.
+   - "luna" — executor forks go to luna-high where allowed.
+   - "terra" — as luna, plus heavy executor jobs on terra-high.
 
-2. One Bash call: `codex --version; CODEX_BIN=$(ls -d ~/.claude/plugins/cache/claude-session/session/*/bin 2>/dev/null | sort -V | tail -1); [ -n "$CODEX_BIN" ] || CODEX_BIN=~/projects/claude-session/plugins/session/bin; [ -x "$CODEX_BIN/codex-exec-logged.sh" ] || CODEX_BIN=~/.claude/bin; ls "$CODEX_BIN/codex-exec-logged.sh" "$CODEX_BIN/codex-style.md" ~/.codex/proxy-usage.jsonl`.
+2. One Bash call: `codex --version; for d in $(ls -d ~/.claude/plugins/cache/claude-session/session/*/bin 2>/dev/null | sort -rV) ~/projects/claude-session/plugins/session/bin ~/.claude/bin; do [ -x "$d/codex-exec-logged.sh" ] && CODEX_BIN=$d && break; done; ls "$CODEX_BIN/codex-exec-logged.sh" "$CODEX_BIN/codex-style.md"`.
    The wrapper and the style file ship with this plugin (`bin/`). Missing wrapper → BLOCKED, say so. A `CODEX CLI ERROR` mentioning the quota during the
    task → executors fall back to `luna-reserve-high`, heavy slots to the Claude agent;
-   record `(fallback)` in the ledger label when a ledger exists. Harness gate (pipeline
-   skill, when on): the same call runs `codex -p <profile> mcp list` for every MCP server
-   the task needs; a server missing or failing there is a harness outage: the job does not
-   start, the user gets one chat line per server with the exact failure, and every
-   following `ping` re-runs the check and resumes from the last ledger row when the
-   servers are back (`still unavailable: <list>` otherwise); "continue without <tool>"
-   from the user overrides.
+   the job label gets the suffix `-fallback`.
 3. Astra modes need `astra` in the plugin's `agents/codex-proxy.md` (one grep on `$CODEX_BIN/../agents/codex-proxy.md`); missing →
    run on the sol set and say "astra pending".
 4. Reply with one line: "Codex: <mode> (heavy <…>, exec <…>); fallbacks <…>."
-   When a ledger exists, every `ledger.jsonl` row of the task carries `"codex": "<mode>"`.
 5. Exchange directory: `<task dir>/codex/` when pipeline / review has a task directory
    (`mkdir -p` right after it exists); otherwise
    `$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/`, created at the first codex job.
@@ -83,24 +73,21 @@ session; after `/session:pipeline` or `/session:review` when those are used.
 
 Envelope: the MAIN session
 writes the prompt file `<exchange dir>/<job>-<n>.md` (≤ 30 lines of bullets, first line
-`Style: caveman ultra, plain English only; artifacts in normal prose.`),
-appends the ledger row when a ledger exists (`kind: "codex-agent"`, `model: "<tier>"`,
-`effort`, `codex: "<mode>"`) with one Bash, runs ONE `Workflow` with one `agent()`
-(`agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium'`, label
-`<sol|atr|lun|lur|ter>-<eff>-<job>`, prompt = the header block, `CODEX CWD` = repo root,
-`CODEX OUTPUT FILE: <exchange dir>/<job>-<n>.out.md`), fills `agent_id` from the
-workflow journal and appends the stop line when a ledger exists; consumes only the shim's
-`LAST LINE`; no fork writes a prompt or relays an output. Per-stage slots and conventions
-for pipeline / review: `codex-modes.md`, read once at start. Inputs of each prompt file in
-the base: the role, the inputs by absolute path, the acceptance criteria, the commands to
-run, the required last lines. In pipeline: the codex sentences of stages 1, 4 and 5
-(research: ledger snapshot, framing, `evidence/`, output `evidence/EB-<n>.md` plus the
-ledger append line; harness: verification plan and contract invariants; package: its
-implementation-plan section, contract invariants, harness commands, commit message).
-Luna research writes `evidence/EB-<n>.md` directly and appends its own ledger lines; heavy
-jobs write `reviews/<stage>-codex.md` (dual review) or their output file, read by the
-next consumer by path; the artifact stays at `CODEX OUTPUT FILE`, the final message lands
-in `<CODEX OUTPUT FILE>.final.md`, which the shim reads for `LAST LINE`.
+`Style: caveman ultra, plain English only; artifacts in normal prose.`), runs ONE `Workflow`
+with one `agent()` (`agentType: 'session:codex-proxy'`, fixed haiku medium:
+`model: 'haiku', effort: 'medium'`; label `<mod>-<eff>-<tier>-<job>`, so `hai-me-<tier>-<job>`,
+for example `hai-me-luna-research`; tiers `sol`, `terra`, `luna`, `luna-reserve`, `astra`) and
+consumes only the shim's `LAST LINE`; no fork writes a prompt or relays an output.
+The agent prompt is the header block: `CODEX TARGET`, `CODEX PROMPT FILE`, `CODEX CWD` = repo
+root, `CODEX OUTPUT FILE: <exchange dir>/<job>-<n>.out.md`, optional
+`CODEX ROLE: <stage-author|stage-researcher|stage-executor|stage-reviewer|stage-critic>` (the
+wrapper puts that agent's body, the CLAUDE.md files and the memory index into codex's stdin)
+and `CODEX LABEL: <the same label>` (lands in `~/.codex/proxy-usage.jsonl`). The header block
+ends with the line `No skills needed for this step.` (or the Read-skill-files line). Inputs of
+each prompt file: the role, the inputs by absolute path, the acceptance criteria, the commands
+to run, the required last lines. Heavy jobs write their output file, read by the next consumer
+by path; the artifact stays at `CODEX OUTPUT FILE`, the final message lands in
+`<CODEX OUTPUT FILE>.final.md`, which the shim reads for `LAST LINE`.
 
 Executor jobs (luna, terra) run inside codex's workspace-write sandbox, `CODEX CWD` = repo
 root. The package prompt file ends with: run the harness, commit on pass with the given
@@ -108,8 +95,7 @@ message, return the 5-field status with the harness result lines. The codex run 
 edit, the harness run and the commit itself. No fork reads the diff, no fork re-runs the
 tests, no review. `partial` or a failing harness → one more codex run with the failure
 packet (the failing lines, the hypothesis), never an opus fork; after the second failure
-the job goes to the loop guard (in pipeline: failure packet into the ledger; in the base:
-the failure packet in chat), a low fork diagnoses from the failure lines only. A harness
+the job goes to the loop guard (the failure packet in chat), a low fork diagnoses from the failure lines only. A harness
 build in luna / terra mode is closed the same way: the harness must fail on the negative
 control and codex reports it in the status. Choosing an executor mode is the user's
 permission for codex edits in that task.
@@ -149,8 +135,7 @@ permission for codex edits in that task.
 
 - No codex agent for a job that needs MCP, the pipeline's or review's own artifacts or a
   skill; no inline task text in the shim prompt (file only); no reading of a codex output
-  file by the main session or by a relay fork; no fork to write a prompt file; no codex
-  Workflow without its ledger row when a ledger exists.
+  file by the main session or by a relay fork; no fork to write a prompt file.
 - No effort or model outside the sets above; no `danger-full-access` or bypass flags (the
   shim refuses them anyway).
 - No mode change in the middle of a task; a fallback is recorded, not a mode change.

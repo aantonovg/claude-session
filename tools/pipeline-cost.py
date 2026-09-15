@@ -56,6 +56,13 @@ PRICES = {
     "claude-haiku-4-5": (1e-6, 5e-6, 1e-7, 1.25e-6, 2e-6),
 }
 DEFAULT_PRICE_KEY = "claude-opus-4-8"
+# The codex-proxy shim runs on fixed haiku medium; its transcript is priced per entry from
+# message.model, this constant only when an entry carries no model.
+SHIM_DEFAULT_MODEL = "claude-haiku-4-5"
+# codex row label <mod>-<eff>-<tier>-<job> (hai-me-luna-research). Mod and effort codes are
+# the Claude launch-naming codes of base/BASE.md ("Launch naming" and "Label prefix" lines):
+# models fab ops son hai, efforts lo me hi xh mx.
+CODEX_LABEL_RE = r"^(fab|ops|son|hai)-(lo|me|hi|xh|mx)-(sol|terra|luna-reserve|luna|astra)-[a-z0-9][a-z0-9-]*$"
 # Copied from claude-cost codexPricingTable, USD per token: input, cached input, output.
 CODEX_PRICES = {
     "gpt-5.6-sol": (4e-6, 4e-7, 20e-6),
@@ -75,8 +82,14 @@ MISS_WRITE = 20_000
 FIELDS = ("input", "output", "read", "w5", "w1")
 
 
+def normalise_model(model):
+    """Model id without a date suffix (claude-haiku-4-5-20251001 -> claude-haiku-4-5)."""
+    return re.sub(r"-\d{8}$", "", model or "")
+
+
 def price_for(model):
     best = ""
+    model = normalise_model(model)
     for k in PRICES:
         if model and model.startswith(k) and len(k) > len(best):
             best = k
@@ -374,6 +387,9 @@ def compute(rows, stops, main_lines, agent_lines, codex_recs=None, labels=None, 
         res = dict(r)
         res.setdefault("label", "")
         if r.get("kind") == "codex-agent":
+            lab = r.get("label") or ""
+            if not re.match(CODEX_LABEL_RE, lab):
+                warnings.append(f"codex row {r.get('stage')}/{r.get('step')}: label {lab} not <mod>-<eff>-<tier>-<job>")
             acc = zero()
             if codex_recs is None:
                 warnings.append(f"codex row {r.get('stage')}/{r.get('step')}: {CODEX_USAGE} not found")
@@ -404,7 +420,10 @@ def compute(rows, stops, main_lines, agent_lines, codex_recs=None, labels=None, 
             aid = r.get("agent_id")
             if aid and aid in agent_lines:
                 used.add(aid)
-                add_turns(shim, iter_assistant(agent_lines[aid]), "claude-haiku-4-5")
+                shim_turns = list(iter_assistant(agent_lines[aid]))
+                for m in sorted({m for _ts, m, _u in shim_turns if m and price_for(m)[1] is None}):
+                    warnings.append(f"codex row {r.get('stage')}/{r.get('step')}: shim model {m} not in prices")
+                add_turns(shim, shim_turns, SHIM_DEFAULT_MODEL)
                 for f in list(FIELDS) + ["miss", "turns"]:
                     totals["session"][f] += shim[f]
                     acc[f] += shim[f]
@@ -592,10 +611,10 @@ def selftest():
          "model": "claude-fable-5-1", "effort": "high", "mode": "standard", "agent_id": "missing", "label": "x"},
         {"ts": "2026-09-05T10:50:00Z", "stage": "final-review", "step": "codex", "role": "reviewer-debugger",
          "kind": "codex-agent", "model": "sol", "effort": "high", "mode": "standard", "codex": "+sol-luna",
-         "agent_id": "a7", "label": "sol-hi-final-review"},
+         "agent_id": "a7", "label": "hai-me-sol-final-review"},
         {"ts": "2026-09-05T10:51:00Z", "stage": "final-review", "step": "codex-check", "role": "executor",
          "kind": "codex-agent", "model": "luna", "effort": "high", "mode": "standard", "codex": "+sol-luna",
-         "agent_id": "a8", "label": "lun-hi-final-check"},   # overlapping window, other model
+         "agent_id": "a8", "label": "hai-me-luna-final-check"},   # overlapping window, other model
     ]
     stops = {"a1": "2026-09-05T10:09:00Z", "a7": "2026-09-05T10:58:00Z", "a8": "2026-09-05T10:57:00Z"}
     codex_recs = [
@@ -651,14 +670,38 @@ def selftest():
     # (scripts+journal index first, then the first prompt), never an id another row holds.
     rows_l = [dict(r) for r in rows]
     rows_l[2]["agent_id"] = None          # ops-lo-critic → a2 via the label index
-    rows_l[5]["agent_id"] = None          # sol-hi-final-review → a7 via the prompt text
+    rows_l[5]["agent_id"] = None          # hai-me-sol-final-review → a7 via the prompt text
     agents_l = dict(agents)
     agents_l["a7"] = [entry("s1", "2026-09-05T10:52:00Z", "claude-haiku-4-5", 4, 50, 0, 2_000)]
     res_l, _w, _t = compute(rows_l, stops, main_lines, agents_l, codex_recs,
                             labels={"ops-lo-critic": ["a2"]},
-                            prompts={"a7": "CODEX TARGET: sol-high  label sol-hi-final-review", "a9": "other"})
+                            prompts={"a7": "CODEX TARGET: sol-high  label hai-me-sol-final-review", "a9": "other"})
     assert res_l[2]["agent_id"] == "a2" and res_l[2]["agent_id_from"] == "label" and res_l[2]["turns"] == 1, res_l[2]
     assert res_l[5]["agent_id"] == "a7" and res_l[5]["shim_usd"] > 0, res_l[5]
+    # Codex label convention <mod>-<eff>-<tier>-<job>.
+    for good in ("hai-me-sol-final-review", "fab-lo-luna-research", "hai-me-luna-reserve-x"):
+        assert re.match(CODEX_LABEL_RE, good), good
+    for badl in ("sol-hi-final-review", "abc-me-luna-x", "hai-me-moon-x"):
+        assert not re.match(CODEX_LABEL_RE, badl), badl
+    assert not any(" label " in w for w in warns), warns
+    rows_b = [dict(r) for r in rows]
+    rows_b[5]["label"] = "abc-me-luna-x"
+    _r, warns_b, _t = compute(rows_b, stops, main_lines, agents, codex_recs)
+    assert any("codex row final-review/codex: label abc-me-luna-x not <mod>-<eff>-<tier>-<job>" in w
+               for w in warns_b), warns_b
+    # Shim transcript priced per entry from message.model; dated ids normalised; unknown warns.
+    def shim_cost(model):
+        r_s, w_s, _t = compute([dict(rows[5])], {"a7": stops["a7"]}, None,
+                               {"a7": [entry("s9", "2026-09-05T10:52:00Z", model, 1000, 1000, 0, 0)]}, codex_recs)
+        return r_s[0]["shim_usd"], [w for w in w_s if "shim model" in w]
+    usd, w_s = shim_cost("claude-sonnet-5")
+    assert abs(usd - (1000 * 2e-6 + 1000 * 10e-6)) < 1e-12 and not w_s, (usd, w_s)
+    usd, w_s = shim_cost("claude-haiku-4-5-20251001")
+    assert abs(usd - (1000 * 1e-6 + 1000 * 5e-6)) < 1e-12 and not w_s, (usd, w_s)
+    usd, w_s = shim_cost(None)
+    assert abs(usd - (1000 * 1e-6 + 1000 * 5e-6)) < 1e-12 and not w_s, (usd, w_s)
+    usd, w_s = shim_cost("claude-mystery-9")
+    assert w_s == ["codex row final-review/codex: shim model claude-mystery-9 not in prices"], w_s
     # Codex window: a record 90 s before the row joins; a retry after the next non-codex row
     # but before the next codex row of the same tier+effort joins the same row; a row
     # mis-stamped hours earlier is moved to the previous row's ts before windows are cut.
@@ -667,15 +710,15 @@ def selftest():
          "model": "claude-opus-5", "effort": "low", "mode": "full", "agent_id": "b1", "label": "ops-lo-prompt"},
         {"ts": "2026-09-05T08:01:00Z", "stage": "critic", "step": "codex", "role": "reviewer-debugger",
          "kind": "codex-agent", "model": "sol", "effort": "medium", "mode": "full", "codex": "sol",
-         "agent_id": None, "label": "sol-me-critic"},                                   # mis-stamped (08:01)
+         "agent_id": None, "label": "hai-me-sol-critic"},                                   # mis-stamped (08:01)
         {"ts": "2026-09-05T12:03:00Z", "stage": "critic", "step": "triage", "role": "reviewer-debugger", "kind": "fork",
          "model": "claude-opus-5", "effort": "low", "mode": "full", "agent_id": "b2", "label": "ops-lo-triage"},
         {"ts": "2026-09-05T12:10:00Z", "stage": "decision", "step": "codex", "role": "reviewer-debugger",
          "kind": "codex-agent", "model": "sol", "effort": "high", "mode": "full", "codex": "sol",
-         "agent_id": None, "label": "sol-hi-decision"},
+         "agent_id": None, "label": "hai-me-sol-decision"},
         {"ts": "2026-09-05T12:30:00Z", "stage": "closure", "step": "codex", "role": "reviewer-debugger",
          "kind": "codex-agent", "model": "sol", "effort": "medium", "mode": "full", "codex": "sol",
-         "agent_id": None, "label": "sol-me-closure"},
+         "agent_id": None, "label": "hai-me-sol-closure"},
         {"ts": "2026-09-05T12:35:00Z", "stage": "closure", "step": "report", "role": "author", "kind": "fork",
          "model": "claude-opus-5", "effort": "low", "mode": "full", "agent_id": "b3", "label": "ops-lo-report"},
     ]
