@@ -22,7 +22,7 @@ One main session + forks + cold workflow agents. A fork inherits the whole conve
 
 Invoked by the user as the first prompt and again after `/compact`.
 
-1. Keep-warm: plugin monitor `keep-warm-ping` starts with this skill, pings every 57 min for the session's life; `/session:stop-ping` stops it. No ping tool calls from the main session.
+1. Keep-warm: plugin monitor `keep-warm-ping` starts with this skill, pings every 57 min for the session's life; `/session:stop-ping` pauses it, `/session:resume-ping` resumes; status line shows `base+ping` (`base+ping(paused)` while paused). No ping tool calls from the main session.
 2. Arguments, any order: `/session:base [no-sonnet] [no-opus] [no-fable] [c1|c2|c3|c4|c5]`; `/base` same. Default `c3`, no submodes. Two classes, an unknown word, or all three submodes: reply line `invalid arguments`, previous class and submodes stay. Class and submodes hold for the session's life.
 3. Reply line, once: `Base on (c3); forks or workflows for every 2+ call job`. Submodes after the class in order no-sonnet, no-opus, no-fable: `Base on (c4, no-sonnet, no-fable); …`.
 
