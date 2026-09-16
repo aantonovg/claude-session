@@ -5,8 +5,16 @@ export const meta = {
   phases: [{ title: 'Research' }, { title: 'Synthesis' }],
 }
 /* usage:
-Fact research on one question: one researcher per direction in parallel, one critique, one synthesis. Args: cwd (string, absolute path, required), question (string, required), directions (array of strings, 2-6, optional), paths (array of absolute paths to inspect, optional), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), out (string, absolute dir, optional).
-When to use: Facts from repository, git history or docs needed before a plan; question splits into directions. Web questions: web-researcher.
+Fact research on one question: parallel researchers per direction, critique, synthesis.
+cwd (string, absolute path, required)
+question (string, required)
+directions (array of 2-6 strings, default [question])
+paths (array of absolute paths to inspect, default [])
+class (string c1-c5, default c3)
+submodes (array of strings: no-sonnet no-opus no-fable, default [])
+out (string, absolute dir, default <cwd>/reviews)
+Out: synthesis file in out.
+Use: repo, git or docs facts before a plan. Not: web questions (web-researcher).
 */
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----

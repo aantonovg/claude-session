@@ -69,8 +69,8 @@ Submodes rewrite the row (cells main / opus / sonnet; all three at once is an er
 ## Named workflows (0.14.0)
 
 Scripts under `workflows/`, launched by name (`session:dev`, `session:review-fix`, `session:build`,
-`session:research`) with `args`; the meta description is the contract, the body is never read by
-the caller. Shared block in every script: the 35-cell class table, `args.class` (default c3) and
+`session:research`) with `args`; the `/* usage: */` block is the contract, delivered to the session as SessionStart
+context (section "Workflow contract hooks"); the body is never read by the caller. Shared block in every script: the 35-cell class table, `args.class` (default c3) and
 `args.submodes` pick the row, `opts(slot, job)` turns a slot into explicit `model`, `effort` and a
 `<mod>-<eff>-<job>` label. `args.cwd` is required; outputs go to `args.out` (default `<cwd>/reviews`).
 A `null` or `BLOCKED:` stage result ends the run with a report; reviewers end with `VERDICT: clean`
@@ -88,6 +88,31 @@ agent preloads a skill in frontmatter.
 | `build` | implement a plan, code review + tests + fix (1-3) | `cwd, plan, test, class, submodes (array), out` | stage-author (opus), code-reviewer and stage-executor (sonnet) |
 | `research` | parallel researchers by direction, critique, synthesis | `cwd, question, directions (array), paths (array), class, submodes (array), out` | stage-researcher (sonnet), stage-critic (main), stage-author (opus) |
 
+
+## Workflow contract hooks
+
+Each named workflow contract reaches the session as its own SessionStart `additionalContext`
+entry: `Workflow <launch name> (launch by name; contract below; never read the script body): <usage>`.
+`bin/workflow-usage.sh --hook --file <wf.js> --prefix <plugin>` prints one hook JSON for one script;
+`--hook --dir @user` covers `~/.claude/workflows`, `--hook --dir @project` covers
+`${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows` (a project stem overrides the user stem). Session's
+plugin.json declares one `--file` hook per `workflows/*.js` (`session:` prefix) plus the two dir hooks.
+
+Another plugin exposing its own workflows: copy the collector into its `bin/` and add one group per
+script to its inline plugin.json `hooks.SessionStart` (never hooks/hooks.json):
+
+```json
+"hooks": {
+  "SessionStart": [
+    { "hooks": [ { "type": "command", "timeout": 5,
+      "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/<name>.js --prefix <plugin>" } ] }
+  ]
+}
+```
+
+User and project workflow dirs are already covered by session's `@user` and `@project` hooks; add no
+second `@project` hook. Contracts load at session start: after a mid-session install run
+`/reload-plugins` or restart the session.
 
 ## codex-proxy permission set
 
@@ -175,6 +200,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.5: poll step 5 seconds (`for i in $(seq 36); do test -f <done> && break; sleep 5; done`); a finished job is noticed within 5 s.
 0.15.6: base "Skill first, then delegate" bullet (transcripts-jsonl, shell-gotchas, workflow-reliability, harness-cost, tmux-sessions); tests/measure: S1-S9 scenarios for the 0.15 assets, driver env matrix (MODEL EFFORT CWD OUT REPEAT IDS), parser S3 scans script files only.
 0.15.7: shorter workflow descriptions; README documents workflow args; plugin-dev workflows (test-session, skill-author, memory-gc) tracked in .claude/workflows/.
+0.15.17: workflow contracts via per-workflow SessionStart hooks (50-150 tokens); session:translate-ru, session:translator, session:size-estimator moved into the plugin; start-ping monitor for sessions without base; ping.sh exits when orphaned.
 0.15.16: named workflows: 1-4 word descriptions, launch contract injected into base via workflow-usage.sh; ad hoc description rule. Each named workflow keeps its args in a `/* usage: */` block; base `## Named workflows` runs `bin/workflow-usage.sh` at skill load; test tests/workflows/usage-test.sh.
 0.15.15: plugin monitor is the only keep-warm; daily 23:59 cutoff; resume-ping re-enables a new day. Base drops the background Bash ping jobs and re-arm rule; ping.sh gets PING_INTERVAL, PING_STEP and PING_DRY_RUN test hooks; test tests/monitors/ping-test.sh.
 0.15.14: codex jobs get role body, CLAUDE.md, project memory and style from `codex-exec-logged.sh --role` (optional `CODEX ROLE:` header), dry-run test tests/codex/wrapper-test.sh; codex-proxy fixed haiku medium, label `<mod>-<eff>-<tier>-<job>`; workflow stages pass reviewer, executor and note returns inline instead of report files; build and review-fix drop the unused `out` arg, memory-gc drops `reviews`.

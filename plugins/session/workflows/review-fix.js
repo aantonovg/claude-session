@@ -5,8 +5,15 @@ export const meta = {
   phases: [{ title: 'Review' }],
 }
 /* usage:
-Review-fix loop on an existing change: critique, evidence check of every finding by a second agent, fixes of confirmed findings, test run, cycles until clean. Args: cwd (string, absolute repo path, required), target (string: a diff file path, an "a..b" git range, or "worktree", optional), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), test (string, one shell line, optional), fix (boolean, optional).
-When to use: Finished diff, branch or MR needs a verified review, with or without fixes. Authoring from a plan: build.
+Review-fix loop on an existing change: critique, evidence check, fixes, tests.
+cwd (string, absolute repo path, required)
+target (string: diff file path, "a..b" git range or "worktree", default worktree)
+class (string c1-c5, default c3)
+submodes (array of strings: no-sonnet no-opus no-fable, default [])
+test (string, one shell line, default none)
+fix (boolean, default true)
+Out: verified findings, fixed files when fix.
+Use: finished diff, branch or MR. Not: authoring from a plan (build).
 */
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----

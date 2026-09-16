@@ -10,14 +10,14 @@ mkdir -p "$T/tmp" "$T/bin" "$T/data"
 export TMPDIR=$T/tmp CLAUDE_SESSION_ID=pingtest PING_INTERVAL=2 PING_STEP=1
 export FAKE_DATE=$T/fake-date
 
-PID1=""; PID2=""
+PID1=""; PID2=""; MID=""
 killtree() {  # $1 pid
   [ -n "$1" ] || return 0
   pkill -P "$1" 2>/dev/null || true
   kill "$1" 2>/dev/null || true
   pkill -P "$1" 2>/dev/null || true
 }
-cleanup() { killtree "$PID1"; killtree "$PID2"; rm -rf "$T"; }
+cleanup() { killtree "$PID1"; killtree "$PID2"; killtree "$MID"; [ -s "$T/orphan.pid" ] && kill "$(cat "$T/orphan.pid")" 2>/dev/null; rm -rf "$T"; }
 trap cleanup EXIT
 
 # Fake date: ignores args, prints the day held in $FAKE_DATE.
@@ -146,8 +146,22 @@ if [ "$c" -eq 0 ] && no_ping 0 3 "$T/out3.log" && wait_ping 0 3 "$T/out3.log"; t
   pass "H timer restarts from zero on resume"
 else fail "H timer restarts from zero on resume (no ping in 3 s, ping by 6 s)"; fi
 
-if [ "$FAILS" -eq 0 ] && [ "$N" -eq 9 ]; then
+# O: orphaned ping.sh (parent died, reparented to pid 1) exits within a few steps.
+killtree "$PID2"; PID2=""
+sh -c 'sh "$1/ping.sh" "$2" > "$3/out-orphan.log" 2>&1 & echo $! > "$3/orphan.pid"; exec sleep 30' sh "$M" "$T/data" "$T" &
+MID=$!
+end=$((SECONDS + 3))
+while [ ! -s "$T/orphan.pid" ] && [ "$SECONDS" -lt "$end" ]; do sleep 0.2; done
+OP=$(cat "$T/orphan.pid" 2>/dev/null)
+O0=0; [ -n "$OP" ] && alive "$OP" && O0=1
+kill "$MID" 2>/dev/null; wait "$MID" 2>/dev/null; MID=""
+end=$((SECONDS + 5))
+while [ -n "$OP" ] && alive "$OP" && [ "$SECONDS" -lt "$end" ]; do sleep 0.5; done
+if [ "$O0" = 1 ] && ! alive "$OP"; then pass "O orphaned ping.sh exits"
+else fail "O orphaned ping.sh exits (started [$O0], pid [$OP])"; fi
+
+if [ "$FAILS" -eq 0 ] && [ "$N" -eq 10 ]; then
   echo "ping-test: PASS $N"; exit 0
 fi
-echo "ping-test: FAIL $FAILS failures, $N/9 cases passed"
+echo "ping-test: FAIL $FAILS failures, $N/10 cases passed"
 exit 1

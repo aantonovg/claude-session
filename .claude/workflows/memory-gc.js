@@ -5,8 +5,12 @@ export const meta = {
   phases: [{ title: 'Trim' }, { title: 'Check' }],
 }
 /* usage:
-Applies a memory-trim list after a skill absorbed memory files: an author deletes or shortens each listed memory file to a pointer and fixes the MEMORY.md index, a reviewer checks nothing unabsorbed was lost, one fix round. Args: trim (string, absolute path to a memory-trim.md with lines "<DELETE|SHORTEN|KEEP> <path> | <kept lines or reason>" and a "skill: <path>" line, required), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: memory files edited or deleted, review text in the result. Never runs in the same workflow as skill-author. BLOCKED stage stops with a report.
-When to use: A skill-author run produced memory-trim.md and the skill passed review.
+Applies a memory-trim list after a skill absorbed memory files; reviewer checks nothing unabsorbed was lost.
+trim (string, absolute memory-trim.md path, required)
+class (string c1-c5, default c3)
+submodes (array of strings: no-sonnet no-opus no-fable, default [])
+Out: memory files edited or deleted, MEMORY.md index fixed, review text in result.
+Use: skill-author produced memory-trim.md and skill passed review. Not: same workflow as skill-author.
 */
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----
