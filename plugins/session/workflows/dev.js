@@ -1,9 +1,13 @@
 export const meta = {
   name: 'dev',
-  description: 'Full development run: plan with critique and fix, red tests with review, implementation with code review, tests and fix, closure review. Args: cwd (string, absolute repo path, required), task (string with acceptance criteria, required), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), paths (array of absolute paths, optional), test (string, one shell line, optional), out (string, absolute dir, optional).',
+  description: 'Full dev run',
   whenToUse: 'Code change c2-c5 with acceptance criteria: feature, non-trivial fix, refactor with tests. Research only: research. Existing plan: build.',
   phases: [{ title: 'Plan' }, { title: 'Red tests' }, { title: 'Implement' }, { title: 'Closure' }],
 }
+/* usage:
+Full development run: plan with critique and fix, red tests with review, implementation with code review, tests and fix, closure review. Args: cwd (string, absolute repo path, required), task (string with acceptance criteria, required), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), paths (array of absolute paths, optional), test (string, one shell line, optional), out (string, absolute dir, optional).
+When to use: Code change c2-c5 with acceptance criteria: feature, non-trivial fix, refactor with tests. Research only: research. Existing plan: build.
+*/
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----
 const T = {

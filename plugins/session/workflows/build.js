@@ -1,9 +1,13 @@
 export const meta = {
   name: 'build',
-  description: 'Implement an existing plan: author, code review, test run, fixer, cycles until clean and green. Args: cwd (string, absolute repo path, required), plan (string, absolute path to the plan file, required), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), test (string, one shell line, optional).',
+  description: 'Implement existing plan',
   whenToUse: 'A reviewed plan exists, only implementation missing. No plan yet: dev. Code already exists: review-fix.',
   phases: [{ title: 'Implement' }],
 }
+/* usage:
+Implement an existing plan: author, code review, test run, fixer, cycles until clean and green. Args: cwd (string, absolute repo path, required), plan (string, absolute path to the plan file, required), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), test (string, one shell line, optional).
+When to use: A reviewed plan exists, only implementation missing. No plan yet: dev. Code already exists: review-fix.
+*/
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----
 const T = {
