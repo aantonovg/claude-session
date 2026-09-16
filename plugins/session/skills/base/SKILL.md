@@ -22,11 +22,11 @@ One main session + forks + cold workflow agents. A fork inherits the whole conve
 
 Invoked by the user as the first prompt and again after `/compact`.
 
-1. Keep-warm pings: first tool calls, up to 4 `Bash` `run_in_background` jobs in ONE message, `timeout: 14400000`, command `sleep <N>; echo ping`, description `keep-warm ping at HH:MM`. Targets now+57, +114, +171, +228 min; N = seconds from `date` to the target. Cutoff: drop every target after 23:59 today; the ping before the last lands at 23:03 or earlier; never a target on the next day. Skip the launch when live ping jobs already exist. Monitor tool cap 30 min, unusable for pings; plugin monitors server-flag gated.
+1. Pings come from the session plugin monitor started by /session:base; no tool calls for pings. `/session:stop-ping` and `/session:resume-ping` pause and resume them. Pings stop after 23:59 and on a new day until `/session:resume-ping`.
 2. Arguments, any order: `/session:base [no-sonnet] [no-opus] [no-fable] [c1|c2|c3|c4|c5]`; `/base` same. Default `c3`, no submodes. Two classes, an unknown word, or all three submodes: reply line `invalid arguments`, previous class and submodes stay. Class and submodes hold for the session's life.
-3. Reply line, once, only after the launch: `Base on (c3), ping jobs <ids>; forks or workflows for every 2+ call job` (ids of the batch). Submodes after the class in order no-sonnet, no-opus, no-fable: `Base on (c4, no-sonnet, no-fable), …`. No variant without job ids.
+3. Reply line, once: `Base on (c3), ping monitor; forks or workflows for every 2+ call job`. Submodes after the class in order no-sonnet, no-opus, no-fable: `Base on (c4, no-sonnet, no-fable), …`.
 
-Pings: every `ping` (job completion or user message) gets exactly `pong`: no work, no status, no tool calls. Re-arm: a ping from the last live ping job gets `pong` and, in the same turn, the next batch by the rule of Start step 1; after the 23:59 cutoff no batch. Exception: previous work turn cut off (error line in place of an answer, fork or background job never returned, step announced not done): `pong` and in the same turn resume that step, no other output.
+Pings: every `ping` gets exactly `pong`: no work, no status, no tool calls. Exception: previous work turn cut off (error line in place of an answer, fork or background job never returned, step announced not done): `pong` and in the same turn resume that step, no other output.
 
 Model and effort already chosen; never change them.
 
