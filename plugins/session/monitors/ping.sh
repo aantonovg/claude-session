@@ -1,7 +1,8 @@
 #!/bin/sh
 # Plugin monitor: prints "ping" every interval so the session gets a turn and
-# the prompt cache stays warm. Never exits on its own (an exit would not
-# re-arm): while a pause file for this session exists, or the day is not the
+# the prompt cache stays warm. Exits only when orphaned (parent pid 1: its
+# claude process died); otherwise never exits (an exit would not re-arm):
+# while a pause file for this session exists, or the day is not the
 # active date, it keeps sleeping without printing and the timer stays at 0.
 # Active date: latest of the start date and every valid session date file
 # (written by resume-ping.sh). Only the same date pings, so nothing after 23:59
@@ -46,6 +47,7 @@ while true; do
     step=$((interval - elapsed))
     [ "$step" -gt "$step_max" ] && step=$step_max
     sleep "$step"
+    [ "$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ')" = 1 ] && exit 0
     elapsed=$((elapsed + step))
   done
   if silent; then continue; fi

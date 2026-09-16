@@ -5,8 +5,18 @@ export const meta = {
   phases: [{ title: 'Author' }, { title: 'Trim list' }],
 }
 /* usage:
-Writes one SKILL.md from source files: author, reviewer, fix cycles (1-3); round 2+ re-checks the previous findings and is clean when no high remains (medium accepted); then a memory-trim list. Args: name (string, required; directory name), purpose (string, required; one line), sources (array of absolute paths, required), cap (number, tokens, default 4000), out (string, absolute dir holding <name>/SKILL.md, default ~/.claude/skills), reviews (string, absolute dir, default ~/.claude/reviews/skill-<name>), absorbs (array of absolute memory file paths, default []), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: <out>/<name>/SKILL.md, memory-trim.md under reviews, review text in the result. BLOCKED stage stops with a report.
-When to use: A new or rewritten user or project skill with named sources: memory files, notes, scripts, existing skills.
+Writes one SKILL.md from sources with review and fix cycles, then a memory-trim list.
+name (string, directory name, required)
+purpose (string, one line, required)
+sources (array of absolute paths, required)
+cap (number, tokens, default 4000)
+out (string, absolute dir, default ~/.claude/skills)
+reviews (string, absolute dir, default ~/.claude/reviews/skill-<name>)
+absorbs (array of absolute memory file paths, default [])
+class (string c1-c5, default c3)
+submodes (array of strings: no-sonnet no-opus no-fable, default [])
+Out: <out>/<name>/SKILL.md, memory-trim.md in reviews.
+Use: new or rewritten skill with named sources.
 */
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----

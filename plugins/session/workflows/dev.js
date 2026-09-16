@@ -5,8 +5,16 @@ export const meta = {
   phases: [{ title: 'Plan' }, { title: 'Red tests' }, { title: 'Implement' }, { title: 'Closure' }],
 }
 /* usage:
-Full development run: plan with critique and fix, red tests with review, implementation with code review, tests and fix, closure review. Args: cwd (string, absolute repo path, required), task (string with acceptance criteria, required), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), paths (array of absolute paths, optional), test (string, one shell line, optional), out (string, absolute dir, optional).
-When to use: Code change c2-c5 with acceptance criteria: feature, non-trivial fix, refactor with tests. Research only: research. Existing plan: build.
+Full development run: plan, red tests, implementation, review, tests, closure.
+cwd (string, absolute repo path, required)
+task (string with acceptance criteria, required)
+class (string c1-c5, default c3)
+submodes (array of strings: no-sonnet no-opus no-fable, default [])
+paths (array of absolute paths, default [])
+test (string, one shell line, default from plan)
+out (string, absolute dir, default <cwd>/reviews)
+Out: changed files, plan and reviews in out.
+Use: c2-c5 code change with criteria. Not: research only (research), plan exists (build).
 */
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----

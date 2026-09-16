@@ -1,8 +1,8 @@
 #!/bin/bash
 # Verifier for plugins/session/bin/workflow-usage.sh, workflow usage blocks,
-# BASE.md "Named workflows" section and split.sh allowed-tools line.
-# Temp dirs and fixtures only, no network, runs under 20 s.
-# Check labels carry the plan criterion number: c1..c9.
+# hook mode (--hook --file/--dir/--prefix), plugin.json SessionStart hooks, translate-ru in plugin
+# base and README. Temp dirs and fixtures only, no network, runs under 20 s.
+# Labels: c1..c6 from the 0.15.16 plan, k<n> = wf-hook-dev2 acceptance criterion n.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -10,8 +10,6 @@ P=$REPO/plugins/session
 COLLECTOR=$P/bin/workflow-usage.sh
 BASE=$P/base/BASE.md
 SKILL=$P/skills/base/SKILL.md
-INJECT='!`sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh`'
-ALLOW='allowed-tools: Bash(sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh)'
 
 T=$(mktemp -d) || exit 1
 cleanup() { chmod 755 "$T/h/proj/.claude/workflows" 2>/dev/null; rm -rf "$T"; }
@@ -54,7 +52,7 @@ NODE_BASE=1
 SCRIPTS=()
 for n in build dev research review-fix; do SCRIPTS+=("$P/workflows/$n.js"); done
 for n in memory-gc skill-author test-session; do SCRIPTS+=("$REPO/.claude/workflows/$n.js"); done
-[ -f "$HOME/.claude/workflows/translate-ru.js" ] && SCRIPTS+=("$HOME/.claude/workflows/translate-ru.js")
+SCRIPTS+=("$P/workflows/translate-ru.js")
 
 # ---------- c1, c2, c3: real scripts ----------
 for f in "${SCRIPTS[@]}"; do
@@ -96,7 +94,7 @@ mk_fixture() {
   printf 'export const meta = {}\n}\n/* usage:\nDee project text.\n*/\n' > "$T/h/proj/.claude/workflows/d.js"
 }
 run_fix() {  # $1 HOME, $2 cwd -> $T/out, $T/err, $T/rc
-  (cd "$2" && HOME=$1 sh "$T/plugin/bin/workflow-usage.sh" > "$T/out" 2> "$T/err"; echo $? > "$T/rc")
+  (cd "$2" && env -u CLAUDE_PROJECT_DIR HOME=$1 sh "$T/plugin/bin/workflow-usage.sh" > "$T/out" 2> "$T/err"; echo $? > "$T/rc")
 }
 mk_fixture
 run_fix "$T/h/home" "$T/h/proj"
@@ -144,7 +142,7 @@ for f in "$HOME"/.claude/workflows/*.js; do
 done
 for f in "$REPO"/.claude/workflows/*.js; do [ -f "$f" ] && exp+=("$(basename "$f" .js)"); done
 t0=$(now_ms)
-real=$(cd "$REPO" && sh "$COLLECTOR" 2>/dev/null); rc=$?
+real=$(cd "$REPO" && env -u CLAUDE_PROJECT_DIR sh "$COLLECTOR" 2>/dev/null); rc=$?
 t1=$(now_ms)
 ms=$((t1 - t0))
 echo "usage-test: real collector ${ms} ms"
@@ -153,27 +151,261 @@ check "c6 d real under 3 s (${ms} ms)" test "$ms" -lt 3000
 got=$(printf '%s\n' "$real" | sed -E 's/^- ([^ ]+) — .*/\1/' | grep -v '^$' | tr '\n' ' ')
 check "c5 d real names and order (got $got)" test "$got" = "$(printf '%s ' "${exp[@]}")"
 
-# ---------- c7, c8: BASE.md ----------
-check "c7 BASE.md injection line" grep -Fxq -- "$INJECT" "$BASE"
-check "c7 BASE.md lead line" grep -Fxq -- 'Launch names and args (contract):' "$BASE"
-check "c8 BASE.md old contract text gone" bash -c '! grep -Fq "its meta description is the contract" "$1"' _ "$BASE"
-check "c8 BASE.md new contract text" grep -Fq -- 'the usage list under Named workflows is the contract, never read the script body' "$BASE"
-between=$(awk '/^## Named workflows$/{f=1; next} f&&/^## Classes, slots and submodes$/{ok=1; exit} f&&/^## /{exit} END{print ok+0}' "$BASE")
-check "c7 Named workflows section right before Classes section" test "$between" = 1
-lead=$(awk '/^## Named workflows$/{f=1; next} f&&/^## /{exit} f&&NF{print}' "$BASE" | tr '\n' '|')
-check "c7 section holds lead line then injection line" test "$lead" = "Launch names and args (contract):|$INJECT|"
+# ---------- wf-hook-dev2 plan: labels k<criterion> ----------
+WHY='(launch by name; contract below; never read the script body)'
+entry() { printf 'Workflow %s %s: %s' "$1" "$WHY" "$2"; }  # $1 launch name, $2 usage text
+cat > "$T/j.py" <<'PY'
+import json, sys
+mode, path = sys.argv[1], sys.argv[2]
+raw = open(path, 'rb').read()
+try:
+    txt = raw.decode('utf-8')
+    d = json.loads(txt)
+except Exception as e:
+    print('invalid: %s' % e, file=sys.stderr); sys.exit(1)
+h = d.get('hookSpecificOutput', {}) if isinstance(d, dict) else {}
+c = h.get('additionalContext')
+if mode == 'valid': sys.exit(0)
+if mode == 'oneline': sys.exit(0 if txt.strip('\n') and '\n' not in txt.rstrip('\n') else 1)
+if mode == 'event': print(h.get('hookEventName', '')); sys.exit(0)
+if not isinstance(c, str): sys.exit(1)
+if mode == 'ctx': sys.stdout.buffer.write(c.encode('utf-8')); sys.exit(0)
+if mode == 'eq': sys.exit(0 if c == open(sys.argv[3], encoding='utf-8').read() else 1)
+PY
+jvalid() { python3 "$T/j.py" valid "$1" 2>/dev/null; }
+jone() { python3 "$T/j.py" oneline "$1" 2>/dev/null; }
+jeq() { python3 "$T/j.py" eq "$1" "$2" 2>/dev/null; }  # $1 hook output, $2 file with expected context
+wfx() { printf 'export const meta = {}\n}\n/* usage:\n%s\n*/\n' "$2" > "$1"; }
+# $1 plugin root (bin/ copy of collector), $2 HOME, $3 cwd, rest collector args -> $T/ko, $T/ke, $T/kr
+runk() {
+  local root=$1 home=$2 cwd=$3; shift 3
+  (cd "$cwd" && env -u CLAUDE_PROJECT_DIR HOME="$home" sh "$root/bin/workflow-usage.sh" "$@" > "$T/ko" 2> "$T/ke"; echo $? > "$T/kr")
+}
+K=$T/k2
+mkdir -p "$K/pl/bin" "$K/pl/workflows" "$K/home/.claude/workflows" "$K/proj/.claude/workflows" "$K/x" "$K/other/.claude/workflows" "$K/empty" "$K/txt"
+cp "$COLLECTOR" "$K/pl/bin/workflow-usage.sh"
 
-# ---------- c9: SKILL.md and split.sh (case f, g) ----------
-check "c9 SKILL.md injection line" grep -Fxq -- "$INJECT" "$SKILL"
-fm=$(awk 'NR==1&&/^---$/{f=1; next} f&&/^---$/{exit} f{print}' "$SKILL")
-check "c9 SKILL.md frontmatter allowed-tools" grep -Fxq -- "$ALLOW" <<<"$fm"
-allow_cmd=$(printf '%s\n' "$fm" | grep '^allowed-tools:' | sed -E 's/^allowed-tools: Bash\((.*)\)$/\1/')
-inj_cmd=$(printf '%s' "$INJECT" | sed -E 's/^!`(.*)`$/\1/')
-check "c9 allowed-tools command equals injected command" test -n "$allow_cmd" -a "$allow_cmd" = "$inj_cmd"
+# k1: --hook --file
+wfx "$K/x/a.js" 'Alpha   summary.
+  Args: x (string, required).'
+wfx "$K/x/b.js" 'Bee text.'
+printf 'not js\n' > "$K/x/notes.txt"
+runk "$K/pl" "$K/home" "$K/proj" --hook --file "$K/x/a.js" --prefix session
+check "k1 --file exit 0" test "$(cat "$T/kr")" = 0
+check "k1 --file exactly one line" jone "$T/ko"
+check "k1 --file json.loads" jvalid "$T/ko"
+check "k1 --file hookEventName SessionStart" test "$(python3 "$T/j.py" event "$T/ko" 2>/dev/null)" = SessionStart
+entry session:a 'Alpha summary. Args: x (string, required).' > "$T/exp"
+check "k1 --file additionalContext entry with session: prefix" jeq "$T/ko" "$T/exp"
+runk "$K/pl" "$K/home" "$K/proj" --hook --file "$K/x/a.js"
+entry a 'Alpha summary. Args: x (string, required).' > "$T/exp"
+check "k1 --file without --prefix bare stem" jeq "$T/ko" "$T/exp"
+
+# k2: --hook --dir
+runk "$K/pl" "$K/home" "$K/proj" --hook --dir "$K/x"
+check "k2 --dir exit 0" test "$(cat "$T/kr")" = 0
+check "k2 --dir exactly one line" jone "$T/ko"
+check "k2 --dir hookEventName SessionStart" test "$(python3 "$T/j.py" event "$T/ko" 2>/dev/null)" = SessionStart
+{ entry a 'Alpha summary. Args: x (string, required).'; printf '\n'; entry b 'Bee text.'; } > "$T/exp"
+check "k2 --dir entries newline-joined in glob order, .js only" jeq "$T/ko" "$T/exp"
+wfx "$K/home/.claude/workflows/c.js" 'Cee user.'
+wfx "$K/home/.claude/workflows/d.js" 'Dee user.'
+wfx "$K/proj/.claude/workflows/d.js" 'Dee project.'
+wfx "$K/other/.claude/workflows/o.js" 'Other cwd.'
+runk "$K/pl" "$K/home" "$K/proj" --hook --dir @user
+entry c 'Cee user.' > "$T/exp"
+check "k2 @user skips stem present in project dir" jeq "$T/ko" "$T/exp"
+runk "$K/pl" "$K/home" "$K/proj" --hook --dir @project
+entry d 'Dee project.' > "$T/exp"
+check "k2 @project from PWD holds overriding stem" jeq "$T/ko" "$T/exp"
+(cd "$K/other" && HOME="$K/home" CLAUDE_PROJECT_DIR="$K/proj" sh "$K/pl/bin/workflow-usage.sh" --hook --dir @project > "$T/ko" 2>/dev/null)
+check "k2 @project uses CLAUDE_PROJECT_DIR over PWD" jeq "$T/ko" "$T/exp"
+(cd "$K/other" && HOME="$K/home" CLAUDE_PROJECT_DIR="$K/proj" sh "$K/pl/bin/workflow-usage.sh" --hook --dir @user > "$T/ko" 2>/dev/null)
+entry c 'Cee user.' > "$T/exp"
+check "k2 @user override uses CLAUDE_PROJECT_DIR over PWD" jeq "$T/ko" "$T/exp"
+(cd "$K/other" && env -u CLAUDE_PROJECT_DIR HOME="$K/home" sh "$K/pl/bin/workflow-usage.sh" --hook --dir @user > "$T/ko" 2>/dev/null)
+{ entry c 'Cee user.'; printf '\n'; entry d 'Dee user.'; } > "$T/exp"
+check "k2 @user keeps stem absent from project dir" jeq "$T/ko" "$T/exp"
+(cd "$K/other" && HOME="$K/home" CLAUDE_PROJECT_DIR="$K/home" sh "$K/pl/bin/workflow-usage.sh" --hook --dir @project > "$T/ko" 2>&1; echo $? > "$T/kr")
+check "k2 @project equal to @user real path prints nothing" test ! -s "$T/ko" -a "$(cat "$T/kr")" = 0
+mkdir -p "$K/pp/.claude/bin" "$K/pp/.claude/workflows"
+cp "$COLLECTOR" "$K/pp/.claude/bin/workflow-usage.sh"
+wfx "$K/pp/.claude/workflows/p.js" 'Plugin one.'
+(cd "$K/other" && HOME="$K/home" CLAUDE_PROJECT_DIR="$K/pp" sh "$K/pp/.claude/bin/workflow-usage.sh" --hook --dir @project > "$T/ko" 2>&1; echo $? > "$T/kr")
+check "k2 @project equal to plugin workflows real path prints nothing" test ! -s "$T/ko" -a "$(cat "$T/kr")" = 0
+(cd "$K/other" && HOME="$K/home" CLAUDE_PROJECT_DIR="$K/proj" sh "$K/pp/.claude/bin/workflow-usage.sh" --hook --dir @project > "$T/ko" 2>/dev/null)
+entry d 'Dee project.' > "$T/exp"
+check "k2 @project control case with same plugin copy prints entry" jeq "$T/ko" "$T/exp"
+
+# k3: escaping (quote, backslash, tab, \001)
+printf 'export const meta = {}\n}\n/* usage:\nsay "hi" back\\slash tab\there ctl\001end\n*/\n' > "$K/x/esc.js"
+runk "$K/pl" "$K/home" "$K/proj" --hook --file "$K/x/esc.js"
+check "k3 escape json.loads" jvalid "$T/ko"
+check "k3 escape exactly one line" jone "$T/ko"
+entry esc "$(printf 'say "hi" back\\slash tab\there ctl\001end')" > "$T/exp"
+check "k3 escape additionalContext keeps quote, backslash, tab, U+0001" jeq "$T/ko" "$T/exp"
+check "k3 escape raw output holds \\u0001" grep -Fq '\u0001' "$T/ko"
+check "k3 escape raw output holds \\t" grep -Fq 'tab\there' "$T/ko"
+check "k3 escape raw output has no raw control bytes" python3 -c '
+import sys
+b = open(sys.argv[1], "rb").read().rstrip(b"\n")
+sys.exit(0 if b and not any(x < 32 for x in b) else 1)
+' "$T/ko"
+
+# k4: silent failures, plain mode
+k4() {  # $1 label, rest collector args
+  local label=$1; shift
+  runk "$K/pl" "$K/home" "$K/proj" "$@"
+  check "k4 $label exit 0" test "$(cat "$T/kr")" = 0
+  check "k4 $label no stdout" test ! -s "$T/ko"
+  check "k4 $label no stderr" test ! -s "$T/ke"
+}
+printf 'x\n' > "$K/txt/a.txt"
+k4 "missing file" --hook --file "$K/x/nope.js" --prefix session
+k4 "missing dir" --hook --dir "$K/nope"
+k4 "empty dir" --hook --dir "$K/empty"
+k4 "dir without .js" --hook --dir "$K/txt"
+k4 "--file without value" --hook --file
+k4 "--dir without value" --hook --dir
+real_plain=$(cd "$REPO" && env -u CLAUDE_PROJECT_DIR sh "$COLLECTOR" 2>/dev/null)
+check "k4 plain real lists session:translate-ru" grep -q '^- session:translate-ru — ' <<<"$real_plain"
+
+# k5, k6: plugin.json
+PJ=$P/.claude-plugin/plugin.json
+git -C "$REPO" show HEAD:plugins/session/.claude-plugin/plugin.json > "$T/pj-head.json" 2>/dev/null
+check "k5 plugin.json valid JSON" python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$PJ"
+check "k5 other hook events and session-modes group equal HEAD" python3 -c '
+import json, sys
+a = json.load(open(sys.argv[1]))["hooks"]; b = json.load(open(sys.argv[2]))["hooks"]
+for ev in ("SubagentStop", "UserPromptSubmit", "PostToolUse", "PreCompact"):
+    assert a[ev] == b[ev], ev
+sm = [g for g in a["SessionStart"] if any("session-modes.sh" in h.get("command", "") for h in g["hooks"])]
+assert sm == b["SessionStart"], sm
+' "$PJ" "$T/pj-head.json"
+cat > "$T/k6.py" <<'PY'
+import json, os, sys, glob
+pj, wfdir = sys.argv[1], sys.argv[2]
+groups = json.load(open(pj))["hooks"]["SessionStart"]
+cmds = [h.get("command", "") for g in groups for h in g["hooks"]]
+cmds = [c for c in cmds if "workflow-usage.sh" in c]
+pre = "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh "
+stems = sorted(os.path.basename(f)[:-3] for f in glob.glob(os.path.join(wfdir, "*.js")))
+ok = bool(stems)
+for s in stems:
+    want = pre + "--hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/%s.js --prefix session" % s
+    n = cmds.count(want)
+    if n != 1: print("file command count %s = %d" % (s, n)); ok = False
+for d in ("@user", "@project"):
+    n = cmds.count(pre + "--hook --dir " + d)
+    if n != 1: print("dir command count %s = %d" % (d, n)); ok = False
+for c in cmds:
+    if "--file" in c:
+        name = c.split("/workflows/")[-1].split(".js")[0]
+        if name not in stems: print("command for missing file", name); ok = False
+sys.exit(0 if ok else 1)
+PY
+check "k6 SessionStart commands match plugin workflows plus @user and @project" python3 "$T/k6.py" "$PJ" "$P/workflows"
+mkdir -p "$T/k6wf"; cp "$P"/workflows/*.js "$T/k6wf/" 2>/dev/null; wfx "$T/k6wf/zz-extra.js" 'Extra.'
+check "k6 negative: extra fixture .js without hook fails the check" bash -c '! python3 "$1" "$2" "$3" > /dev/null 2>&1' _ "$T/k6.py" "$PJ" "$T/k6wf"
+python3 -c '
+import json, sys
+for g in json.load(open(sys.argv[1]))["hooks"]["SessionStart"]:
+    for h in g["hooks"]:
+        if "workflow-usage.sh" in h.get("command", ""): print(h["command"])
+' "$PJ" > "$T/k6cmds" 2>/dev/null
+check "k6 real plugin.json has workflow-usage commands" test -s "$T/k6cmds"
+KH=$(mktemp -d "$T/khome.XXXX"); i=0
+while IFS= read -r c; do
+  i=$((i + 1))
+  c=${c//\$\{CLAUDE_PLUGIN_ROOT\}/$P}
+  (cd "$REPO" && env -u CLAUDE_PROJECT_DIR HOME="$KH" sh -c "$c" > "$T/k6o$i" 2>/dev/null); rc=$?
+  check "k6 command $i exit 0" test "$rc" -eq 0
+  if [ -s "$T/k6o$i" ]; then check "k6 command $i output json.loads" jvalid "$T/k6o$i"; fi
+done < "$T/k6cmds"
+if command -v claude > /dev/null 2>&1; then
+  check "k6 claude plugin validate plugins/session" bash -c 'claude plugin validate "$1" > /dev/null 2>&1' _ "$P"
+else
+  echo "usage-test: note: claude not on PATH, plugin validate skipped"
+fi
+
+# k7: usage word range and arg sets (description words and whenToUse checked in c1)
+for f in "${SCRIPTS[@]}"; do
+  s=$(basename "$f" .js)
+  block=$(awk 'f==0&&/^\/\* usage:/{f=1} f{print} f&&/\*\//{exit}' "$f" 2>/dev/null)
+  w=$(printf '%s\n' "$block" | sed -e 's#^/\* usage:##' -e 's#\*/##' | wc -w | tr -d ' ')
+  check "k7 $s usage words 36-107 (got $w)" test "$w" -ge 36 -a "$w" -le 107
+  got=$(grep -oE 'A\.[a-z]+' "$f" 2>/dev/null | sed 's/^A\.//' | sort -u | tr '\n' ' ')
+  want=$(args_of "$s" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+  check "k7 $s A.<arg> set equals args_of (got $got)" test "$got" = "$want"
+done
+
+# k8: translate-ru and agents in plugin
+TR=$P/workflows/translate-ru.js
+check "k8 translate-ru.js in plugin" test -f "$TR"
+at=$(grep -oE "agentType: *['\"][^'\"]+['\"]" "$TR" 2>/dev/null | sed -E "s/agentType: *['\"]//; s/['\"]$//" | sort -u | tr '\n' ' ')
+check "k8 translate-ru agentTypes session:size-estimator session:translator (got $at)" test "$at" = "session:size-estimator session:translator "
+for a in translator size-estimator; do
+  fm=$(awk 'NR==1&&/^---$/{f=1; next} f&&/^---$/{exit} f{print}' "$P/agents/$a.md" 2>/dev/null)
+  check "k8 agents/$a.md frontmatter name" grep -Fxq "name: $a" <<<"$fm"
+  check "k8 agents/$a.md frontmatter description" grep -Eq '^description: .+' <<<"$fm"
+  check "k8 agents/$a.md frontmatter tools" grep -Eq '^tools: .+' <<<"$fm"
+done
+
+# k9: no stale references
+check "k9 no bare translate-ru or unprefixed translator/size-estimator agentType" python3 -c '
+import re, subprocess, sys
+repo = sys.argv[1]
+ls = subprocess.run(["git", "-C", repo, "ls-files"], capture_output=True, text=True).stdout.split()
+ls += subprocess.run(["git", "-C", repo, "ls-files", "--others", "--exclude-standard"], capture_output=True, text=True).stdout.split()
+r1 = re.compile(r"(?<!session:)(?<!workflows/)translate-ru")
+r2 = re.compile(r"(agentType|subagent_type)\s*[:=]\s*[\x27\"]?(translator|size-estimator)\b")
+ver = re.compile(r"^[-*] *\**0\.[0-9]+\.[0-9]+")
+bad = []
+for p in sorted(set(ls)):
+    if p == "tests/workflows/usage-test.sh": continue
+    # translate-ru.js keeps its own bare meta.name and log name (launch name comes from the plugin prefix)
+    try: lines = open(repo + "/" + p, encoding="utf-8").read().split("\n")
+    except Exception: continue
+    for n, l in enumerate(lines, 1):
+        if p == "plugins/session/README.md" and ver.match(l): continue
+        if (r1.search(l) and p != "plugins/session/workflows/translate-ru.js") or r2.search(l): bad.append("%s:%d" % (p, n))
+if bad: print("k9 hits:", " ".join(bad[:10]))
+sys.exit(1 if bad else 0)
+' "$REPO"
+
+# k10: base
+for f in "$BASE" "$SKILL"; do
+  b=$(basename "$f")
+  check "k10 $b no workflow-usage.sh text" bash -c '! grep -Fq "workflow-usage.sh" "$1"' _ "$f"
+  check "k10 $b no Named workflows heading" bash -c '! grep -q "^## Named workflows" "$1"' _ "$f"
+  check "k10 $b keeps meta.description label sentence" grep -Fq 'Its `meta.description` is a 1-4 word label' "$f"
+done
+check "k10 split.sh no allowed-tools" bash -c '! grep -Fq "allowed-tools" "$1"' _ "$P/base/split.sh"
+check "k10 BASE.md SessionStart contract sentence" grep -Fq 'Named workflow contracts arrive as SessionStart context, one per workflow; never read the script body.' "$BASE"
+
+# k11: split.sh regenerates SKILL.md (copy holds base/ and skills/base/)
 mkdir -p "$T/g/plugin/skills/base"
 cp -R "$P/base" "$T/g/plugin/base"
+cp "$SKILL" "$T/g/plugin/skills/base/SKILL.md.orig"
 sh "$T/g/plugin/base/split.sh" > /dev/null 2>&1
-check "c9 split.sh regenerates identical SKILL.md" cmp -s "$T/g/plugin/skills/base/SKILL.md" "$SKILL"
+check "k11 split.sh regenerates identical SKILL.md" cmp -s "$T/g/plugin/skills/base/SKILL.md" "$SKILL"
+
+# k12: README
+RD=$P/README.md
+sec=$(awk '/^## Workflow contract hooks/{f=1; print; next} f&&/^## /{exit} f{print}' "$RD")
+check "k12 README section Workflow contract hooks" test -n "$sec"
+check "k12 README section plugin.json SessionStart snippet" bash -c 'grep -q "plugin.json" <<<"$1" && grep -q "SessionStart" <<<"$1" && grep -q "\"hooks\"" <<<"$1"' _ "$sec"
+check "k12 README section collector copy into bin/" grep -q 'bin/' <<<"$sec"
+check "k12 README section --hook --file and --prefix" bash -c 'grep -q -- "--hook --file" <<<"$1" && grep -q -- "--prefix" <<<"$1"' _ "$sec"
+check "k12 README section user and project dirs covered by session (@project)" grep -q '@project' <<<"$sec"
+check "k12 README section /reload-plugins or restart" bash -c 'grep -q "/reload-plugins" <<<"$1" && grep -qi "restart" <<<"$1"' _ "$sec"
+pre=$(awk '/^## Version log/{exit} {print}' "$RD")
+check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
+
+# k13: changed paths, no version bump (suite pass itself is the rest of k13)
+bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE '\.claude-plugin/marketplace.json|plugins/session/bin/workflow-usage.sh|plugins/session/\.claude-plugin/plugin.json|plugins/session/workflows/(build|dev|research|review-fix|translate-ru)\.js|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|plugins/session/agents/(translator|size-estimator)\.md|plugins/session/base/BASE.md|plugins/session/base/split.sh|plugins/session/skills/base/SKILL.md|plugins/session/README.md|plugins/session/monitors/.*|plugins/session/skills/start-ping/.*|tests/monitors/.*|tests/workflows/usage-test.sh' | tr '\n' ' ')
+check "k13 changed paths within allowed list (extra: $bad)" test -z "$bad"
+check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
 
 if [ "$FAILS" -eq 0 ]; then
   echo "usage-test: PASS $N"; exit 0
