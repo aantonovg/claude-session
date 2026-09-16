@@ -1,9 +1,13 @@
 export const meta = {
   name: 'test-session',
-  description: 'Runs a scenarios file against real Claude Code sessions in tmux and judges the transcripts: session-driver starts the driver detached and waits on its done-file, transcript-analyst returns verdict lines inline, the run returns the failing scenario ids. Args: scenarios (string, absolute path, required), runner (string, absolute path to the driver script, required), out (string, absolute artifact dir the driver writes result.log, *.jsonl and done into, required), ids (array of strings, default all scenarios), parser (string, absolute path to a verdict script, default none), budget (number, minutes, default 120), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: verdictLines and failing ids in the result. BLOCKED stage stops with a report.',
+  description: 'Behavior test sessions',
   whenToUse: 'Behavior test of a skill, agent or base rule in fresh sessions on a chosen model; replaces the manual driver plus parser loop.',
   phases: [{ title: 'Drive' }, { title: 'Judge' }],
 }
+/* usage:
+Runs a scenarios file against real Claude Code sessions in tmux and judges the transcripts: session-driver starts the driver detached and waits on its done-file, transcript-analyst returns verdict lines inline, the run returns the failing scenario ids. Args: scenarios (string, absolute path, required), runner (string, absolute path to the driver script, required), out (string, absolute artifact dir the driver writes result.log, *.jsonl and done into, required), ids (array of strings, default all scenarios), parser (string, absolute path to a verdict script, default none), budget (number, minutes, default 120), class (string c1-c5, default c3), submodes (array of strings from no-sonnet no-opus no-fable, default []). Output: verdictLines and failing ids in the result. BLOCKED stage stops with a report.
+When to use: Behavior test of a skill, agent or base rule in fresh sessions on a chosen model; replaces the manual driver plus parser loop.
+*/
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----
 const T = {

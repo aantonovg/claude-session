@@ -1,9 +1,13 @@
 export const meta = {
   name: 'research',
-  description: 'Fact research on one question: one researcher per direction in parallel, one critique, one synthesis. Args: cwd (string, absolute path, required), question (string, required), directions (array of strings, 2-6, optional), paths (array of absolute paths to inspect, optional), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), out (string, absolute dir, optional).',
+  description: 'Parallel fact research',
   whenToUse: 'Facts from repository, git history or docs needed before a plan; question splits into directions. Web questions: web-researcher.',
   phases: [{ title: 'Research' }, { title: 'Synthesis' }],
 }
+/* usage:
+Fact research on one question: one researcher per direction in parallel, one critique, one synthesis. Args: cwd (string, absolute path, required), question (string, required), directions (array of strings, 2-6, optional), paths (array of absolute paths to inspect, optional), class (string c1-c5, optional), submodes (array of strings from no-sonnet no-opus no-fable, optional), out (string, absolute dir, optional).
+When to use: Facts from repository, git history or docs needed before a plan; question splits into directions. Web questions: web-researcher.
+*/
 
 // ---- shared block (copied verbatim into every script; scripts cannot import) ----
 const T = {

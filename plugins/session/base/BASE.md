@@ -71,7 +71,7 @@ Test sessions: never `claude -p` (headless, ~3.3x usage penalty). Drive a real s
 Workflow over fork: a cold agent on a slot model is cheaper than a fork, whose every turn re-reads the main prefix on the main model. Fork only when (a) general-purpose job, costlier to explain cold than the fork's context reads, or (b) input small and living in this conversation.
 
 Workflow choice:
-- A named plugin workflow that fits the task beats an ad hoc script: launch it by `name`; its meta description is the contract, never read its body.
+- A named plugin workflow that fits the task beats an ad hoc script: launch it by `name`; the usage list under Named workflows is the contract, never read the script body.
 - An ad hoc script uses the plugin's lean agent types only (`agentType: session:<name>`). A `general-purpose` workflow agent is a last resort; when a job seems to need it, a fork is usually the right choice.
 - A research or investigation request (what references X, what depends on Y, unknown result size) goes to `session:research` by name, even when one grep would do.
 - Dynamic size lives in script control flow: loops, branches, 1-3 review cycles, decomposition into parallel items.
@@ -98,9 +98,15 @@ Forks:
 
 Launch naming, prefix `<mod>-<eff>-`: Workflow `label` and fork `name` are `<mod>-<eff>-<job>` (`fab-lo-cache-audit`, `son-lo-research`), a fork's prefix being the main session's own model and effort from the status line (`opus:medium` → `ops-me`); the `description` of every `Agent` call starts with the same prefix, a space, the job. Models `fab ops son hai`, efforts `lo me hi xh mx`. Only a FORK sets `name` (a named plain subagent becomes a teammate).
 
+## Named workflows
+
+Launch names and args (contract):
+
+!`sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh`
+
 ## Classes, slots and submodes
 
-Three slots: main-model (small input; critique or generation of one document), opus (medium input; authors, fixers), sonnet (large input; researchers, executors, bulk reviews). Class set at `/session:base`, one class per whole workflow, no per-stage step; c4 or c5 for a critical change or high uncertainty, c1 or c2 for mechanical work, reason in one line at launch; the user's word overrides. An ad hoc script's `meta.name` carries class and submodes (`c<class>[-<submodes>]-<slug>`: `c3-fix-retry-logic`, `c4-no-sonnet-fix-retry-logic`); a named workflow logs `c<class>[-<submodes>]-<name>` plus its launch args as its first line. Cells: main / opus / sonnet slot.
+Three slots: main-model (small input; critique or generation of one document), opus (medium input; authors, fixers), sonnet (large input; researchers, executors, bulk reviews). Class set at `/session:base`, one class per whole workflow, no per-stage step; c4 or c5 for a critical change or high uncertainty, c1 or c2 for mechanical work, reason in one line at launch; the user's word overrides. An ad hoc script's `meta.name` carries class and submodes (`c<class>[-<submodes>]-<slug>`: `c3-fix-retry-logic`, `c4-no-sonnet-fix-retry-logic`); a named workflow logs `c<class>[-<submodes>]-<name>` plus its launch args as its first line. Its `meta.description` is a 1-4 word label; no contract or prompt text. Cells: main / opus / sonnet slot.
 
 | class | none | no-sonnet | no-opus | no-fable | no-sonnet no-opus | no-sonnet no-fable | no-opus no-fable |
 |---|---|---|---|---|---|---|---|

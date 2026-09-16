@@ -11,6 +11,7 @@ front = ('---\n'
          'name: base\n'
          'description: "Session base: tools, cache, waits, models, roles. Invoke first in every session and again after /compact."\n'
          'disable-model-invocation: true\n'
+         'allowed-tools: Bash(sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh)\n'
          '---\n\n')
 out = os.path.join(d, '..', 'skills', 'base', 'SKILL.md')
 os.makedirs(os.path.dirname(out), exist_ok=True)
