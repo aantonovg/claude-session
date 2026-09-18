@@ -102,7 +102,7 @@ Forks:
 - Plan mode: forks avoid Bash with `$var`, `$(…)` or loops (permission prompt).
 - Review and fix are different forks: the author never reviews, the reviewer never applies.
 
-Launch naming, prefix `<mod>-<eff>-`: Workflow `label` and fork `name` are `<mod>-<eff>-<job>` (`fab-lo-cache-audit`, `son-lo-research`), a fork's prefix being the main session's own model and effort from the status line (`opus:medium` → `ops-me`); the `description` of every `Agent` call starts with the same prefix, a space, the job. Models `fab ops son hai`, efforts `lo me hi xh mx`. Only a FORK sets `name` (a named plain subagent becomes a teammate).
+Launch naming: Workflow `label` is `<mod>-<eff>-<job>` (`fab-lo-cache-audit`, `son-lo-research`); fork `name` is `fork-<mod>-<eff>-<job>` (`fork-fab-hi-cache-audit`), its `<mod>-<eff>` being the main session's own model and effort from the status line or the user's word, never guessed (`opus:medium` → `fork-ops-me-`); the `description` of every `Agent` call starts with the same prefix, a space, the job. Models `fab ops son hai`, efforts `lo me hi xh mx`. Only a FORK sets `name` (a named plain subagent becomes a teammate).
 
 ## Classes, slots and submodes
 
@@ -164,14 +164,14 @@ Main session may start async work with `run_in_background` and be woken by compl
 
 ## Launch forms
 
-Exactly two. (1) `Agent` with `subagent_type: "fork"`; nothing else through `Agent`. (2) `Workflow` for every cold agent: explicit `agentType`, `model`, `effort`, `<mod>-<eff>-<job>` label; N independent cold agents in ONE workflow. No plain subagents.
+Exactly two. (1) `Agent` with `subagent_type: "fork"`, name `fork-<mod>-<eff>-<job>`; nothing else through `Agent`. (2) `Workflow` for every cold agent: explicit `agentType`, `model`, `effort`, `<mod>-<eff>-<job>` label; N independent cold agents in ONE workflow. No plain subagents.
 
 ## Forbidden in every session
 
 - Plain subagents (`general-purpose`, `Explore`, custom types through `Agent`), named teammates.
 - Inline job of 2+ tool calls in the main session.
 - Polling, waits or `run_in_background` in a fork.
-- `agent()` without explicit model and effort, label without `<mod>-<eff>-`, an ad hoc `meta.name` without class and submodes.
+- `agent()` without explicit model and effort, label without `<mod>-<eff>-`, fork name without `fork-<mod>-<eff>-` or with a guessed effort, an ad hoc `meta.name` without class and submodes.
 - A fourth review cycle: stop and report.
 - `/model`, `/effort`, plugin changes, `/compact` mid-task.
 - Switching mode on your own; if the task outgrows the base, tell the user.
