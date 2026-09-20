@@ -642,6 +642,219 @@ function chainResult(s) {
   return res
 }
 
+// ---- the composite flows of idea 8.7 (make) and 8.2 (probe) ----
+// The same rule as the chain above: every decision of the two flows lives here as a pure function
+// over arguments and stage returns, so a test executes it instead of grepping a workflow file.
+
+// MAKE_STAGES: the stages of make.js, in the order of the artifact chain of 3.5.2 — the
+// specification, the scenarios, the tests, the code, the run of the oracle, the coverage check and
+// the fix. Each of them is a gate of the old `dev`, and each can run alone (idea 7).
+const MAKE_STAGES = ['spec', 'scenarios', 'tests', 'code', 'executor', 'coverage', 'fixer']
+
+// stageRange(from, until): the `from` and `until` arguments as a contiguous range of MAKE_STAGES.
+// A missing end is the end of the list, so a launch with neither argument runs the whole flow and a
+// launch with both runs one stage alone. An unknown name and a backwards range return ok:false with
+// the reason and the list: the launcher fixes the call, and no run silently does more than it was
+// asked for.
+function stageRange(from, until) {
+  const all = MAKE_STAGES.slice()
+  const f = from == null || from === '' ? all[0] : String(from)
+  const u = until == null || until === '' ? all[all.length - 1] : String(until)
+  const i = all.indexOf(f)
+  const j = all.indexOf(u)
+  const bad = [...(i === -1 ? [f] : []), ...(j === -1 ? [u] : [])]
+  if (bad.length) {
+    return { ok: false, stages: [], from: f, until: u, why: blockedLine(`unknown stage ${bad.join(' ')}; the stages are ${all.join(' ')}`) }
+  }
+  if (i > j) {
+    return { ok: false, stages: [], from: f, until: u, why: blockedLine(`the range ${f}..${u} runs backwards; the order is ${all.join(' ')}`) }
+  }
+  return { ok: true, stages: all.slice(i, j + 1), from: f, until: u, why: null }
+}
+
+// stageOn(range, name): does this stage run in this range? A rejected range switches nothing on.
+function stageOn(range, name) {
+  return !!range && range.ok === true && (range.stages || []).indexOf(name) !== -1
+}
+
+// makePlan(depth, range): what the depth does to the range. At `lite` the upper levels of the
+// artifact chain collapse into the scenario file and no coverage report is written (A5); the key
+// document goes to the evidence chain one class step up above `lite` (3.5 rule 3); the negative
+// control of ladder level c runs at `full` only (3.5 rule 1). The cycle ceiling comes from the
+// depth table of lib/classes.json (A30), never from a number in a script.
+const DEPTH_FOLD = { lite: ['spec', 'coverage'], std: [], full: [] }
+function makePlan(depth, range) {
+  if (!CLASSES.ceilings[depth]) throw new Error(`unknown depth ${depth}`)
+  if (!range || range.ok !== true) throw new Error('makePlan needs a stage range that resolved')
+  const fold = DEPTH_FOLD[depth] || []
+  const stages = range.stages.filter(s => !fold.includes(s))
+  return {
+    stages,
+    folded: range.stages.filter(s => fold.includes(s)),
+    keyCheck: depth !== 'lite' && stages.includes('spec'),
+    control: depth === 'full' && stages.includes('tests'),
+    cycles: ceiling(depth).cycles,
+  }
+}
+
+// runVerdict(ret): the verdict of an executor return. The executor answers PASS or FAIL with the
+// exit status; the first line that opens with one of the two words decides, through the same
+// decoration stripping the chain answers get. A return that says neither settles nothing:
+// `unreadable`, which no caller may read as a pass.
+function runVerdict(ret) {
+  for (const raw of String(ret == null ? '' : ret).split('\n')) {
+    const s = String(raw).replace(LEAD, '').trim()
+    if (!s) continue
+    const v = word(s.split(/[\s|:,]+/)[0] || '').toUpperCase()
+    const verdict = v === 'PASS' || v === 'FAIL' ? v : 'unreadable'
+    if (verdict !== 'unreadable') return verdict
+  }
+  return 'unreadable'
+}
+
+// negativeControl(depth, verdict): the negative control of 3.5 rule 1 and ladder level c. At `full`
+// the new tests are run against the unchanged base version and must FAIL there; a suite that passes
+// without the change proves nothing about it. Below `full` no control run is asked for. A suite
+// that passed on the base version, and a control run nobody could read, are both gaps of the run —
+// never an acceptance, and never a silent one.
+function negativeControl(depth, verdict) {
+  if (!CLASSES.ceilings[depth]) throw new Error(`unknown depth ${depth}`)
+  const required = depth === 'full'
+  if (!required) return { required: false, ran: false, ok: true, verdict: null, gap: null }
+  const v = verdict == null || verdict === '' ? 'unreadable' : String(verdict)
+  const ran = v === 'PASS' || v === 'FAIL'
+  const okBase = v === 'FAIL'
+  if (okBase) return { required: true, ran: true, ok: true, verdict: v, gap: null }
+  const gap = ran
+    ? 'the test suite passes on the base version: it proves nothing about this change (negative control, ladder level c)'
+    : 'the control run on the base version came back with no readable PASS or FAIL: the suite stays unproven'
+  return { required: true, ran, ok: false, verdict: v, gap }
+}
+
+// cycleState(depth, used): the fix cycles of A30 as a ceiling of the fix stage. When it is hit the
+// stage ends and `gap` is what the result carries; nothing is retried in silence.
+function cycleState(depth, used) {
+  const room = ceiling(depth).cycles
+  const n = Number(used)
+  if (!Number.isFinite(n) || n < 0) throw new Error(`cycleState needs a cycle count, got ${used}`)
+  const hit = ceilingHit(depth, 'cycles', n)
+  const gap = hit
+    ? `the fix cycle ceiling of ${room} at depth ${depth} ended the stage: what the check still fails is a gap, not another round`
+    : null
+  return { room, used: n, hit, gap }
+}
+
+// stageSeats(depth, wanted): the ceiling of A30 over the units of one parallel stage, for any flow.
+// It is the rule chainSeats() carries for the review chain, under a name the other flows can read.
+function stageSeats(depth, wanted) {
+  return chainSeats(depth, wanted)
+}
+
+// makeStatus(s) / makeResult(s): the one return of a make run. Every exit of the flow is built here
+// — a blocked stage, a failing oracle and a finished run alike — so a run that stopped can never
+// carry the shape of one that finished: `ok` is true only when the oracle said PASS, no stage
+// blocked, and the negative control (when the depth asked for one) really failed on the base
+// version.
+function makeStatus(s) {
+  const o = s || {}
+  const gap = o.gap || []
+  const where = o.out || 'the report file'
+  const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
+  const runText = o.run === 'PASS'
+    ? 'the oracle passed'
+    : o.run === 'FAIL'
+      ? 'the oracle still fails'
+      : o.run === null || o.run === undefined
+        ? 'no oracle run happened'
+        : `the oracle run came back unreadable (${o.run})`
+  const ctl = o.control && o.control.required
+    ? o.control.ok
+      ? ' The tests failed on the base version, as a negative control must.'
+      : ' The negative control did not hold.'
+    : ''
+  const gapText = gap.length
+    ? ` ${gap.length} gap(s) stand in this return and in ${where}: they are unfinished work, not a silent retry.`
+    : ''
+  const folded = o.folded || []
+  const foldText = folded.length
+    ? ` The depth folded ${folded.join(', ')} into the short form: those levels were not written as files of their own.`
+    : ''
+  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${foldText}${gapText}${stopped}`
+}
+function makeResult(s) {
+  const o = s || {}
+  const stages = o.stages || []
+  const done = o.done || []
+  const nc = o.control || null
+  const gap = (o.gap || []).slice()
+  if (nc && nc.gap) gap.push(nc.gap)
+  const blocked = o.blocked ? blockedLine(o.blocked) : null
+  const run = o.run == null ? null : String(o.run)
+  const ok = !blocked && run === 'PASS' && (!nc || nc.ok)
+  const first = stages[0] || ''
+  const last = stages.length ? stages[stages.length - 1] : ''
+  const res = {
+    out: o.out == null ? null : o.out,
+    ok,
+    range: `${o.from || first}..${o.until || last}`,
+    stages,
+    done,
+    files: o.files || [],
+    run,
+    control: nc ? { required: nc.required, ran: nc.ran, verdict: nc.verdict, ok: nc.ok } : null,
+    cycles: Number(o.cycles || 0),
+    check: o.check == null ? null : o.check,
+    folded: o.folded || [],
+    gap,
+    status: makeStatus({
+      run, gap, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
+      done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
+    }),
+  }
+  if (o.stage) res.stage = o.stage
+  if (blocked) res.blocked = blocked
+  return res
+}
+
+// probeStatus(s) / probeResult(s): the one return of a probe run, on the same rule. A finished run
+// has a bundle per direction that ran, a critique over them and the synthesis file; a run that lost
+// its synthesis, its critique or every direction is not finished, whatever else it wrote.
+function probeStatus(s) {
+  const o = s || {}
+  const gap = o.gap || []
+  const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
+  const gapText = gap.length
+    ? ` ${gap.length} direction(s) never started: the ceiling of a stage ended it, and that is a gap of this answer.`
+    : ''
+  const where = o.out ? ` The answer stands in ${o.out}; every claim in it carries the pointer it rests on.` : ''
+  return `${Number(o.bundles || 0)} of ${Number(o.directions || 0)} direction(s) came back, ${o.critique ? 'critiqued' : 'with no critique'}, ${o.synthesis ? 'synthesised' : 'with no synthesis'}.${where}${gapText}${stopped}`
+}
+function probeResult(s) {
+  const o = s || {}
+  const bundles = o.bundles || []
+  const directions = o.directions || []
+  const gap = (o.gap || []).slice()
+  const blocked = o.blocked ? blockedLine(o.blocked) : null
+  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis
+  const res = {
+    out: o.out == null ? null : o.out,
+    ok,
+    directions,
+    bundles,
+    critique: o.critique == null ? null : o.critique,
+    synthesis: o.synthesis == null ? null : o.synthesis,
+    gap,
+    blockedStages: o.blockedStages || [],
+    status: probeStatus({
+      bundles: bundles.length, directions: directions.length, critique: o.critique,
+      synthesis: o.synthesis, out: o.out, gap, stage: o.stage, blocked,
+    }),
+  }
+  if (o.stage) res.stage = o.stage
+  if (blocked) res.blocked = blocked
+  return res
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
@@ -652,5 +865,7 @@ if (typeof module !== 'undefined' && module.exports) {
     hintRows, chainRows, openRowsText,
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
+    MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
+    stageSeats, makeStatus, makeResult, probeStatus, probeResult,
   }
 }
