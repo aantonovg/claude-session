@@ -2,11 +2,14 @@
 # Runs every static test of tests/rebuild/ that exists at this moment, in order, and stops at none:
 # it reports each result and fails when any failed. stale.sh and verdicts.sh are left out, they
 # take arguments and are called by the part that owns them.
-#   tests/rebuild/all.sh [--with-base]     the flag is passed to text.sh only
+# From P6 on text.sh always runs with --with-base: the base text is rewritten, so it is part of the
+# no-model rule like every other text of the new set. The flag is still accepted and changes
+# nothing, so an older command line keeps working.
+#   tests/rebuild/all.sh [--with-base]
 set -u
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-WITH_BASE=
+WITH_BASE=--with-base
 for a in "$@"; do
   case $a in
     --with-base) WITH_BASE=--with-base ;;

@@ -13,6 +13,9 @@
 #     "<!-- class table"     ... "<!-- end class table"       the class table as a markdown table
 #     "// ---- roles"        ... "// ---- end roles"          that target's roles from lib/roles/
 #     "// ---- aspects"      ... "// ---- end aspects"        that target's aspect paragraphs
+#   a "fromBase" target = the frontmatter of its manifest entry plus the whole body of the file it
+#     names, after that file was stamped in this same run (skills/base/SKILL.md from base/BASE.md).
+#     It carries no markers of its own and is never hand-edited.
 # A file with none of these markers is skipped and stays byte-identical. A manifest target that
 # does not exist yet is skipped; a file named on the command line must exist and must be a target
 # of lib/build-manifest.json, so --check over a file this build step does not own can never print
@@ -198,7 +201,10 @@ if files:
 else:
     targets = [(os.path.join(plugin, t['path']), t) for t in manifest]
 
+rendered = {}
 for path, spec in targets:
+    if spec.get('fromBase'):
+        continue  # second pass: it reads a target stamped in this same run
     if not os.path.exists(path):
         # a manifest target of a later part is skipped; a file named on the command line is not,
         # so --check over a mistyped path can never exit 0 without checking anything
@@ -224,7 +230,24 @@ for path, spec in targets:
         if not found:
             print('build.sh: %s declares %s, but carries no %s marker' % (path, kind, kind))
             sys.exit(2)
+    rendered[norm(path)] = out
     emit(path, out)
+
+# 3. the fromBase targets: a generated skill file that is one source file under a frontmatter.
+for path, spec in targets:
+    fb = spec.get('fromBase')
+    if not fb:
+        continue
+    src = os.path.join(plugin, fb)
+    if not os.path.exists(src):
+        print('build.sh: %s names the missing source %s' % (path, src)); sys.exit(2)
+    body = rendered.get(norm(src))
+    if body is None:  # the source is not a target of this run: read what is on disk
+        body = open(src, encoding='utf-8').read()
+    front = spec.get('frontmatter')
+    if not front:
+        print('build.sh: %s declares fromBase without a frontmatter list' % path); sys.exit(2)
+    emit(path, '---\n' + '\n'.join(front) + '\n---\n\n' + body.strip('\n') + '\n')
 
 if check:
     if drift:
