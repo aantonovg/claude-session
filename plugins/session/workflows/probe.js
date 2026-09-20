@@ -7,7 +7,7 @@ export const meta = {
 /* usage:
 Facts on one question: a researcher per direction, a critique of the bundles, one synthesis.
 ask (string, the question, required)
-directions (array of 2-6 strings, default [ask])
+directions (array of strings, seated by depth, default [ask])
 in (array of absolute paths, default [])
 out (string, absolute synthesis path, required)
 web (boolean, public sources instead of the repository, default false)
@@ -964,6 +964,40 @@ function cycleState(depth, used) {
   return { room, used: n, hit, gap }
 }
 
+// fixerState(range, run): does the fix stage enter, and must it learn the oracle state first? The
+// fix stage is a gate of its own (idea 7), so a launch `from=fixer until=fixer` carries no executor
+// before it and `run` is null: the stage runs the check itself once before it fixes anything,
+// instead of doing nothing and returning the shape of a finished run. A run the oracle already
+// passed is nothing to fix, and a range without the fix stage enters nothing.
+function fixerState(range, run) {
+  if (!stageOn(range, 'fixer')) return { enter: false, probe: false, why: 'the fix stage is outside this range' }
+  const v = run == null || run === '' ? null : String(run)
+  if (v === null) {
+    return { enter: true, probe: true, why: 'no executor stage ran in this range: the fix stage runs the check once before it fixes' }
+  }
+  if (v === 'PASS') return { enter: false, probe: false, why: 'the oracle passed: nothing to fix' }
+  return { enter: true, probe: false, why: `the oracle said ${v}` }
+}
+
+// keyCheckState(c, file): the return of the evidence chain over the key document, as the two things
+// a make run carries on — what the check is, and what it left open. A chain that never finished is
+// the `needs chain` fallback of U8. A chain that did finish and came back with undetermined rows,
+// unanswered rows or gaps of its own has found the key document defective: those rows are gaps of
+// this run too, so a specification nobody could settle never passes to the next level in silence.
+function keyCheckState(c, file) {
+  const gap = []
+  const where = file || 'the key document'
+  if (!c || c.blocked) {
+    const why = c && c.blocked ? lastLine(c.blocked) : 'the chain returned nothing'
+    gap.push(`needs chain: the key-document check of ${where} did not finish (${why}); the main session launches session:chain over it one class step up`)
+    return { ok: false, ran: !!c, check: `needs chain: ${why}`, gap }
+  }
+  for (const r of c.gap || []) gap.push(`key document ${where}: ${r}`)
+  for (const r of c.undetermined || []) gap.push(`key document ${where}: ${r} — the chain could not settle it, and it stands open over every level built on this document`)
+  for (const r of c.unanswered || []) gap.push(`key document ${where}: ${r}`)
+  return { ok: gap.length === 0, ran: true, check: c.out || where, gap }
+}
+
 // stageSeats(depth, wanted): the ceiling of A30 over the units of one parallel stage, for any flow.
 // It is the rule chainSeats() carries for the review chain, under a name the other flows can read.
 function stageSeats(depth, wanted) {
@@ -974,7 +1008,9 @@ function stageSeats(depth, wanted) {
 // — a blocked stage, a failing oracle and a finished run alike — so a run that stopped can never
 // carry the shape of one that finished: `ok` is true only when the oracle said PASS, no stage
 // blocked, and the negative control (when the depth asked for one) really failed on the base
-// version.
+// version. A range that carries no oracle stage at all (`spec..tests` and its kind) is judged on
+// what it promised instead: every stage of the range ran, and the status says in words that no
+// check ran here, so a partial range is never read as a failing one.
 function makeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
@@ -985,7 +1021,9 @@ function makeStatus(s) {
     : o.run === 'FAIL'
       ? 'the oracle still fails'
       : o.run === null || o.run === undefined
-        ? 'no oracle run happened'
+        ? o.oracle === false
+          ? 'no stage of this range runs the check, so this range settles no behavior'
+          : 'no oracle run happened'
         : `the oracle run came back unreadable (${o.run})`
   const ctl = o.control && o.control.required
     ? o.control.ok
@@ -1010,7 +1048,11 @@ function makeResult(s) {
   if (nc && nc.gap) gap.push(nc.gap)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
   const run = o.run == null ? null : String(o.run)
-  const ok = !blocked && run === 'PASS' && (!nc || nc.ok)
+  // the oracle stages of this range: with one of them in the range the check decides the result,
+  // without one the promise of the range is that every stage of it ran
+  const oracle = stages.indexOf('executor') !== -1 || stages.indexOf('fixer') !== -1
+  const ranAll = stages.length > 0 && stages.every(s => done.indexOf(s) !== -1)
+  const ok = !blocked && (!nc || nc.ok) && (oracle ? run === 'PASS' : ranAll)
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1021,13 +1063,14 @@ function makeResult(s) {
     done,
     files: o.files || [],
     run,
+    oracle,
     control: nc ? { required: nc.required, ran: nc.ran, verdict: nc.verdict, ok: nc.ok } : null,
     cycles: Number(o.cycles || 0),
     check: o.check == null ? null : o.check,
     folded: o.folded || [],
     gap,
     status: makeStatus({
-      run, gap, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
+      run, gap, oracle, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
       done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
     }),
   }
@@ -1038,13 +1081,16 @@ function makeResult(s) {
 
 // probeStatus(s) / probeResult(s): the one return of a probe run, on the same rule. A finished run
 // has a bundle per direction that ran, a critique over them and the synthesis file; a run that lost
-// its synthesis, its critique or every direction is not finished, whatever else it wrote.
+// its synthesis, its critique or every direction is not finished, whatever else it wrote. A
+// direction that came back blocked is a hole in the material the answer rests on: it stands in
+// `gap` like a direction the ceiling cut, and it takes `ok` down with it — a partly failed research
+// stage never returns the shape of a whole one.
 function probeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
   const gapText = gap.length
-    ? ` ${gap.length} direction(s) never started: the ceiling of a stage ended it, and that is a gap of this answer.`
+    ? ` ${gap.length} direction(s) are missing from this answer — the ceiling of the stage cut them or they came back blocked — and that is a gap of it, never a second round.`
     : ''
   const where = o.out ? ` The answer stands in ${o.out}; every claim in it carries the pointer it rests on.` : ''
   return `${Number(o.bundles || 0)} of ${Number(o.directions || 0)} direction(s) came back, ${o.critique ? 'critiqued' : 'with no critique'}, ${o.synthesis ? 'synthesised' : 'with no synthesis'}.${where}${gapText}${stopped}`
@@ -1054,8 +1100,12 @@ function probeResult(s) {
   const bundles = o.bundles || []
   const directions = o.directions || []
   const gap = (o.gap || []).slice()
+  const lost = o.blockedStages || []
+  // a direction the flow started and lost is a gap of the answer, on the same line as one the
+  // ceiling never seated: the synthesis was written over less material than the question asked for
+  for (const s of lost) gap.push(`${s} — that direction brought nothing, so the answer rests on less material than the question asked for`)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
-  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis
+  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis && lost.length === 0
   const res = {
     out: o.out == null ? null : o.out,
     ok,
@@ -1086,7 +1136,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
-    stageSeats, makeStatus, makeResult, probeStatus, probeResult,
+    fixerState, keyCheckState, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
   }
 }
 // ---- end shared block ----

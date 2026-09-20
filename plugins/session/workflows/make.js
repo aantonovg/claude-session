@@ -965,6 +965,40 @@ function cycleState(depth, used) {
   return { room, used: n, hit, gap }
 }
 
+// fixerState(range, run): does the fix stage enter, and must it learn the oracle state first? The
+// fix stage is a gate of its own (idea 7), so a launch `from=fixer until=fixer` carries no executor
+// before it and `run` is null: the stage runs the check itself once before it fixes anything,
+// instead of doing nothing and returning the shape of a finished run. A run the oracle already
+// passed is nothing to fix, and a range without the fix stage enters nothing.
+function fixerState(range, run) {
+  if (!stageOn(range, 'fixer')) return { enter: false, probe: false, why: 'the fix stage is outside this range' }
+  const v = run == null || run === '' ? null : String(run)
+  if (v === null) {
+    return { enter: true, probe: true, why: 'no executor stage ran in this range: the fix stage runs the check once before it fixes' }
+  }
+  if (v === 'PASS') return { enter: false, probe: false, why: 'the oracle passed: nothing to fix' }
+  return { enter: true, probe: false, why: `the oracle said ${v}` }
+}
+
+// keyCheckState(c, file): the return of the evidence chain over the key document, as the two things
+// a make run carries on — what the check is, and what it left open. A chain that never finished is
+// the `needs chain` fallback of U8. A chain that did finish and came back with undetermined rows,
+// unanswered rows or gaps of its own has found the key document defective: those rows are gaps of
+// this run too, so a specification nobody could settle never passes to the next level in silence.
+function keyCheckState(c, file) {
+  const gap = []
+  const where = file || 'the key document'
+  if (!c || c.blocked) {
+    const why = c && c.blocked ? lastLine(c.blocked) : 'the chain returned nothing'
+    gap.push(`needs chain: the key-document check of ${where} did not finish (${why}); the main session launches session:chain over it one class step up`)
+    return { ok: false, ran: !!c, check: `needs chain: ${why}`, gap }
+  }
+  for (const r of c.gap || []) gap.push(`key document ${where}: ${r}`)
+  for (const r of c.undetermined || []) gap.push(`key document ${where}: ${r} — the chain could not settle it, and it stands open over every level built on this document`)
+  for (const r of c.unanswered || []) gap.push(`key document ${where}: ${r}`)
+  return { ok: gap.length === 0, ran: true, check: c.out || where, gap }
+}
+
 // stageSeats(depth, wanted): the ceiling of A30 over the units of one parallel stage, for any flow.
 // It is the rule chainSeats() carries for the review chain, under a name the other flows can read.
 function stageSeats(depth, wanted) {
@@ -975,7 +1009,9 @@ function stageSeats(depth, wanted) {
 // — a blocked stage, a failing oracle and a finished run alike — so a run that stopped can never
 // carry the shape of one that finished: `ok` is true only when the oracle said PASS, no stage
 // blocked, and the negative control (when the depth asked for one) really failed on the base
-// version.
+// version. A range that carries no oracle stage at all (`spec..tests` and its kind) is judged on
+// what it promised instead: every stage of the range ran, and the status says in words that no
+// check ran here, so a partial range is never read as a failing one.
 function makeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
@@ -986,7 +1022,9 @@ function makeStatus(s) {
     : o.run === 'FAIL'
       ? 'the oracle still fails'
       : o.run === null || o.run === undefined
-        ? 'no oracle run happened'
+        ? o.oracle === false
+          ? 'no stage of this range runs the check, so this range settles no behavior'
+          : 'no oracle run happened'
         : `the oracle run came back unreadable (${o.run})`
   const ctl = o.control && o.control.required
     ? o.control.ok
@@ -1011,7 +1049,11 @@ function makeResult(s) {
   if (nc && nc.gap) gap.push(nc.gap)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
   const run = o.run == null ? null : String(o.run)
-  const ok = !blocked && run === 'PASS' && (!nc || nc.ok)
+  // the oracle stages of this range: with one of them in the range the check decides the result,
+  // without one the promise of the range is that every stage of it ran
+  const oracle = stages.indexOf('executor') !== -1 || stages.indexOf('fixer') !== -1
+  const ranAll = stages.length > 0 && stages.every(s => done.indexOf(s) !== -1)
+  const ok = !blocked && (!nc || nc.ok) && (oracle ? run === 'PASS' : ranAll)
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1022,13 +1064,14 @@ function makeResult(s) {
     done,
     files: o.files || [],
     run,
+    oracle,
     control: nc ? { required: nc.required, ran: nc.ran, verdict: nc.verdict, ok: nc.ok } : null,
     cycles: Number(o.cycles || 0),
     check: o.check == null ? null : o.check,
     folded: o.folded || [],
     gap,
     status: makeStatus({
-      run, gap, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
+      run, gap, oracle, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
       done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
     }),
   }
@@ -1039,13 +1082,16 @@ function makeResult(s) {
 
 // probeStatus(s) / probeResult(s): the one return of a probe run, on the same rule. A finished run
 // has a bundle per direction that ran, a critique over them and the synthesis file; a run that lost
-// its synthesis, its critique or every direction is not finished, whatever else it wrote.
+// its synthesis, its critique or every direction is not finished, whatever else it wrote. A
+// direction that came back blocked is a hole in the material the answer rests on: it stands in
+// `gap` like a direction the ceiling cut, and it takes `ok` down with it — a partly failed research
+// stage never returns the shape of a whole one.
 function probeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
   const gapText = gap.length
-    ? ` ${gap.length} direction(s) never started: the ceiling of a stage ended it, and that is a gap of this answer.`
+    ? ` ${gap.length} direction(s) are missing from this answer — the ceiling of the stage cut them or they came back blocked — and that is a gap of it, never a second round.`
     : ''
   const where = o.out ? ` The answer stands in ${o.out}; every claim in it carries the pointer it rests on.` : ''
   return `${Number(o.bundles || 0)} of ${Number(o.directions || 0)} direction(s) came back, ${o.critique ? 'critiqued' : 'with no critique'}, ${o.synthesis ? 'synthesised' : 'with no synthesis'}.${where}${gapText}${stopped}`
@@ -1055,8 +1101,12 @@ function probeResult(s) {
   const bundles = o.bundles || []
   const directions = o.directions || []
   const gap = (o.gap || []).slice()
+  const lost = o.blockedStages || []
+  // a direction the flow started and lost is a gap of the answer, on the same line as one the
+  // ceiling never seated: the synthesis was written over less material than the question asked for
+  for (const s of lost) gap.push(`${s} — that direction brought nothing, so the answer rests on less material than the question asked for`)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
-  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis
+  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis && lost.length === 0
   const res = {
     out: o.out == null ? null : o.out,
     ok,
@@ -1087,7 +1137,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
-    stageSeats, makeStatus, makeResult, probeStatus, probeResult,
+    fixerState, keyCheckState, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
   }
 }
 // ---- end shared block ----
@@ -1262,9 +1312,12 @@ if (PLAN.keyCheck && done.includes('spec')) {
     ask: `${ASK}\n\nJudge the requirements file against the intent above: a requirement no intent line carries, a non-functional requirement nobody can measure, an invariant that contradicts another, an open point written as if it were settled.`,
     out: F.check, aspects: KEY_ASPECTS, depth: DEPTH, class: UP.class, submodes: SUBS, size: SIZE,
   })
-  const bad = !c || c.blocked
-  check = bad ? `needs chain: ${c ? lastLine(c.blocked) : 'the chain returned nothing'}` : (c.out || F.check)
-  if (bad) gap.push(`needs chain: the key-document check of ${F.spec} did not finish (${c ? lastLine(c.blocked) : 'no return'}); the main session launches session:chain over it one class step up`)
+  // what the chain found travels on: a chain that never finished is the `needs chain` fallback of
+  // U8, and every row a finished chain could not settle is a gap of this run too — a specification
+  // the chain called defective never passes to the scenarios in silence
+  const k = keyCheckState(c, F.spec)
+  check = k.check
+  for (const g of k.gap) gap.push(g)
 }
 
 // ---- 2. the scenarios: the wanted behavior as text, checked against the specification ----
@@ -1285,7 +1338,7 @@ if (on('tests')) {
   phase('Tests')
   const s = await stage(TEST_AUTHOR, 'tests', 'Tests', {
     in: inputs([...(done.includes('scenarios') ? [F.scenarios] : [])]),
-    ask: `${ASK}\n\n${done.includes('scenarios') ? `The scenario list is ${F.scenarios}.` : 'No scenario file was written at this depth: take the wanted behavior out of the task above.'} The check that runs them is \`${TEST}\`. Run it once and quote the failure you see now: a test that passes against the unchanged code proves nothing.`,
+    ask: `${ASK}\n\n${done.includes('scenarios') ? `The scenario list is ${F.scenarios}.` : 'No scenario file was written at this depth: take the wanted behavior out of the task above.'} The check that runs them is \`${TEST}\`. Run it once and quote the failure you see now: a test that passes against the unchanged code proves nothing. Write the test files and ${F.tests}, and change nothing else: the code the tests are about stays as it is, however obvious its defect looks — a test stage that repairs the code destroys the evidence that the tests fail before the change, and leaves the next stage nothing to do.`,
     out: F.tests,
   }, DONE_SHAPE)
   if (!s.ok) return result({ stage: 'tests', blocked: s.blocked })
@@ -1299,7 +1352,7 @@ if (on('tests')) {
 if (PLAN.control && done.includes('tests')) {
   const c = await stage(EXEC, 'control-run', 'Tests', {
     in: inputs([F.tests]),
-    ask: `Negative control. Run \`${TEST}\` against the unchanged base version ${BASE}, not against the working tree, and report what it said there. The wanted answer is a failure: the new tests must not pass on a version that does not carry this change. Change nothing, repair nothing.`,
+    ask: `Negative control. Run the new tests against the code of the base version ${BASE}: put back the code under test to ${BASE} and keep every test file of the working tree as it is, so the new tests are the ones that run (check out ${BASE} for the changed source paths only, or stash the source change; a whole checkout of ${BASE} would take the new tests away with it, and what ran then would be the old suite). Report what \`${TEST}\` said there, then put the working tree back the way you found it. The wanted answer is a failure: the new tests must not pass on a version that does not carry this change. Repair nothing, and change no test.`,
     out: F.control,
   }, RUN_SHAPE)
   if (c.ok) files.push(c.out)
@@ -1311,7 +1364,7 @@ if (on('code')) {
   phase('Code')
   const s = await stage(CODE, 'code', 'Code', {
     in: inputs([...(done.includes('tests') ? [F.tests] : []), ...(done.includes('scenarios') ? [F.scenarios] : [])]),
-    ask: `${ASK}\n\nThe tests state what the change must do. Run \`${TEST}\` after every step and stop when it passes.`,
+    ask: `${ASK}\n\nThe tests state what the change must do. Run \`${TEST}\` after every step and stop when it passes. If it already passes before you touch anything, change nothing and write ${F.code} saying so, with the run you saw quoted in it: that file is the answer of this stage either way, and an empty file is no answer.`,
     out: F.code,
   }, DONE_SHAPE)
   if (!s.ok) return result({ stage: 'code', blocked: s.blocked })
@@ -1347,15 +1400,30 @@ if (on('coverage')) {
 }
 
 // ---- 7. the fix cycle: a ceiling of A30, never a silent retry ----
-if (on('fixer') && (run === 'FAIL' || run === 'unreadable')) {
+// The fix stage is a gate of its own (idea 7): `from=fixer until=fixer` runs it with no executor
+// before it, so it learns the state of the check itself first instead of doing nothing quietly.
+const FIXER = fixerState(RANGE, run)
+let runFile = F.run
+if (on('fixer') && FIXER.enter) {
   phase('Fix')
+  if (FIXER.probe) {
+    const e = await stage(EXEC, 'run-entry', 'Fix', {
+      in: inputs(),
+      ask: `Run \`${TEST}\` over the working tree and report what it said. This range starts at the fix stage, so this run is what the fixing is measured against. You repair nothing and you judge nothing: the exit status and the summary line are the answer.`,
+      out: side('run-entry'),
+    }, RUN_SHAPE)
+    if (!e.ok) return result({ stage: 'executor', blocked: e.blocked })
+    files.push(e.out)
+    runFile = e.out
+    run = runVerdict(e.ret)
+  }
   while (run !== 'PASS') {
     const CY = cycleState(DEPTH, cycles)
     if (CY.hit) { gap.push(CY.gap); break }
     cycles += 1
     const f = await stage(FIX, `fix-${cycles}`, 'Fix', {
-      in: inputs([F.run, ...(done.includes('code') ? [F.code] : [])]),
-      ask: `${ASK}\n\nThe run of \`${TEST}\` in ${F.run} still fails. Fix the code until that check passes; the accepted list of this round is the failures of that run and nothing else. Never weaken a test, never mark one skipped.`,
+      in: inputs([runFile, ...(done.includes('code') ? [F.code] : [])]),
+      ask: `${ASK}\n\nThe run of \`${TEST}\` in ${runFile} still fails. Fix the code until that check passes; the accepted list of this round is the failures of that run and nothing else. Never weaken a test, never mark one skipped.`,
       out: side(`fix-${cycles}`),
     }, DONE_SHAPE)
     if (!f.ok) return result({ stage: 'fixer', blocked: f.blocked })
@@ -1367,6 +1435,7 @@ if (on('fixer') && (run === 'FAIL' || run === 'unreadable')) {
     }, RUN_SHAPE)
     if (!e.ok) return result({ stage: 'executor', blocked: e.blocked })
     files.push(e.out)
+    runFile = e.out
     run = runVerdict(e.ret)
   }
   done.push('fixer')
