@@ -194,6 +194,20 @@ function outDir(out) {
   return cut < 1 ? '/' : s.slice(0, cut)
 }
 
+// taskDirOf(out): the task directory an argument that names a directory stands for. Nothing is
+// read out of the last segment: a task directory is a directory whatever its slug looks like, so
+// `2026-09-20-v0.16` stays itself where outDir()'s dot rule would drop it and put every file of
+// the task one level up, in `tasks/`. A last segment carrying a document suffix is a file, never
+// a task directory: it stops the launch instead of becoming a directory of that name.
+function taskDirOf(out) {
+  const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!s || s[0] !== '/' || s.length < 2) throw new Error(`taskDirOf needs an absolute task directory, got ${out}`)
+  if (/\.(md|jsonl?|txt|js|sh|ya?ml)$/i.test(s.slice(s.lastIndexOf('/') + 1))) {
+    throw new Error(`taskDirOf needs a task directory, got the file ${out}`)
+  }
+  return s
+}
+
 // ---- the task file group of idea 8.8 ----
 // One layout for every process and every depth, source lib/task-layout.md: bin/build.sh renders
 // its two tables here, so the file a stage writes and the file the process skill reads are one
@@ -234,8 +248,9 @@ function taskPath(dir, key, stem) {
 // the layout puts its file one level below the task directory, and the roles on a shell-only tool
 // set create their output with a redirect: `> <dir>/runs/run.md` dies with "No such file or
 // directory" when `<dir>/runs` is absent, and no stage, script or role text of this flow runs
-// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself), and
-// a file that sits directly in the task directory needs none either: the launcher made that one.
+// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself); a
+// shell-only role gets the mkdir for the directory its file sits in, the task directory included,
+// because a launcher that only hands over a path may never have created it.
 function writeHint(out, hasShell) {
   const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
   if (!s || s[0] !== '/') throw new Error(`writeHint needs an absolute output path, got ${out}`)
@@ -278,6 +293,19 @@ function closureReport(ret) {
   const text = lines.join('\n').trim()
   if (!text) return { ok: false, report: null, gap: 'the closing report carried nothing but its last line' }
   return { ok: true, report: text, gap: null }
+}
+
+// textResult(ret, head, agent): the whole return of a stage whose output is its return and not a
+// file — the closure role. `out` is null in both shapes, because no file was written and a
+// launcher that reads a path here would look for a file nobody creates; a return closureReport()
+// calls a gap becomes a blocked result, never a finished one, and the agent type stands only on a
+// result that carries a report. The decision lives here, not in workflows/role.js, so a test can
+// execute it instead of grepping the script.
+function textResult(ret, head, agent) {
+  const h = { ...(head || {}), out: null }
+  const c = closureReport(ret)
+  if (!c.ok) return { ...h, blocked: blockedLine(c.gap) }
+  return { ...h, agent, report: c.report, result: lastLine(ret) }
 }
 
 // ---- the review chain of idea 3.6 ----
@@ -1118,8 +1146,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
-    LAYOUT, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
+    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
+    LAYOUT, taskDirOf, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,

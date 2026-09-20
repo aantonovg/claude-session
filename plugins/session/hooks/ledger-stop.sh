@@ -18,7 +18,13 @@
 # ignored too - the row is the evidence of one launch, never a counter.
 
 INPUT=$(cat)
-command -v jq >/dev/null 2>&1 || exit 0
+# The row shape above is built with jq and cannot be built without it. A machine with no jq loses
+# every stop row, so the loss is said out loud on stderr instead of passing for a session that
+# launched no agent; the exit stays 0, because a hook that fails stops the agent's own stop event.
+if ! command -v jq >/dev/null 2>&1; then
+  printf 'session ledger-stop: jq is missing, no stop row written\n' >&2
+  exit 0
+fi
 
 field() { printf '%s' "$INPUT" | jq -r --arg k "$1" '.[$k] // empty' 2>/dev/null; }
 CWD=$(field cwd); [ -n "$CWD" ] || CWD=$PWD

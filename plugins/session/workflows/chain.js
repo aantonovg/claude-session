@@ -5,18 +5,18 @@ export const meta = {
   phases: [{ title: 'Critique' }, { title: 'Evidence' }, { title: 'Triage' }, { title: 'Fix' }],
 }
 /* usage:
-Evidence review chain: aspect critics, grouped hints, facts, judge, one fix round.
+Evidence review chain: aspect critics, hints, facts, judge, one fix round.
 in (array of absolute paths, required)
-ask (string, what changed, what to judge, required)
-out (string, absolute path, required)
+ask (what changed, what to judge, required)
+out (absolute task directory, or a file inside one, required)
 aspects (array, required, from: simplicity reliability security extensibility performance scalability testability operability data-integrity cost)
-depth (string lite std full, default std)
-base (string, control-run version, default HEAD)
-test (string, one shell line)
-class (string c1-c5, default c3)
+depth (lite std full, default std)
+base (control-run version, default HEAD)
+test (one shell line)
+class (c1-c5, default c3)
 submodes (array: no-sonnet no-opus no-fable, default [])
-size (string small medium large, default medium)
-Out: accepted, rejected, undetermined rows in out; put the returned undetermined list to the user.
+size (small medium large, default medium)
+Out: accepted, rejected, undetermined rows in out; hints, bundles, changes under the task directory's reviews/, evidence/, changes/; undetermined to the user.
 Use: review where no oracle decides. Not: authoring.
 */
 
@@ -421,6 +421,20 @@ function outDir(out) {
   return cut < 1 ? '/' : s.slice(0, cut)
 }
 
+// taskDirOf(out): the task directory an argument that names a directory stands for. Nothing is
+// read out of the last segment: a task directory is a directory whatever its slug looks like, so
+// `2026-09-20-v0.16` stays itself where outDir()'s dot rule would drop it and put every file of
+// the task one level up, in `tasks/`. A last segment carrying a document suffix is a file, never
+// a task directory: it stops the launch instead of becoming a directory of that name.
+function taskDirOf(out) {
+  const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!s || s[0] !== '/' || s.length < 2) throw new Error(`taskDirOf needs an absolute task directory, got ${out}`)
+  if (/\.(md|jsonl?|txt|js|sh|ya?ml)$/i.test(s.slice(s.lastIndexOf('/') + 1))) {
+    throw new Error(`taskDirOf needs a task directory, got the file ${out}`)
+  }
+  return s
+}
+
 // ---- the task file group of idea 8.8 ----
 // One layout for every process and every depth, source lib/task-layout.md: bin/build.sh renders
 // its two tables here, so the file a stage writes and the file the process skill reads are one
@@ -605,8 +619,9 @@ function taskPath(dir, key, stem) {
 // the layout puts its file one level below the task directory, and the roles on a shell-only tool
 // set create their output with a redirect: `> <dir>/runs/run.md` dies with "No such file or
 // directory" when `<dir>/runs` is absent, and no stage, script or role text of this flow runs
-// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself), and
-// a file that sits directly in the task directory needs none either: the launcher made that one.
+// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself); a
+// shell-only role gets the mkdir for the directory its file sits in, the task directory included,
+// because a launcher that only hands over a path may never have created it.
 function writeHint(out, hasShell) {
   const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
   if (!s || s[0] !== '/') throw new Error(`writeHint needs an absolute output path, got ${out}`)
@@ -649,6 +664,19 @@ function closureReport(ret) {
   const text = lines.join('\n').trim()
   if (!text) return { ok: false, report: null, gap: 'the closing report carried nothing but its last line' }
   return { ok: true, report: text, gap: null }
+}
+
+// textResult(ret, head, agent): the whole return of a stage whose output is its return and not a
+// file — the closure role. `out` is null in both shapes, because no file was written and a
+// launcher that reads a path here would look for a file nobody creates; a return closureReport()
+// calls a gap becomes a blocked result, never a finished one, and the agent type stands only on a
+// result that carries a report. The decision lives here, not in workflows/role.js, so a test can
+// execute it instead of grepping the script.
+function textResult(ret, head, agent) {
+  const h = { ...(head || {}), out: null }
+  const c = closureReport(ret)
+  if (!c.ok) return { ...h, blocked: blockedLine(c.gap) }
+  return { ...h, agent, report: c.report, result: lastLine(ret) }
 }
 
 // ---- the review chain of idea 3.6 ----
@@ -1489,8 +1517,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
-    LAYOUT, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
+    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
+    LAYOUT, taskDirOf, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
@@ -1593,11 +1621,20 @@ const PLAN = chainPlan(DEPTH, ASPECTS, ASPECT_TEXT)
 if (!PLAN.ok) return fail(PLAN.why, { aspects: PLAN.known })
 
 const RUN = bindClass(CLS, SUBS)
-const DIR = OUT.slice(0, OUT.lastIndexOf('/'))
+// `out` is the task directory of this run — a path ending in `/`, read by taskDirOf() of the
+// shared block — or one result file inside that task directory. The hint lists, the evidence
+// bundles and the change lists of the chain are files of the task group, so `evidence/`,
+// `reviews/` and `changes/` belong under the task directory and never beside a reviewed document
+// in some repository directory. In the directory form the result is the accepted list of the
+// layout itself, `reviews/accepted.md`.
+const TASKFORM = /\/$/.test(OUT)
+let DIR
+try { DIR = TASKFORM ? taskDirOf(OUT) : OUT.slice(0, OUT.lastIndexOf('/')) } catch (e) { return fail(String((e && e.message) || e)) }
 // every stage file is a file of the task group: the key comes from lib/task-layout.md and the
 // path from taskPath() of the shared block, so this script spells no file name of its own and the
 // process skill reads what a stage wrote without a second agreement (idea 8.8).
 const side = (key, stem) => taskPath(DIR, key, stem)
+const RESULT = TASKFORM ? side('reviews', 'accepted') : OUT
 const INLIST = IN.join('\n')
 const ROOM = PLAN.room
 
@@ -1668,7 +1705,7 @@ if (!GROUPS.length) {
     out: null, form: FORM, critics: PLANRUN.length, aspects: ASPECTS, groups: 0, confirmed: 0, fixing: 0,
     undetermined: [], unanswered: [], harness: [], onBase: [], gap: CGAPTEXT,
     note: `${PLANRUN.length} critic(s) over ${ASPECTS.join(', ')} found no place worth a fact; nothing was changed.`,
-    status: chainStatus({ form: FORM, groups: 0, confirmed: 0, undetermined: 0, unanswered: 0, out: OUT, gap: CGAP.length, room: ROOM }),
+    status: chainStatus({ form: FORM, groups: 0, confirmed: 0, undetermined: 0, unanswered: 0, out: RESULT, gap: CGAP.length, room: ROOM }),
     blockedStages: critiques.filter(c => !c.ok).map(c => `critic ${c.label}: ${c.blocked}`),
   }
 }
@@ -1700,7 +1737,7 @@ let answers = []
 let decided = { files: [], blocked: [] }
 const LATE = []
 const result = extra => chainResult({
-  out: OUT, form: FORM, aspects: ASPECTS, critics: PLANRUN.length, base: BASE,
+  out: RESULT, form: FORM, aspects: ASPECTS, critics: PLANRUN.length, base: BASE,
   groups: GROUPS, ran: RUNGROUPS, answers, evidence: decided.files, gap: GAPTEXT,
   gapCount: CGAP.length + GAP.length, room: ROOM,
   blockedStages: [
@@ -1730,9 +1767,9 @@ if (FORM === 'long') {
   const s = await stage(MERGED, roleSlot(MERGED, SIZE), 'evidence', 'Evidence', {
     in: [...IN, ...LIVE.map(c => c.out)].join('\n'),
     ask: `${ASK}\n\nHint groups:\n${groupText(RUNGROUPS)}\n\n${CONTROL}`,
-    out: OUT,
+    out: RESULT,
   }, `${EVIDENCE_SHAPE}
-Write the same decision into ${OUT}: accepted with the change in one sentence, rejected with the refuting fact, undetermined with what is missing, and the failures of your own run in their own list.`)
+Write the same decision into ${RESULT}: accepted with the change in one sentence, rejected with the refuting fact, undetermined with what is missing, and the failures of your own run in their own list.`)
   // a blocked short form returns through the result builder too: the critic gap, the blocked
   // critic stages and the status sentence stand in it, the same way a blocked triage does (A28)
   if (!s.ok) {
@@ -1740,7 +1777,7 @@ Write the same decision into ${OUT}: accepted with the change in one sentence, r
     return result({ stage: 'evidence', blocked: s.blocked, fixed: 'the evidence stage was blocked: nothing was changed' })
   }
   answers = parseEvidence(s.ret)
-  decided = { files: [OUT], blocked: [] }
+  decided = { files: [RESULT], blocked: [] }
 }
 
 // the two rules that keep a finding honest: a failure of our own harness is no finding about the
@@ -1766,11 +1803,11 @@ if (FORM === 'long') {
   // the open rows of this run, rendered by the shared block from the same table the return carries:
   // the judge copies them instead of composing a list of its own, or the file and the return would
   // tell two different stories (A28)
-  const openText = ROWS.open.length ? `\n\nUnsettled rows, exactly these and no others. Copy them into ${OUT} under a heading \`Unsettled\`, one row each, as \`| hint id | place | what is missing |\`, and accept none of them:\n${openRowsText(ROWS)}` : `\n\nNothing is unsettled in this run: write an \`Unsettled\` section into ${OUT} saying so, and add no row of your own to it.`
+  const openText = ROWS.open.length ? `\n\nUnsettled rows, exactly these and no others. Copy them into ${RESULT} under a heading \`Unsettled\`, one row each, as \`| hint id | place | what is missing |\`, and accept none of them:\n${openRowsText(ROWS)}` : `\n\nNothing is unsettled in this run: write an \`Unsettled\` section into ${RESULT} saying so, and add no row of your own to it.`
   judged = await stage(TRIAGE, roleSlot(TRIAGE, SIZE), 'triage', 'Triage', {
     in: [...LIVE.map(c => c.out), ...decided.files].join('\n'),
     ask: `${ASK}\n\nHint groups:\n${groupText(RUNGROUPS)}\n\nFacts about the object, one row per hint (the failures of our own runs and the failures that reproduce on the base version ${BASE} are already out and are no findings). Accept a hint only when its own row says \`confirmed\`: a hint that sounds reasonable, that its row leaves undetermined, or that no row names at all, is never accepted:\n${factText}${openText}${GAP.length ? `\n\nNo fact was collected for these groups, the depth ceiling of ${ROOM} agents ended the stage: ${GAP.map(g => `${g.id} at ${g.place}`).join(', ')}. They are unsettled, not rejected.` : ''}`,
-    out: OUT,
+    out: RESULT,
   }, ACCEPT_SHAPE)
   if (!judged.ok) {
     LATE.push(`triage: ${judged.blocked}`)
@@ -1794,8 +1831,8 @@ let fixed = null
 if (TOFIX.length) {
   phase('Fix')
   fixed = await stage(FIXER, roleSlot(FIXER, SIZE), 'fix', 'Fix', {
-    in: [OUT, ...IN].join('\n'),
-    ask: `${ASK}\n\nApply these accepted rows, and nothing else. They are the whole mandate: a row of ${OUT} that is not in this list, however it reads there, is not yours to change.\n${FIXTEXT}\n${TEST ? `After the change run \`${TEST}\` and quote its decisive line.` : 'No check command was given: say so instead of inventing one.'}`,
+    in: [RESULT, ...IN].join('\n'),
+    ask: `${ASK}\n\nApply these accepted rows, and nothing else. They are the whole mandate: a row of ${RESULT} that is not in this list, however it reads there, is not yours to change.\n${FIXTEXT}\n${TEST ? `After the change run \`${TEST}\` and quote its decisive line.` : 'No check command was given: say so instead of inventing one.'}`,
     out: side('changes', 'fix'),
   }, `the changed paths and the last line \`DONE\` or \`BLOCKED: <reason>\`.`)
 }

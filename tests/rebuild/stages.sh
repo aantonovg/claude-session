@@ -588,7 +588,9 @@ sys.exit(1 if bad else 0)
   check "s3 that report stage runs on every exit, once" grep -Fq 'if (!reported)' <<<"$code"
   check "s3 make.js hands that report to its result builder" grep -Fq 'report: s.report' <<<"$code"
   check "s3 make.js names no report file anywhere" bash -c '! grep -Eq "report\.md|summary\.md" <<<"$1"' _ "$code"
-  check "s3 make.js takes the stage-file directory from outDir" grep -Fq 'outDir(OUT)' <<<"$code"
+  # `out` is the task directory itself: taskDirOf() reads it as a directory whatever its slug looks
+  # like, where outDir() drops a last segment carrying a dot and writes one level up
+  check "s3 make.js takes the stage-file directory from taskDirOf" grep -Fq 'taskDirOf(OUT)' <<<"$code"
   check "s3 make.js stamps the closure role (stamped: $(stamped_roles "$MAKE" 2>/dev/null))" \
     bash -c 'case " $1 " in *" closure-author "*) exit 0 ;; *) exit 1 ;; esac' _ "$(stamped_roles "$MAKE" 2>/dev/null)"
   check "s3 the report carries the stages, the verdicts and the gaps" python3 -c '

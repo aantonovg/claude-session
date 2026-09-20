@@ -256,6 +256,17 @@ ledger_reset
 printf '%s' "$(stop_payload a1)" | bash "$LEDGER_HOOK" >/dev/null 2>&1; rc=$?
 check "h2 the hook exits 0" test "$rc" -eq 0
 
+# The row shape needs jq: on a machine without it every stop row is lost, so the loss is said on
+# stderr instead of reading as a session that launched no agent, and the exit stays 0.
+ledger_reset
+NOJQ=$HOME/nojq; mkdir -p "$NOJQ"
+for t in cat sed head tail date printf; do p=$(command -v "$t") && [ -x "$p" ] && ln -sf "$p" "$NOJQ/$t"; done
+# bash itself is looked up in that stripped PATH, so it is called by its own absolute path
+printf '%s' "$(stop_payload a1)" | env PATH="$NOJQ" "${BASH:-/bin/bash}" "$LEDGER_HOOK" >/dev/null 2>"$HOME/nojq.err"; rc=$?
+check "h2 with no jq the hook still exits 0" test "$rc" -eq 0
+check "h2 with no jq the lost row is said on stderr" grep -Fq 'jq is missing' "$HOME/nojq.err"
+check "h2 with no jq no row is invented (rows: $(stops))" test "$(stops)" = 0
+
 # ---- h3: the wiring of plugin.json ----
 check "h3 plugin.json is valid JSON" python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$PJ"
 wiring() { python3 - "$PJ" "$1" "$2" "$3" <<'PY'
