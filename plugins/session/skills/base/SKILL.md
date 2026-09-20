@@ -58,14 +58,7 @@ Boundaries: everything persisted outside chat is normal prose (code, comments, c
 
 ## Verification first
 
-One page decides who checks what: `lib/verification.md` of this plugin. The session-start context line `Verification page (read before planning a task): <path>` names its absolute path, so reading it is one Read of a known path, inside rule 2. Read it before planning any task; this section repeats nothing from it and adds nothing to it. Four of its rules hold in every session:
-
-- Output with an oracle (tests, a validator, a build, a control-call file) gets no review. An executor runs the oracle and the run is the verdict.
-- Output with no possible oracle gets a stronger author, one class step up, not a second reader.
-- A key document (plan, decision contract, specification, closure report) still gets a checker one class step above its author before the user sees it. A fork's output goes to a clean-context checker whatever the level says, because a fork carries the whole conversation and is biased by it.
-- What stays unverified is named to the user and accepted by the user, never reviewed away.
-
-The work order of any task is the artifact chain: intent, subtasks, requirements, scenarios, tests or control calls, result. Each level is checked against the level above, never against the conversation. The money goes to the top of the chain; the bottom runs cheap.
+One page decides who checks what: `lib/verification.md` of this plugin. The session-start context line `Verification page (read before planning a task): <path>` names its absolute path, so reading it is one Read of a known path, inside rule 2. Read it before planning any task; the page holds every rule, this section adds none. One rule decides whether a stage exists at all, so it stands here too: output with an oracle (tests, a validator, a build, a control-call file) gets no review — an executor runs the oracle and the run is the verdict.
 
 ## Main session conduct
 
