@@ -269,13 +269,59 @@ function phraseGap(text, phrases) {
 // these a FAIL; oldCarrierGap() reports the ones a scenario text forgets.
 const OLD_CARRIERS = ['session:build', 'session:dev', 'session:research', 'session:review-fix',
   'session:translate-ru', 'session:stage-']
-// oldCarrierGap(text): the old carrier names that <text> does not name in a sentence that calls
+// oldCarrierGap(text): the old carrier names that <text> does not name in one sentence that calls
 // such a launch a FAIL. Only the sentences carrying the word FAIL are read, so a text that merely
-// mentions an old name somewhere else still comes back with a gap.
+// mentions an old name somewhere else still comes back with a gap. Each sentence is searched on its
+// own, and the gap is the gap of the one FAIL sentence that comes closest: the sentences are never
+// joined, because a name standing in a FAIL sentence about something else (a second launch, an empty
+// file) would then satisfy the rule while no sentence calls a launch of that name a FAIL.
 function oldCarrierGap(text) {
   const s = String(text == null ? '' : text).replace(/\s+/g, ' ')
-  const failing = s.split(/(?<=[.;])\s+/).filter(x => /\bFAIL\b/.test(x)).join(' ')
-  return phraseGap(failing, OLD_CARRIERS)
+  const failing = s.split(/(?<=[.;])\s+/).filter(x => /\bFAIL\b/.test(x))
+  let best = null
+  for (const x of failing) {
+    const g = phraseGap(x, OLD_CARRIERS)
+    if (best === null || g.length < best.length) best = g
+  }
+  return best === null ? OLD_CARRIERS.slice() : best
+}
+
+// hintVerdictHits(text): the places where <text> lets a hint decide by itself. A critic gives hints,
+// never verdicts (idea 3.6): a claim is withdrawn only when a fact refutes it, and a hint no fact
+// settles leaves the claim standing, marked as not checked. A text that makes a hint, a critique or
+// a critic the subject of withdrawing, dropping or refuting turns the hint into a verdict, and a
+// true fact of the object is then lost with no fact against it — which is exactly what an author
+// reading a critique with no evidence step in front of it will do. The tests of this tree execute
+// this over the role texts and over the flows that put a critique before an author.
+// Only the subject shape counts: "drop the hint that nobody could settle" keeps the hint as the
+// object and is no verdict, so the grammar of the sentence decides, never the vocabulary.
+const HINT_SUBJECTS = ['hint', 'hints', 'critique', 'critiques', 'critic', 'critics', 'criticism']
+const VERDICT_DONE = ['withdraws', 'withdrew', 'withdrawn', 'drops', 'dropped', 'refutes',
+  'refuted', 'retracts', 'retracted', 'invalidates', 'invalidated', 'disproves', 'disproved',
+  'rejects', 'rejected', 'removes', 'removed', 'overrules', 'overruled']
+const VERDICT_BASE = ['withdraw', 'drop', 'refute', 'retract', 'invalidate', 'disprove', 'reject',
+  'remove', 'overrule']
+const VERDICT_MODALS = ['can', 'may', 'must', 'will', 'would', 'shall', 'should', 'could']
+function hintVerdictHits(text) {
+  const s = String(text == null ? '' : text).replace(/\s+/g, ' ')
+  const subj = HINT_SUBJECTS.map(rxEsc).join('|')
+  const done = VERDICT_DONE.map(rxEsc).join('|')
+  const base = VERDICT_BASE.map(rxEsc).join('|')
+  const modal = VERDICT_MODALS.map(rxEsc).join('|')
+  const adv = '(?:[a-z]+ly |already |alone |then |also )?'
+  const parts = [
+    `\\b(?:${subj}) ${adv}(?:${done})\\b`, // "the critique withdraws a fact"
+    `\\b(?:${subj}) (?:${modal}) ${adv}(?:${base})\\b`, // "a hint may drop a claim"
+    // the same verdict written the other way round: "withdrawn per the critique". The preposition
+    // `against` is no part of the list: "a fact settles it against the hint" is the right order,
+    // the fact deciding and the hint decided.
+    `\\b(?:${done})\\b[^.;!?]{0,24}?\\b(?:per|by|on|after) (?:the |a |any )?(?:${subj})\\b`,
+  ]
+  const re = new RegExp(parts.join('|'), 'gi')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) hits.push(m[0])
+  return hits
 }
 
 // agentTypesOf(src): every agentType a workflow script of a plugin launches, resolved as far as a
@@ -1487,7 +1533,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
     carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
-    phraseGap, OLD_CARRIERS, oldCarrierGap, agentTypesOf,
+    phraseGap, OLD_CARRIERS, oldCarrierGap, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,

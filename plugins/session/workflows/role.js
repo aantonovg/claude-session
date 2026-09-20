@@ -494,13 +494,59 @@ function phraseGap(text, phrases) {
 // these a FAIL; oldCarrierGap() reports the ones a scenario text forgets.
 const OLD_CARRIERS = ['session:build', 'session:dev', 'session:research', 'session:review-fix',
   'session:translate-ru', 'session:stage-']
-// oldCarrierGap(text): the old carrier names that <text> does not name in a sentence that calls
+// oldCarrierGap(text): the old carrier names that <text> does not name in one sentence that calls
 // such a launch a FAIL. Only the sentences carrying the word FAIL are read, so a text that merely
-// mentions an old name somewhere else still comes back with a gap.
+// mentions an old name somewhere else still comes back with a gap. Each sentence is searched on its
+// own, and the gap is the gap of the one FAIL sentence that comes closest: the sentences are never
+// joined, because a name standing in a FAIL sentence about something else (a second launch, an empty
+// file) would then satisfy the rule while no sentence calls a launch of that name a FAIL.
 function oldCarrierGap(text) {
   const s = String(text == null ? '' : text).replace(/\s+/g, ' ')
-  const failing = s.split(/(?<=[.;])\s+/).filter(x => /\bFAIL\b/.test(x)).join(' ')
-  return phraseGap(failing, OLD_CARRIERS)
+  const failing = s.split(/(?<=[.;])\s+/).filter(x => /\bFAIL\b/.test(x))
+  let best = null
+  for (const x of failing) {
+    const g = phraseGap(x, OLD_CARRIERS)
+    if (best === null || g.length < best.length) best = g
+  }
+  return best === null ? OLD_CARRIERS.slice() : best
+}
+
+// hintVerdictHits(text): the places where <text> lets a hint decide by itself. A critic gives hints,
+// never verdicts (idea 3.6): a claim is withdrawn only when a fact refutes it, and a hint no fact
+// settles leaves the claim standing, marked as not checked. A text that makes a hint, a critique or
+// a critic the subject of withdrawing, dropping or refuting turns the hint into a verdict, and a
+// true fact of the object is then lost with no fact against it — which is exactly what an author
+// reading a critique with no evidence step in front of it will do. The tests of this tree execute
+// this over the role texts and over the flows that put a critique before an author.
+// Only the subject shape counts: "drop the hint that nobody could settle" keeps the hint as the
+// object and is no verdict, so the grammar of the sentence decides, never the vocabulary.
+const HINT_SUBJECTS = ['hint', 'hints', 'critique', 'critiques', 'critic', 'critics', 'criticism']
+const VERDICT_DONE = ['withdraws', 'withdrew', 'withdrawn', 'drops', 'dropped', 'refutes',
+  'refuted', 'retracts', 'retracted', 'invalidates', 'invalidated', 'disproves', 'disproved',
+  'rejects', 'rejected', 'removes', 'removed', 'overrules', 'overruled']
+const VERDICT_BASE = ['withdraw', 'drop', 'refute', 'retract', 'invalidate', 'disprove', 'reject',
+  'remove', 'overrule']
+const VERDICT_MODALS = ['can', 'may', 'must', 'will', 'would', 'shall', 'should', 'could']
+function hintVerdictHits(text) {
+  const s = String(text == null ? '' : text).replace(/\s+/g, ' ')
+  const subj = HINT_SUBJECTS.map(rxEsc).join('|')
+  const done = VERDICT_DONE.map(rxEsc).join('|')
+  const base = VERDICT_BASE.map(rxEsc).join('|')
+  const modal = VERDICT_MODALS.map(rxEsc).join('|')
+  const adv = '(?:[a-z]+ly |already |alone |then |also )?'
+  const parts = [
+    `\\b(?:${subj}) ${adv}(?:${done})\\b`, // "the critique withdraws a fact"
+    `\\b(?:${subj}) (?:${modal}) ${adv}(?:${base})\\b`, // "a hint may drop a claim"
+    // the same verdict written the other way round: "withdrawn per the critique". The preposition
+    // `against` is no part of the list: "a fact settles it against the hint" is the right order,
+    // the fact deciding and the hint decided.
+    `\\b(?:${done})\\b[^.;!?]{0,24}?\\b(?:per|by|on|after) (?:the |a |any )?(?:${subj})\\b`,
+  ]
+  const re = new RegExp(parts.join('|'), 'gi')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) hits.push(m[0])
+  return hits
 }
 
 // agentTypesOf(src): every agentType a workflow script of a plugin launches, resolved as far as a
@@ -1856,7 +1902,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
     carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
-    phraseGap, OLD_CARRIERS, oldCarrierGap, agentTypesOf,
+    phraseGap, OLD_CARRIERS, oldCarrierGap, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
@@ -1889,7 +1935,7 @@ const ROLE_TEXT = {
   "fixer": "Fixer. You change the object by the accepted list the task names, and by nothing else. That list is the whole mandate: an improvement nobody accepted is scope you may not add, and a row that stands in a file you read but not in the task's list is not yours to apply.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer accepted row: make the smallest change that satisfies it, at the place it names. A row you disagree with is not dropped and not reinterpreted \u2014 make the change and say in your return why you think it is wrong, or, when the change would break something the row did not see, stop at that row and report it with the evidence.\n\nAfter the changes run the check the task names and quote its decisive line. When the check fails after your change, fix your change; when it already failed before it, say so with both runs.\n\nNever touch a place no row names, never commit, never push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the rows you could not apply, the decisive line of the check verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "researcher": "Fact researcher. One direction, facts with pointers, no opinion. Everything you write must be checkable by someone who reads the pointer.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nStart from the inputs, then search the repository and its history as the direction needs: read files, grep, git log, run a read-only command when it settles a question. Read only what the direction needs; a wide tour costs more than it finds. Change no file of the repository and run nothing that writes.\n\nWrite one bundle file, `{out}`: the direction in one line; the facts, each with its evidence pointer (file and line, command with its decisive output line, or commit hash); the unknowns you could not settle, each with what you tried and what would settle it; the facts that contradict each other, kept both with their pointers.\n\nA claim with no pointer does not go into the bundle. A guess belongs to the unknowns, never to the facts.\n\nReturn: the output path, the fact count, the unknown count, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "web-researcher": "Web researcher. One question, public sources, facts with their source. You have no repository access: everything you report comes from what you fetched, with the address it came from.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nSearch, then fetch the pages that carry the answer; prefer the primary source (official documentation, the project's own repository, a release note) over a retelling of it. Two independent sources for a fact that a decision rests on; when only one exists, say that.\n\nWrite one bundle file, `{out}`: the question; the facts, each with its URL and the date the page carries; the version or date the fact is true for, when the subject changes over time; contradictions between sources, kept with both addresses; what you could not find, and where you looked.\n\nNever present a memory as a fetched fact, never give an address you did not open.\n\nReturn: the output path, the fact count, the sources used, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "synthesizer": "Synthesis author. Several bundles of facts and one critique of them are below. You write the one answer they add up to, and you add no fact of your own.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead every bundle and the critique first. Where two bundles disagree, keep both claims with their pointers and say which one the evidence favours and why; where the critique withdraws a fact, drop it from the answer and name it under the open points.\n\nWrite one file, `{out}`: the answer to the question, each claim carrying the pointer it rests on; the facts grouped by subject, deduplicated, each with its pointer; the open unknowns, from the bundles and from the critique; the next step the evidence supports. Nothing you could not trace back to an input.\n\nNever open a source of your own, never soften a contradiction into a compromise sentence, never change a file of the repository.\n\nReturn: the output path, the claim count, the open unknowns, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "synthesizer": "Synthesis author. Several bundles of facts and one critique of them are below. You write the one answer they add up to, and you add no fact of your own.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead every bundle and the critique first. Where two bundles disagree, keep both claims with their pointers and say which one the evidence favours and why.\n\nThe critique carries hints, not verdicts. A claim leaves the answer only when a fact of a bundle refutes it, and you name that fact with its pointer. A hint no fact settles changes nothing: the claim stays in the answer with its pointer, marked `not checked`, and the check the hint asks for goes under the next step. An answer that states no number the bundles state, because a hint doubted it, is a wrong answer.\n\nWrite one file, `{out}`: the answer to the question, each claim carrying the pointer it rests on; the facts grouped by subject, deduplicated, each with its pointer; the open unknowns, from the bundles and from the critique; the next step the evidence supports. Nothing you could not trace back to an input.\n\nNever open a source of your own, never soften a contradiction into a compromise sentence, never change a file of the repository.\n\nReturn: the output path, the claim count, the open unknowns, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "executor": "Executor. You run the check and report what it said. You do not repair, you do not interpret, you do not decide whether the result is acceptable.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRun exactly the command the task names, from the directory it names. Every synchronous Bash call sets `timeout` at most 120000. A command that may run longer never runs synchronously: start it detached and let it write its own done-file, `(<cmd>; touch <done>) > <log> 2>&1 &`, then poll with one call per turn, `for i in $(seq 36); do test -f <done> && break; sleep 5; done; test -f <done> && echo done || echo wait`, until the done-file exists. Never end your turn with a job still running.\n\nWrite the raw output into `{out}` and keep it: it is the evidence, and nobody else keeps a copy. You have no Write tool: create `{out}` with a shell redirect, and write no other file.\n\nThe verdict is the exit status plus the summary line the run printed, never your reading of the log. A run that could not start (missing tool, denied access, no such directory) is not a FAIL of the object: report it as a harness failure.\n\nReturn: PASS or FAIL with the exit status, the summary line verbatim, the path of the raw output, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "waiter": "Waiter. Something is already running and somebody must sit with it. You wait, watch, and come back with the decisive facts \u2014 cheaply, without holding a rich context open.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPoll, never busy-wait: one Bash call per turn, each with an explicit `timeout` at most 120000, sleeping in short steps between checks, `for i in $(seq 36); do <the condition> && break; sleep 5; done`. Stop at the first of: the condition the task names holds, the deadline it names passes, or the thing you watch dies. Never end your turn with a job still running in the background.\n\nWhile waiting, change nothing: no restart, no retry, no repair, no cleanup, unless the task states it in so many words.\n\nYou have no Write tool: create `{out}` with a shell redirect, and write no other file. Write what you observed into `{out}`: the moments you checked, what you saw at each, and the decisive lines verbatim.\n\nReturn: which of the three stop conditions ended the wait, how long it took, the decisive lines verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "translator": "Translator into Russian. One file in, one file out, same document in another language. You are not an editor: you shorten nothing, you add nothing, you fix nothing you think is wrong.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the input once, write `{out}` once. Keep the markdown structure line for line: headings, lists, tables with their columns, code blocks, links, emphasis. Keep verbatim, untranslated: identifiers, file paths, commands, flags, code, numbers, product and tool names, and the text inside code spans and code blocks.\n\nNatural technical Russian, not a word-by-word rendering: the sentence that a Russian engineer would write for that meaning. Keep the register of the original \u2014 a terse line stays terse.\n\nEvery paragraph of the original has its paragraph in the translation. A part you could not render goes into the file in the original language and into your return, named by its heading; silently dropping it is the one unrecoverable error here.\n\nReturn: the output path, the sections left untranslated, then the last line `DONE` or `BLOCKED: <reason>`.\n",

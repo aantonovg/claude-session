@@ -758,6 +758,27 @@ sys.exit(1 if missing else 0)
   # the critique of probe stands over research bundles, an output no oracle can decide
   check "s4 probe.js critiques the bundles" grep -Fq "'critic'" <<<"$code"
   check "s4 probe.js synthesises them" grep -Fq "'synthesizer'" <<<"$code"
+  # nothing settles that critique before the answer is written, so this is the one flow where a hint
+  # reaches an author unsettled: its synthesis ask has to say that a claim leaves the answer only
+  # where a fact refutes it, and no line of the flow may make the critique the one that withdraws
+  # (idea 3.6, executed through hintVerdictHits() and phraseGap() of the shared block)
+  printf '%s\n' "$code" > "$T/probe-code.js"
+  cat > "$T/hintflow.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const text = fs.readFileSync(process.argv[3], 'utf8')
+const hits = b.hintVerdictHits(text)
+hits.forEach(h => console.log('a hint as a verdict: ' + h))
+const gap = b.phraseGap(text, process.argv.slice(4))
+gap.forEach(g => console.log('missing: ' + g))
+process.exit(hits.length + gap.length ? 1 : 0)
+JS
+  check "s4 probe.js hands the critique to its synthesis as hints, not verdicts" \
+    node "$T/hintflow.js" "$LIB/block.js" "$T/probe-code.js" \
+    'hints, not verdicts' 'only when a fact' 'refutes it' 'marked as not checked'
+  printf 'ask: Where the critique withdraws a fact, drop it from the answer.\n' > "$T/badflow.js"
+  check "s4 a flow that lets the critique withdraw a fact is seen" \
+    bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/hintflow.js" "$LIB/block.js" "$T/badflow.js"
   check "s4 probe.js names no check command: its output has no oracle" bash -c '! grep -Fq "args.test" <<<"$1"' _ "$code"
   check "s4 probe.js pins no model at the call site" bash -c '! grep -qE "^\s*(model|effort):" <<<"$1"' _ "$code"
   check "s4 probe.js names no model word" bash -c '! grep -Eqi "(^|[^-a-z])(opus|sonnet|fable|haiku)([^-a-z]|$)" <<<"$1"' _ "$code"

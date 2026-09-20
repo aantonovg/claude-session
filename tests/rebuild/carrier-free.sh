@@ -28,6 +28,11 @@
 # The behavior gate of this part is no part of this script: scenarios 1, 4, 6 and 10 in the `gate`
 # variant, 2 in `gate-stub-on` and 3 in `gate-stub-off-deny` are read by the part's Test through
 # tests/rebuild/verdicts.sh. This script only guards the text against a regression.
+# Two rules of core.md that a gate run found broken are guarded here by their decisive words, both
+# executed over lib/block.js: how a critique is read (a hint settles nothing, a claim is dropped only
+# where a fact refutes it — g8, hintVerdictHits()) and what the harness gate does when the project
+# denies a capability (re-send the need, never do the stage in the main session, never ask for the
+# capability back — g9, phraseGap()).
 # Temp dirs only, no network, under 10 s.
 set -u
 
@@ -129,6 +134,12 @@ check "g1 plain prose with the same words is no carrier" \
 mut() { # mut <name> <perl expression>: a mutant of the shared block that drops one half of the rule
   perl -pe "$2" "$BLOCK" > "$T/$1.js"
   check "g1 the mutant $1 is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$BLOCK" "$T/$1.js"
+  # a mutant that no longer loads proves nothing: every check below runs the mutant through a node
+  # script whose exit code is read inverted, so a mutant that throws on require would be counted as
+  # a caught mutant while the rule it was written for was never executed at all
+  check "g1 the mutant $1 still loads" \
+    bash -c 'node -e "require(process.argv[1])" "$1" 2> "$2/mut.err" || { tail -2 "$2/mut.err"; exit 1; }' \
+    _ "$T/$1.js" "$T"
 }
 mut nolaunch "s/\\\\\\\\b\\\$\{rxEsc\(CARRIER_PREFIX\)\}:\[a-z\]\[a-z0-9-\]\*/(?!x)x/"
 check "g1 the mutant that drops the launch-name shape is caught" \
@@ -417,17 +428,63 @@ if [ -f "$SCEN" ]; then
     check "g7 $k judges only the lines after the finish notice" \
       grep -qi 'only the lines after' <<<"$block"
   done
+  # the finish line of a scenario, read against the rest of the scenario: `finish: <i> <n>` holds the
+  # index of the prompt the runner delays and the number of workflow finish notices it waits for.
+  # Both numbers have a second source in the same text — the prompt list and the PASS rule, which
+  # names the notice its own reading starts after — and a number that disagrees with its source makes
+  # the runner send the reading prompt at the wrong moment, which is the one thing this field exists
+  # to prevent.
+  cat > "$T/finish.py" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding='utf-8').read()
+head = text.split('\n')[0]
+bad = []
+m = re.search(r'^\s*finish:\s*(\S+)\s+(\S+)\s*$', text, re.M)
+if m is None:
+    print('no `finish: <prompt index> <notice count>` line')
+    sys.exit(1)
+i, n = m.group(1), m.group(2)
+if not (i.isdigit() and n.isdigit()):
+    bad.append('finish: %s %s is no pair of numbers' % (i, n))
+    i = n = '0'
+i, n = int(i), int(n)
+prompts = head.count('"') // 2
+if prompts == 0:
+    bad.append('the head line carries no quoted prompt')
+elif not 1 <= i <= prompts:
+    bad.append('finish names prompt %d of %d prompts' % (i, prompts))
+ORD = ['no', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth',
+       'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth',
+       'seventeenth', 'eighteenth', 'nineteenth', 'twentieth']
+p = re.search(r'^\s*PASS:(.*)$', text, re.M | re.S)
+pt = re.sub(r'\s+', ' ', p.group(1)) if p else ''
+said = set()
+for w in re.findall(r'(?:the|every) (?:([a-z]+) )?workflow finish notice', pt):
+    # no ordinal at all means the one and only notice of that run
+    said.add(1 if w == '' else (ORD.index(w) if w in ORD else -1))
+if not said:
+    bad.append('the PASS text names no workflow finish notice the reading starts after')
+elif said != {n}:
+    named = ', '.join('an ordinal nobody counts' if x < 0 else ORD[x] for x in sorted(said))
+    bad.append('finish waits for %d notice(s), the PASS text reads after: %s' % (n, named))
+for b in bad:
+    print(b)
+sys.exit(1 if bad else 0)
+PY
   # the four scenarios of the gate that this part writes: each says a launch of an old carrier name
   # is a FAIL, which is what the gate measures
   for k in carrier-pick labels intent-gate compact-contracts; do
     block=$(awk -v k="$k" '$0 ~ "^"k"[[:space:]]"{f=1} f&&/^[A-Za-z][A-Za-z0-9_-]*[[:space:]].*prompts:/&&$1!=k{exit} f{print}' "$SCEN")
     [ -n "$block" ] || continue
-    check "g7 $k gates the reading prompt on the workflow finish notice" \
-      grep -qE "^[[:space:]]+finish: [0-9]+ [0-9]+$" <<<"$block"
+    printf '%s\n' "$block" > "$T/scen-$k.txt"
+    # the shape of the finish line settles nothing on its own: the prompt index has to be one of the
+    # prompts this scenario really sends, and the notice count has to be the one the PASS text names,
+    # or the runner waits for a number of launches the judge never reads
+    check "g7 $k gates the reading prompt on its own prompt count and on the notice count of its PASS text" \
+      python3 "$T/finish.py" "$T/scen-$k.txt"
     # the PASS rule has to name every retired launch name inside a sentence that calls such a
     # launch a FAIL: oldCarrierGap() of the shared block reads the FAIL sentences and reports what
     # the text forgot, so the word "old" standing anywhere settles nothing
-    printf '%s\n' "$block" > "$T/scen-$k.txt"
     check "g7 $k makes a launch of any old carrier name a FAIL" \
       node "$T/gap.js" "$BLOCK" old "$T/scen-$k.txt"
   done
@@ -440,6 +497,24 @@ if [ -f "$SCEN" ]; then
   mut noold "s/'session:review-fix'/'session:zz-review-fix'/"
   check "g7 the mutant that renames a retired carrier is caught" \
     bash -c '! node "$1" "$2" old "$3" > /dev/null' _ "$T/gap.js" "$T/noold.js" "$T/scen-carrier-pick.txt"
+  # the names have to stand in one sentence that calls such a launch a FAIL: a text that spreads them
+  # over two FAIL sentences, one of them about something else entirely, is a gap, because the joined
+  # sentences would carry every name while neither sentence says what the rule asks
+  printf 'k  prompts: "one"\n    PASS: A launch of session:build, session:dev or session:research is a FAIL. A missing answer.md, a second Workflow call, session:review-fix, session:translate-ru or session:stage- standing in the out file, is a FAIL.\n' \
+    > "$T/scen-split.txt"
+  check "g7 the old names spread over two FAIL sentences are a gap" \
+    bash -c '! node "$1" "$2" old "$3" > /dev/null' _ "$T/gap.js" "$BLOCK" "$T/scen-split.txt"
+  # the finish numbers, executed: a prompt index outside the prompt list and a notice count the PASS
+  # text contradicts must both turn the check above red
+  sed 's/^\( *\)finish: [0-9]* \([0-9]*\)$/\1finish: 99 \2/' "$T/scen-compact-contracts.txt" > "$T/scen-badindex.txt"
+  check "g7 a finish line naming a prompt the scenario never sends is caught" \
+    bash -c '! python3 "$1" "$2" > /dev/null' _ "$T/finish.py" "$T/scen-badindex.txt"
+  sed 's/^\( *\)finish: \([0-9]*\) [0-9]*$/\1finish: \2 4/' "$T/scen-compact-contracts.txt" > "$T/scen-badcount.txt"
+  check "g7 a finish count the PASS text contradicts is caught" \
+    bash -c '! python3 "$1" "$2" > /dev/null' _ "$T/finish.py" "$T/scen-badcount.txt"
+  printf 'k  prompts: "one" "two"\n    finish: 2 1\n    PASS: only the lines after the work decide this run.\n' > "$T/scen-nonotice.txt"
+  check "g7 a PASS text that names no finish notice at all is caught" \
+    bash -c '! python3 "$1" "$2" > /dev/null' _ "$T/finish.py" "$T/scen-nonotice.txt"
   # the prompts of a carrier-free run never name the carrier themselves, or the scenario would
   # prove nothing about the skill: the main session picks it from its contracts
   block=$(awk '$0 ~ "^carrier-pick[[:space:]]"{f=1} f&&/^[A-Za-z][A-Za-z0-9_-]*[[:space:]].*prompts:/&&$1!="carrier-pick"{exit} f{print}' "$SCEN")
@@ -450,6 +525,78 @@ if [ -f "$SCEN" ]; then
   fi
 else
   fail "g7 tests/measure/rebuild-scenarios-0.16.txt exists"
+fi
+
+# ---- g8: how a critique is read (idea 3.6) ----
+# A critic gives hints, never verdicts. The rule that follows from it is the one a text is easiest to
+# lose: a claim is dropped only where a fact refutes it, and a hint no fact settles leaves the claim
+# standing, marked as not checked. A text that says the other thing costs a true fact of the object,
+# so it is asked for by its decisive words through phraseGap(), and the shape that reverses it is
+# found by hintVerdictHits() — both executed over lib/block.js, with mutants below.
+cat > "$T/hint.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+let bad = 0
+for (const path of process.argv.slice(3)) {
+  let text
+  try { text = fs.readFileSync(path, 'utf8') } catch (e) {
+    console.log(`${path}: unreadable: ${e.message}`); bad++; continue
+  }
+  for (const h of b.hintVerdictHits(text)) { console.log(`${path}: a hint as a verdict: ${h}`); bad++ }
+}
+process.exit(bad ? 1 : 0)
+JS
+if [ -f "$C" ]; then
+  check "g8 core.md states that a hint with no fact leaves the claim standing" \
+    node "$T/gap.js" "$BLOCK" phrases "$C" \
+    'a hint without evidence changes nothing' 'marked as not checked' \
+    'a claim is dropped only where a fact refutes it'
+  check "g8 core.md lets no hint act as a verdict" node "$T/hint.js" "$BLOCK" "$C"
+  # executed, not read: the sentence the gate run produced must be seen, and a mutant that forgets
+  # the shape must stop seeing it
+  printf 'Where the critique withdraws a fact, drop it from the answer.\n' > "$T/verdict.md"
+  check "g8 a text that lets the critique withdraw a fact is seen" \
+    bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/hint.js" "$BLOCK" "$T/verdict.md"
+  printf 'The claim stays, withdrawn per the critique only when a fact says so.\n' > "$T/verdict2.md"
+  check "g8 the same verdict written the other way round is seen" \
+    bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/hint.js" "$BLOCK" "$T/verdict2.md"
+  # the hint as the object of the sentence is no verdict, or the critic text could not say it
+  printf 'A hint nobody could settle is not a hint, drop it. Reject the hint that no fact confirms.\n' \
+    > "$T/hintobject.md"
+  check "g8 a hint that is dropped itself is no verdict" node "$T/hint.js" "$BLOCK" "$T/hintobject.md"
+  mut noverdict "s/'withdraws', 'withdrew'/'zzwithdraws', 'zzwithdrew'/"
+  check "g8 the mutant that drops the verdict verb is caught" \
+    bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/hint.js" "$T/noverdict.js" "$T/verdict.md"
+
+  # ---- g9: what the harness gate does when the project denies a capability ----
+  # A behavior run showed the failure this rule exists to stop: the denied capability ended the
+  # stage, the main session looked the fact up in its own turn and asked the user to switch the
+  # deny rule off. So the rule is asked for by the words that can be followed — pick a contract that
+  # needs none of what is denied, send the need again with the limit named, never do the stage
+  # itself, never ask for the capability back — through phraseGap(), never by one common word.
+  check "g9 core.md sends the need to a contract that does not need the denied capability" \
+    node "$T/gap.js" "$BLOCK" phrases "$C" \
+    'send the need to one whose work needs nothing this project denies' \
+    'the same need goes out once more' \
+    'with the denied capability named in the launch text' \
+    'the need goes out again'
+  check "g9 core.md forbids doing the stage in the main session instead" \
+    node "$T/gap.js" "$BLOCK" phrases "$C" \
+    'The main session never does the stage itself instead' \
+    'is no result of this task'
+  check "g9 core.md makes the chat line a report and never a request for the capability" \
+    node "$T/gap.js" "$BLOCK" phrases "$C" \
+    'the session never asks the user to give it back' \
+    'is a report, never a request'
+  check "g9 core.md blocks a stage only when every contract needs what is denied" \
+    node "$T/gap.js" "$BLOCK" phrases "$C" \
+    'only when every contract of the session needs what this project denies' \
+    'never ends with the wanted file unwritten'
+  # executed, not read: a text that says only that the capability is missing carries none of it
+  printf 'A denied capability is named in one chat line and the task goes on somehow.\n' > "$T/deny-thin.md"
+  check "g9 a text that only names the missing capability is a gap" \
+    bash -c '! node "$1" "$2" phrases "$3" "The main session never does the stage itself instead" > /dev/null' \
+    _ "$T/gap.js" "$BLOCK" "$T/deny-thin.md"
 fi
 
 if [ "$FAILS" -eq 0 ]; then echo "carrier-free: PASS $N"; exit 0; fi

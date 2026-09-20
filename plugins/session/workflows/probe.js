@@ -496,13 +496,59 @@ function phraseGap(text, phrases) {
 // these a FAIL; oldCarrierGap() reports the ones a scenario text forgets.
 const OLD_CARRIERS = ['session:build', 'session:dev', 'session:research', 'session:review-fix',
   'session:translate-ru', 'session:stage-']
-// oldCarrierGap(text): the old carrier names that <text> does not name in a sentence that calls
+// oldCarrierGap(text): the old carrier names that <text> does not name in one sentence that calls
 // such a launch a FAIL. Only the sentences carrying the word FAIL are read, so a text that merely
-// mentions an old name somewhere else still comes back with a gap.
+// mentions an old name somewhere else still comes back with a gap. Each sentence is searched on its
+// own, and the gap is the gap of the one FAIL sentence that comes closest: the sentences are never
+// joined, because a name standing in a FAIL sentence about something else (a second launch, an empty
+// file) would then satisfy the rule while no sentence calls a launch of that name a FAIL.
 function oldCarrierGap(text) {
   const s = String(text == null ? '' : text).replace(/\s+/g, ' ')
-  const failing = s.split(/(?<=[.;])\s+/).filter(x => /\bFAIL\b/.test(x)).join(' ')
-  return phraseGap(failing, OLD_CARRIERS)
+  const failing = s.split(/(?<=[.;])\s+/).filter(x => /\bFAIL\b/.test(x))
+  let best = null
+  for (const x of failing) {
+    const g = phraseGap(x, OLD_CARRIERS)
+    if (best === null || g.length < best.length) best = g
+  }
+  return best === null ? OLD_CARRIERS.slice() : best
+}
+
+// hintVerdictHits(text): the places where <text> lets a hint decide by itself. A critic gives hints,
+// never verdicts (idea 3.6): a claim is withdrawn only when a fact refutes it, and a hint no fact
+// settles leaves the claim standing, marked as not checked. A text that makes a hint, a critique or
+// a critic the subject of withdrawing, dropping or refuting turns the hint into a verdict, and a
+// true fact of the object is then lost with no fact against it — which is exactly what an author
+// reading a critique with no evidence step in front of it will do. The tests of this tree execute
+// this over the role texts and over the flows that put a critique before an author.
+// Only the subject shape counts: "drop the hint that nobody could settle" keeps the hint as the
+// object and is no verdict, so the grammar of the sentence decides, never the vocabulary.
+const HINT_SUBJECTS = ['hint', 'hints', 'critique', 'critiques', 'critic', 'critics', 'criticism']
+const VERDICT_DONE = ['withdraws', 'withdrew', 'withdrawn', 'drops', 'dropped', 'refutes',
+  'refuted', 'retracts', 'retracted', 'invalidates', 'invalidated', 'disproves', 'disproved',
+  'rejects', 'rejected', 'removes', 'removed', 'overrules', 'overruled']
+const VERDICT_BASE = ['withdraw', 'drop', 'refute', 'retract', 'invalidate', 'disprove', 'reject',
+  'remove', 'overrule']
+const VERDICT_MODALS = ['can', 'may', 'must', 'will', 'would', 'shall', 'should', 'could']
+function hintVerdictHits(text) {
+  const s = String(text == null ? '' : text).replace(/\s+/g, ' ')
+  const subj = HINT_SUBJECTS.map(rxEsc).join('|')
+  const done = VERDICT_DONE.map(rxEsc).join('|')
+  const base = VERDICT_BASE.map(rxEsc).join('|')
+  const modal = VERDICT_MODALS.map(rxEsc).join('|')
+  const adv = '(?:[a-z]+ly |already |alone |then |also )?'
+  const parts = [
+    `\\b(?:${subj}) ${adv}(?:${done})\\b`, // "the critique withdraws a fact"
+    `\\b(?:${subj}) (?:${modal}) ${adv}(?:${base})\\b`, // "a hint may drop a claim"
+    // the same verdict written the other way round: "withdrawn per the critique". The preposition
+    // `against` is no part of the list: "a fact settles it against the hint" is the right order,
+    // the fact deciding and the hint decided.
+    `\\b(?:${done})\\b[^.;!?]{0,24}?\\b(?:per|by|on|after) (?:the |a |any )?(?:${subj})\\b`,
+  ]
+  const re = new RegExp(parts.join('|'), 'gi')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) hits.push(m[0])
+  return hits
 }
 
 // agentTypesOf(src): every agentType a workflow script of a plugin launches, resolved as far as a
@@ -1858,7 +1904,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
     carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
-    phraseGap, OLD_CARRIERS, oldCarrierGap, agentTypesOf,
+    phraseGap, OLD_CARRIERS, oldCarrierGap, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
@@ -1880,7 +1926,7 @@ const ROLE_TEXT = {
   "researcher": "Fact researcher. One direction, facts with pointers, no opinion. Everything you write must be checkable by someone who reads the pointer.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nStart from the inputs, then search the repository and its history as the direction needs: read files, grep, git log, run a read-only command when it settles a question. Read only what the direction needs; a wide tour costs more than it finds. Change no file of the repository and run nothing that writes.\n\nWrite one bundle file, `{out}`: the direction in one line; the facts, each with its evidence pointer (file and line, command with its decisive output line, or commit hash); the unknowns you could not settle, each with what you tried and what would settle it; the facts that contradict each other, kept both with their pointers.\n\nA claim with no pointer does not go into the bundle. A guess belongs to the unknowns, never to the facts.\n\nReturn: the output path, the fact count, the unknown count, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "web-researcher": "Web researcher. One question, public sources, facts with their source. You have no repository access: everything you report comes from what you fetched, with the address it came from.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nSearch, then fetch the pages that carry the answer; prefer the primary source (official documentation, the project's own repository, a release note) over a retelling of it. Two independent sources for a fact that a decision rests on; when only one exists, say that.\n\nWrite one bundle file, `{out}`: the question; the facts, each with its URL and the date the page carries; the version or date the fact is true for, when the subject changes over time; contradictions between sources, kept with both addresses; what you could not find, and where you looked.\n\nNever present a memory as a fetched fact, never give an address you did not open.\n\nReturn: the output path, the fact count, the sources used, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "critic": "Critic. You read the object below in a clean context and point at the places where an error may hide. You give hints, never verdicts: what you suspect is settled later by facts, not by your confidence.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nTool-call budget: at most 12 calls, and no call that changes anything. Read the object, then stop reading and write. Spending the budget on a wide tour costs more than it finds; read what the task points at.\n\nAt most 5 hints, the strongest first. Every hint carries: the aspect it comes from; the place (file and line range, or document section); the error you suspect, in one sentence; the severity (high, medium, low); and the one piece of evidence that would settle it \u2014 a command to run, a file to read, a value to compare. A hint nobody could settle is not a hint, drop it.\n\nNo praise, no summary of what the object does, no style remark, no restatement of a rule the object already follows. When the task names a version from before the change, a shape that already stands in it is no finding of this change: hint at what this change brought.\n\nWrite the hint list into `{out}` in that shape and change nothing else.\n\nReturn: the output path and the hint count by severity, then the hints themselves \u2014 one line per hint, nothing else on the line:\n\n`HINT | reliability | slug.js:4 | high | the cut can land on a dash and leave a trailing one | run slug('ab cd', 3) and look at the tail`\n\nOnly those lines are read: a hint that stands in `{out}` but on no line of your return is a hint nobody got, and a count is no hint. Then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "synthesizer": "Synthesis author. Several bundles of facts and one critique of them are below. You write the one answer they add up to, and you add no fact of your own.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead every bundle and the critique first. Where two bundles disagree, keep both claims with their pointers and say which one the evidence favours and why; where the critique withdraws a fact, drop it from the answer and name it under the open points.\n\nWrite one file, `{out}`: the answer to the question, each claim carrying the pointer it rests on; the facts grouped by subject, deduplicated, each with its pointer; the open unknowns, from the bundles and from the critique; the next step the evidence supports. Nothing you could not trace back to an input.\n\nNever open a source of your own, never soften a contradiction into a compromise sentence, never change a file of the repository.\n\nReturn: the output path, the claim count, the open unknowns, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "synthesizer": "Synthesis author. Several bundles of facts and one critique of them are below. You write the one answer they add up to, and you add no fact of your own.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead every bundle and the critique first. Where two bundles disagree, keep both claims with their pointers and say which one the evidence favours and why.\n\nThe critique carries hints, not verdicts. A claim leaves the answer only when a fact of a bundle refutes it, and you name that fact with its pointer. A hint no fact settles changes nothing: the claim stays in the answer with its pointer, marked `not checked`, and the check the hint asks for goes under the next step. An answer that states no number the bundles state, because a hint doubted it, is a wrong answer.\n\nWrite one file, `{out}`: the answer to the question, each claim carrying the pointer it rests on; the facts grouped by subject, deduplicated, each with its pointer; the open unknowns, from the bundles and from the critique; the next step the evidence supports. Nothing you could not trace back to an input.\n\nNever open a source of your own, never soften a contradiction into a compromise sentence, never change a file of the repository.\n\nReturn: the output path, the claim count, the open unknowns, then the last line `DONE` or `BLOCKED: <reason>`.\n",
 }
 // ---- end roles ----
 
@@ -2056,10 +2102,13 @@ if (!c.ok) return result({ stage: 'critique', blocked: c.blocked })
 critique = c.out
 
 // ---- 3. the synthesis: the one answer the bundles add up to, and no fact of its own ----
+// No stage stands between the critique and this one, so the critique reaches the author as hints
+// that nothing settled: this ask says what a hint may do, or the author would read a doubt as a
+// verdict and drop a fact the bundles proved (hintVerdictHits() of the shared block guards it).
 phase('Synthesis')
 const s = await stage(SYNTH, 'synthesis', 'Synthesis', {
   in: [...bundles, critique].join('\n'),
-  ask: `Question: ${ASK}\n\nThe bundles and the critique above are your whole material. Where the critique withdraws a fact, drop it from the answer and name it under the open points; where two bundles disagree, keep both claims with their pointers.${MISSING.length ? `\n\nThese directions brought nothing — the ceiling never started them, or they came back blocked — so the answer is missing what they would have carried: ${MISSING.join('; ')}. Name that under the open points.` : ''}`,
+  ask: `Question: ${ASK}\n\nThe bundles and the critique above are your whole material. Nothing settled the critique: it carries hints, not verdicts. A claim leaves the answer only when a fact of a bundle refutes it, named with its pointer; a hint no fact settles leaves the claim in the answer with its pointer, marked as not checked, and the check that hint asks for goes under the next step. Where two bundles disagree, keep both claims with their pointers.${MISSING.length ? `\n\nThese directions brought nothing — the ceiling never started them, or they came back blocked — so the answer is missing what they would have carried: ${MISSING.join('; ')}. Name that under the open points.` : ''}`,
   out: RESULT,
 }, DONE_SHAPE)
 if (!s.ok) return result({ stage: 'synthesis', blocked: s.blocked })

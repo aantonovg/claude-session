@@ -7,9 +7,10 @@
 # session:role contract lists; every role a script launches is in that script's stamped subset
 # (A23) and the stamp is in sync; no role prompt reads a key outside A26; no no-uplift author sits
 # on the main-model slot (A25); `size: large` moves a role one slot down and never past the
-# cheapest slot (A32); an unknown role takes the error path; and, executed over lib/block.js, that
-# a stage whose out file is missing or empty returns a block, never done — with mutants that must
-# turn the suite red.
+# cheapest slot (A32); an unknown role takes the error path; no role text lets a hint, a critique or
+# a critic withdraw a claim by itself (idea 3.6: a claim is dropped only where a fact refutes it);
+# and, executed over lib/block.js, that a stage whose out file is missing or empty returns a block,
+# never done — with mutants that must turn the suite red.
 # Temp dirs only, no network, no session, under 20 s.
 set -u
 
@@ -520,6 +521,47 @@ a task directory with a document suffix is taken as one|s/\.\(md\|jsonl/.(mdx|js
 a task directory is read as a file and its stage files land one level up|s/\{ dir: taskDirOf\(p\), file: null \}/{ dir: p.slice(0, cut), file: p }/
 a file of one run overwrites the file of the run before it|s/if \(!k\) throw new Error/if (false) throw new Error/
 MUT
+
+# ---- r10: a critique reaches a role as hints, never as verdicts (idea 3.6) ----
+# A role text that lets a hint, a critique or a critic withdraw or drop a claim by itself makes the
+# doubt a verdict, and the role then loses a fact its sources proved with no fact against it. The
+# rule is executed through hintVerdictHits() of lib/block.js over every role text, and the role that
+# writes an answer on a critique has to state what a hint may do, or the shape comes back the next
+# time the sentence is rewritten.
+cat > "$T/hintrole.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+let bad = 0
+for (const p of process.argv.slice(3)) {
+  const t = fs.readFileSync(p, 'utf8')
+  for (const h of b.hintVerdictHits(t)) { console.log(`${p}: a hint as a verdict: ${h}`); bad++ }
+}
+process.exit(bad ? 1 : 0)
+JS
+check "r10 no role text lets a hint act as a verdict" \
+  node "$T/hintrole.js" "$LIB/block.js" "${FILES[@]}"
+if [ -f "$R/synthesizer.md" ]; then
+  cat > "$T/phr.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const gap = b.phraseGap(fs.readFileSync(process.argv[3], 'utf8'), process.argv.slice(4))
+gap.forEach(g => console.log('missing: ' + g))
+process.exit(gap.length ? 1 : 0)
+JS
+  check "r10 the role that writes an answer on a critique states what a hint may do" \
+    node "$T/phr.js" "$LIB/block.js" "$R/synthesizer.md" \
+    'hints, not verdicts' 'only when a fact' 'refutes it' 'not checked'
+fi
+# executed, not read: the sentence that cost a true fact must be seen, and a mutant of the rule must
+# stop seeing it
+printf 'Where the critique withdraws a fact, drop it from the answer.\n' > "$T/verdict.md"
+check "r10 a text that lets the critique withdraw a fact is seen" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/hintrole.js" "$LIB/block.js" "$T/verdict.md"
+perl -pe "s/'critique', 'critiques'/'zzcritique', 'zzcritiques'/" "$LIB/block.js" > "$T/hmutant.js"
+check "r10 the mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$LIB/block.js" "$T/hmutant.js"
+check "r10 the mutant still loads" node -e 'require(process.argv[1])' "$T/hmutant.js"
+check "r10 the mutant that drops the critique as a subject is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/hintrole.js" "$T/hmutant.js" "$T/verdict.md"
 
 if [ "$FAILS" -eq 0 ]; then echo "roles: PASS $N"; exit 0; fi
 echo "roles: FAIL $FAILS failures, $N checks passed"
