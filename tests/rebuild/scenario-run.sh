@@ -21,7 +21,9 @@
 #     <variant> <key> <PASS|FAIL> <run-ts> <commit>
 # The driver writes FAIL for every key it ran, so a scenario nobody judged never reads as PASS;
 # the judge of test-session records the real verdict afterwards with --verdict, and
-# tests/rebuild/verdicts.sh takes the last line for the key.
+# tests/rebuild/verdicts.sh takes the last line for the key. A key whose environment or setup never
+# came up gets no verdict line at all — nothing was measured, so there is nothing to fail — and the
+# run ends non-zero with that count instead.
 #
 # Scenario file format (free text, no id inside a test name):
 #     <key>  base: <arguments or (none)>   prompts: "first prompt" "second prompt"
@@ -190,15 +192,30 @@ wait_idle() { # a turn ends when the transcript stays untouched for 60 s, capped
 
 log "run $RUN_TS variant=$VARIANT commit=$COMMIT scenarios=$SCENARIOS keys=$(echo "$KEYS" | tr '\n' ' ')"
 
+ERRORS=0
+export REPO
 for key in $KEYS; do
   PROJ=$OUT/project-$key
-  rm -rf "$PROJ"
+  # both, always: with --hide-old the plugin copy lives beside the project as <project>-plugin, so
+  # clearing the project alone leaves a copy that makes scenario-env refuse a directory which is
+  # not empty on the next run into the same OUT, and piles copies up under the results root
+  rm -rf "$PROJ" "$PROJ-plugin"
   if ! bash "$HERE/scenario-env.sh" "$VARIANT" "$PROJ" >> "$R" 2>&1; then
-    log "$key: scenario-env failed"; printf '%s %s FAIL %s %s\n' "$VARIANT" "$key" "$RUN_TS" "$COMMIT" >> "$V"; continue
+    # an environment that never came up measured no behavior: that is an error of the run, never a
+    # FAIL verdict of a scenario nobody ran
+    log "$key: scenario-env failed, no verdict line written"
+    echo "scenario-run: $key: scenario-env failed, see $R" >&2
+    ERRORS=$((ERRORS + 1)); continue
   fi
   CARGS=$(cat "$PROJ/claude-args")
   setup=$(field "$key" setup)
-  [ -n "$setup" ] && (cd "$PROJ" && eval "$setup") >> "$R" 2>&1
+  # the setup builds what the scenario measures (a baseline hash, a fixture tree): a setup that
+  # failed is the same kind of environment error, and the scenario is not run at all
+  if [ -n "$setup" ] && ! (cd "$PROJ" && eval "$setup") >> "$R" 2>&1; then
+    log "$key: setup failed, no verdict line written"
+    echo "scenario-run: $key: setup failed, see $R" >&2
+    ERRORS=$((ERRORS + 1)); continue
+  fi
   base=$(field "$key" base)
   PROJDIR=$HOME/.claude/projects/$(encode "$PROJ")
   mkdir -p "$PROJDIR"
@@ -236,10 +253,14 @@ for key in $KEYS; do
   f=$(newest)
   if [ -n "$f" ]; then cp "$f" "$OUT/$key.jsonl"; log "$key: transcript $OUT/$key.jsonl"; else log "$key: no transcript"; fi
   rm -f "$BEFORE"
-  [ "${KEEP_PROJECT:-0}" = 1 ] || rm -rf "$PROJ"
+  [ "${KEEP_PROJECT:-0}" = 1 ] || rm -rf "$PROJ" "$PROJ-plugin"
   printf '%s %s FAIL %s %s\n' "$VARIANT" "$key" "$RUN_TS" "$COMMIT" >> "$V"
 done
 
-log "done"
+log "done ($ERRORS environment error(s))"
 touch "$OUT/done"
 echo "scenario-run: $OUT"
+if [ "$ERRORS" -gt 0 ]; then
+  echo "scenario-run: $ERRORS scenario(s) never ran: environment error, no verdict line for them" >&2
+  exit 1
+fi
