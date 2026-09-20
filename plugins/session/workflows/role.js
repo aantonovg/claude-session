@@ -6,7 +6,7 @@ export const meta = {
 }
 /* usage:
 One catalog role, one agent, one output file.
-role (string, required): plan-author spec-author scenario-author code-author test-author coverage-checker critic evidence-researcher evidence evidence-triage fixer researcher web-researcher synthesizer executor waiter translator
+role (string, required): plan-author spec-author scenario-author code-author test-author coverage-checker closure-author critic evidence-researcher evidence evidence-triage fixer researcher web-researcher synthesizer executor waiter translator
 in (array of absolute paths, default [])
 ask (string, the job or question in prose, required)
 out (string, absolute output path, required)
@@ -149,6 +149,11 @@ const CLASSES = {
       "uplift": false
     },
     "coverage-checker": {
+      "agent": "tools-read-write",
+      "slot": "sonnet",
+      "uplift": false
+    },
+    "closure-author": {
       "agent": "tools-read-write",
       "slot": "sonnet",
       "uplift": false
@@ -339,7 +344,9 @@ function blockedLine(why) {
 // and an agent that worked in that directory writes the file the way it typed it at the shell —
 // `out/make-tests.md` for `/p/out/make-tests.md`. That is the same file, so it counts. A tail of
 // the path counts only when it starts at a directory boundary of the path and stands in the text as
-// a whole path of its own: `/other/dir/make-tests.md` and `my-make-tests.md` never pass for it.
+// a whole path of its own: `/other/dir/make-tests.md`, `my-make-tests.md` and `make-tests.md.bak`
+// never pass for it — a neighbour whose name carries this one is another file, and a size line
+// about it is no evidence that this one was written.
 const PATH_CHAR = /[A-Za-z0-9_.\\/-]/
 function namesOut(text, out) {
   if (!out) throw new Error('namesOut needs the output path')
@@ -349,7 +356,13 @@ function namesOut(text, out) {
   for (let i = 0; i < abs.length - 1; i++) if (abs[i] === '/') forms.push(abs.slice(i + 1))
   for (const form of forms) {
     for (let at = s.indexOf(form); at !== -1; at = s.indexOf(form, at + 1)) {
-      if (at === 0 || !PATH_CHAR.test(s[at - 1])) return true
+      const after = at + form.length
+      const opens = at === 0 || !PATH_CHAR.test(s[at - 1])
+      // a full stop that ends the sentence is not a longer name: `.md.` closes the path, `.md.bak`
+      // is another file, so a dot counts as a boundary only when no path character follows it
+      const stop = s[after] === '.' && (after + 1 >= s.length || !PATH_CHAR.test(s[after + 1]))
+      const closes = after >= s.length || !PATH_CHAR.test(s[after]) || stop
+      if (opens && closes) return true
     }
   }
   return false
@@ -1030,10 +1043,23 @@ function keyCheckState(c, file) {
   return { ok: gap.length === 0, ran: true, check: c.out || where, gap }
 }
 
-// stageSeats(depth, wanted): the ceiling of A30 over the units of one parallel stage, for any flow.
-// It is the rule chainSeats() carries for the review chain, under a name the other flows can read.
-function stageSeats(depth, wanted) {
-  return chainSeats(depth, wanted)
+// stageStop(s, name): what a stage result does to the run. A stage whose output check came back
+// bad — a blocked agent, a file nobody wrote, an empty one — ends the run at that stage, and the
+// control run is no exception: a control that never spoke says nothing about the base version, so
+// nothing may be built on what it left behind. The return is the extra the result builder takes,
+// so every stage of a flow stops through the one builder and names itself while doing it.
+function stageStop(s, name) {
+  if (!name) throw new Error('stageStop needs the stage name')
+  if (s && s.ok === true) return { stop: false, stage: name, blocked: null }
+  const why = (s && s.blocked) || 'the stage came back with nothing'
+  return { stop: true, stage: name, blocked: blockedLine(why) }
+}
+
+// fixerDone(capped): the stages the fix loop adds to the ran list. A loop the cycle ceiling cut
+// left the check failing, so the fix stage never did its job: it is a gap of the run, never a
+// stage that ran. A loop that ended by itself ended on a passing check.
+function fixerDone(capped) {
+  return capped === true ? [] : ['fixer']
 }
 
 // makeStatus(s) / makeResult(s): the one return of a make run. Every exit of the flow is built here
@@ -1070,6 +1096,9 @@ function makeStatus(s) {
       ? ' The tests failed on the base version, as a negative control must.'
       : ' The negative control did not hold.'
     : ''
+  const treeText = o.tree && o.tree.untouched !== true
+    ? ' The control-run stage left the working tree unverified: what stands in it now is nobody\'s statement.'
+    : ''
   const gapText = gap.length
     ? ` ${gap.length} gap(s) stand in this return and in ${where}: they are unfinished work, not a silent retry.`
     : ''
@@ -1077,15 +1106,20 @@ function makeStatus(s) {
   const foldText = folded.length
     ? ` The depth folded ${folded.join(', ')} into the short form: those levels were not written as files of their own.`
     : ''
-  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${keyText}${foldText}${gapText}${stopped}`
+  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${treeText}${keyText}${foldText}${gapText}${stopped}`
 }
 function makeResult(s) {
   const o = s || {}
   const stages = o.stages || []
   const done = o.done || []
   const nc = o.control || null
+  // what the control run left in the working tree: a tree it changed, and a tree it never spoke
+  // about, are both unverified ground under every later stage, so they take the run down and name
+  // the stage that left them — the gap alone would stand in a return whose `ok` says finished
+  const tr = o.tree || null
   const gap = (o.gap || []).slice()
   if (nc && nc.gap) gap.push(nc.gap)
+  if (tr && tr.gap) gap.push(`the control-run stage: ${tr.gap}`)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
   const run = o.run == null ? null : String(o.run)
   // the oracle stages of this range: with one of them in the range the check decides the result,
@@ -1098,7 +1132,8 @@ function makeResult(s) {
   // what the chain found in the key document decides this run too: a specification it could not
   // settle never turns into a finished run because the oracle below it passed
   const key = o.key == null ? true : o.key !== false
-  const ok = !blocked && key && (!nc || nc.ok) && (noop || (oracle ? run === 'PASS' : ranAll))
+  const treeOk = !tr || tr.untouched === true
+  const ok = !blocked && key && (!nc || nc.ok) && treeOk && (noop || (oracle ? run === 'PASS' : ranAll))
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1111,13 +1146,14 @@ function makeResult(s) {
     run,
     oracle,
     control: nc ? { required: nc.required, ran: nc.ran, verdict: nc.verdict, ok: nc.ok } : null,
+    tree: tr ? { stated: tr.stated === true, untouched: tr.untouched === true } : null,
     cycles: Number(o.cycles || 0),
     check: o.check == null ? null : o.check,
     keyCheck: key,
     folded: o.folded || [],
     gap,
     status: makeStatus({
-      run, gap, oracle, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
+      run, gap, oracle, out: o.out, control: nc, tree: tr, stage: o.stage, blocked, folded: o.folded || [],
       key, noop, done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
     }),
   }
@@ -1131,40 +1167,58 @@ function makeResult(s) {
 // its synthesis, its critique or every direction is not finished, whatever else it wrote. A
 // direction that came back blocked is a hole in the material the answer rests on: it stands in
 // `gap` like a direction the ceiling cut, and it takes `ok` down with it — a partly failed research
-// stage never returns the shape of a whole one.
+// stage never returns the shape of a whole one. A direction the ceiling of A30 never seated is the
+// same hole from the other side: the ceiling ends the stage and writes the gap (A30), so the run
+// that asked five directions and ran two is unfinished work, and the status says both numbers.
 function probeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
+  const asked = Number(o.directions || 0)
+  const seated = Number(o.seated == null ? asked : o.seated)
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
+  const seatText = seated < asked
+    ? ` The ceiling of ${Number(o.room || 0)} agents per stage seated ${seated} of the ${asked} direction(s) asked; the rest never started.`
+    : ''
   const gapText = gap.length
     ? ` ${gap.length} direction(s) are missing from this answer — the ceiling of the stage cut them or they came back blocked — and that is a gap of it, never a second round.`
     : ''
   const where = o.out ? ` The answer stands in ${o.out}; every claim in it carries the pointer it rests on.` : ''
-  return `${Number(o.bundles || 0)} of ${Number(o.directions || 0)} direction(s) came back, ${o.critique ? 'critiqued' : 'with no critique'}, ${o.synthesis ? 'synthesised' : 'with no synthesis'}.${where}${gapText}${stopped}`
+  return `${Number(o.bundles || 0)} of ${asked} direction(s) asked came back, ${o.critique ? 'critiqued' : 'with no critique'}, ${o.synthesis ? 'synthesised' : 'with no synthesis'}.${where}${seatText}${gapText}${stopped}`
 }
 function probeResult(s) {
   const o = s || {}
   const bundles = o.bundles || []
   const directions = o.directions || []
+  // the directions the ceiling never seated: their gap lines are written here, with the room that
+  // cut them, so no caller can hand the ceiling to the result without the run losing its `ok`
+  const cut = o.cut || []
+  const seated = directions.length - cut.length
   const gap = (o.gap || []).slice()
+  for (let i = 0; i < cut.length; i++) {
+    gap.push(`direction ${seated + i + 1} (${cut[i]}) never started: the ceiling of ${Number(o.room || 0)} agents per stage ended the research stage`)
+  }
   const lost = o.blockedStages || []
   // a direction the flow started and lost is a gap of the answer, on the same line as one the
   // ceiling never seated: the synthesis was written over less material than the question asked for
   for (const s of lost) gap.push(`${s} — that direction brought nothing, so the answer rests on less material than the question asked for`)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
-  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis && lost.length === 0
+  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis
+    && lost.length === 0 && cut.length === 0
   const res = {
     out: o.out == null ? null : o.out,
     ok,
     directions,
+    asked: directions.length,
+    seated,
+    cut,
     bundles,
     critique: o.critique == null ? null : o.critique,
     synthesis: o.synthesis == null ? null : o.synthesis,
     gap,
     blockedStages: o.blockedStages || [],
     status: probeStatus({
-      bundles: bundles.length, directions: directions.length, critique: o.critique,
-      synthesis: o.synthesis, out: o.out, gap, stage: o.stage, blocked,
+      bundles: bundles.length, directions: directions.length, seated, room: o.room,
+      critique: o.critique, synthesis: o.synthesis, out: o.out, gap, stage: o.stage, blocked,
     }),
   }
   if (o.stage) res.stage = o.stage
@@ -1183,7 +1237,8 @@ if (typeof module !== 'undefined' && module.exports) {
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
-    fixerState, keyCheckState, controlTree, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
+    fixerState, fixerDone, keyCheckState, controlTree, stageStop, makeStatus, makeResult,
+    probeStatus, probeResult,
   }
 }
 // ---- end shared block ----
@@ -1196,6 +1251,7 @@ const ROLE_TEXT = {
   "code-author": "Code author. The tests already state what the change must do. You change the code until they pass, and nothing else.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the inputs first, then change only the files the task names. Run the check the task names after every step; when the task names no check, say so in your return instead of inventing one. A test you cannot make pass is a finding: report it with the failing line verbatim, never weaken the test, never mark it skipped, never rewrite it to match the code.\n\nSmallest change that passes: no refactor the task did not ask for, no new abstraction for one caller, no new file where an edit was asked, no commit, no push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the decisive line of the last check run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "test-author": "Test author. You turn the scenario list into executable tests. The scenarios are the level above you: every scenario gets a test, and no test stands without a scenario.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the scenario file first. Write the tests in the harness the repository already uses, with the assertions the scenario states and the decisive value in the failure message. Name a test after what it proves, never after a scenario id or number. A scenario you cannot express as a test is reported, not silently dropped.\n\nWrite the tests so they fail before the change and pass after it: a test that passes against the unchanged code proves nothing. Run them, and report the failure you see now as evidence that they bite.\n\nNever change the code under test, never relax an assertion to make a run green.\n\nList every test file you wrote in `{out}`, one path per line, and write nothing else into it.\n\nReturn: the test paths, the test count, the scenarios you could not express, the decisive line of the run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "coverage-checker": "Coverage checker. You read two lists \u2014 the wanted scenarios and the tests that exist \u2014 and report where they do not meet. You judge no quality: a badly written test that covers its scenario is covered.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nMatch by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.\n\nWrite one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into \"the scenario list is missing it\" and \"the test proves nothing anybody asked for\"; and the pairs where the test covers only part of its scenario, with the part left out.\n\nNever write a test, never change a file under test.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "closure-author": "Closure author. A run is over and you write its one closing file: what ran, what the checks said, and what stands open. You add no work of your own and no verdict the inputs do not carry.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nThe task text above carries the stage list, the verdicts and the open points of the run; the files carry what each stage wrote. Read the files before you summarise them, and quote a check result the way the run stated it, never the way you read a log.\n\nWrite one file, `{out}`: the stages that ran and the levels the depth folded away; the verdict of every check, with the line the run printed; every open point \u2014 a ceiling that ended a stage, an unverified area, a row nobody settled \u2014 as unfinished work, in the words it was handed to you; and the path of every file the run wrote, so the next reader opens the evidence instead of this summary.\n\nNever drop an open point, never soften one into a sentence that sounds finished, never invent a result no input carries. Never change a file the run produced, never start work of your own, never commit.\n\nReturn: the output path, the counts (stages, open points), then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "critic": "Critic. You read the object below in a clean context and point at the places where an error may hide. You give hints, never verdicts: what you suspect is settled later by facts, not by your confidence.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nTool-call budget: at most 12 calls, and no call that changes anything. Read the object, then stop reading and write. Spending the budget on a wide tour costs more than it finds; read what the task points at.\n\nAt most 5 hints, the strongest first. Every hint carries: the aspect it comes from; the place (file and line range, or document section); the error you suspect, in one sentence; the severity (high, medium, low); and the one piece of evidence that would settle it \u2014 a command to run, a file to read, a value to compare. A hint nobody could settle is not a hint, drop it.\n\nNo praise, no summary of what the object does, no style remark, no restatement of a rule the object already follows. When the task names a version from before the change, a shape that already stands in it is no finding of this change: hint at what this change brought.\n\nWrite the hint list into `{out}` in that shape and change nothing else.\n\nReturn: the output path and the hint count by severity, then the hints themselves \u2014 one line per hint, nothing else on the line:\n\n`HINT | reliability | slug.js:4 | high | the cut can land on a dash and leave a trailing one | run slug('ab cd', 3) and look at the tail`\n\nOnly those lines are read: a hint that stands in `{out}` but on no line of your return is a hint nobody got, and a count is no hint. Then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "evidence-researcher": "Evidence researcher. One group of hints, many cheap queries, one answer per hint: confirmed, refuted or undetermined. You decide nothing about what to change; you bring the facts that decide it.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nFor every hint of the group, one answer under that hint's own id: run the check the hint names, read the code path around the place, and reproduce the failure when the hint claims one. A failure, or a shape, that already stands in the unchanged base version is not a finding of this change \u2014 say so, with both runs or both places quoted.\n\nAnswer each hint with `confirmed`, `refuted` or `undetermined`, every answer carrying its pointer: file and line, command and its decisive output line, or commit hash. `confirmed` needs a fact of the object that holds this one hint up; a hint the files and the runs neither hold up nor settle is `undetermined`, never `confirmed`, and no hint is confirmed for sounding right. `undetermined` is a real answer and better than a guess; it says what you tried and what would settle it.\n\nA hint that calls something needless, duplicated or absent is refuted as soon as a fact stands against it: a caller, a test, or a rule of the object's own documents that needs exactly that thing. Look for one before you confirm such a hint, and quote it with file and line.\n\nKeep two kinds of failure apart: a failure of the object under review, and a failure of your own run (a tool, an access, a sandbox limit). The second one is never a finding about the object; report it in its own list.\n\nWrite the answers into `{out}` and change nothing under review. You have no Write tool: create `{out}` with a shell redirect, and write no other file.\n\nReturn: the output path and the counts (confirmed, refuted, undetermined, harness failures), then your answers themselves \u2014 one line per hint id, nothing else on the line:\n\n`EVIDENCE | g1.h2 | refuted | base:no | check.js:2 calls slug(s, 12), so the argument the hint calls needless has a caller`\n\nEvery hint id of your group gets its own such line, in that order of fields. Only those lines are read: a count, a summary, and one verdict written over a whole group settle no hint and reach nobody, and an answer that stands in `{out}` but on no line of your return is an answer nobody got. Then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "evidence": "Evidence agent, short form: you collect the facts for the hints below and decide each one yourself, in one pass.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer hint, under that hint's own id: run the check it names, read the place it points at, then say `confirmed` (a fact of the object holds this one hint up and it names a real change), `refuted` (a fact settles it against the hint) or `undetermined` (the facts do not settle it, so it goes to the user). Every line carries its pointer: file and line, command with its decisive output line, or commit hash. A claim with no pointer does not go in, and a hint nothing holds up is `undetermined`, never `confirmed`.\n\nA hint that calls something needless, duplicated or absent is refuted as soon as a caller, a test or a rule of the object's own documents needs exactly that thing; look for one before you confirm such a hint.\n\nA failure, or a shape, that already stands in the unchanged base version is not a finding of this change. A failure of your own run \u2014 tool, access, sandbox \u2014 is `harness`, no finding about the object either; keep those in their own list.\n\nA confirmed hint states the change in one sentence: what to change and where. It never states how to write the code.\n\nYou have no Write tool: create `{out}` with a shell redirect, and write no other file. Write the same four words into `{out}`: confirmed with the change, refuted with the refuting fact, undetermined with what is missing, harness failures apart.\n\nReturn: the output path and the four counts, then your answers themselves \u2014 one line per hint id, nothing else on the line:\n\n`EVIDENCE | g1.h2 | refuted | base:no | check.js:2 calls slug(s, 12), so the argument the hint calls needless has a caller`\n\nEvery hint id you were given gets its own such line, in that order of fields. Only those lines are read: a count, a summary, and one verdict written over a whole group settle no hint and reach nobody, and an answer that stands in the file but on no line of your return is an answer nobody got. Then the last line `DONE` or `BLOCKED: <reason>`.\n",

@@ -63,6 +63,7 @@
     "code-author": { "agent": "tools-edit", "slot": "sonnet", "uplift": false },
     "test-author": { "agent": "tools-edit", "slot": "sonnet", "uplift": false },
     "coverage-checker": { "agent": "tools-read-write", "slot": "sonnet", "uplift": false },
+    "closure-author": { "agent": "tools-read-write", "slot": "sonnet", "uplift": false },
     "critic": { "agent": "tools-read-write", "slot": "main", "splitSlot": "opus", "uplift": false },
     "evidence-researcher": { "agent": "tools-read-bash", "slot": "sonnet", "uplift": false },
     "evidence": { "agent": "tools-read-bash", "slot": "sonnet", "uplift": false },

@@ -4,7 +4,7 @@
     {
       "path": "workflows/role.js",
       "block": true,
-      "roles": ["plan-author", "spec-author", "scenario-author", "code-author", "test-author", "coverage-checker", "critic", "evidence-researcher", "evidence", "evidence-triage", "fixer", "researcher", "web-researcher", "synthesizer", "executor", "waiter", "translator"],
+      "roles": ["plan-author", "spec-author", "scenario-author", "code-author", "test-author", "coverage-checker", "closure-author", "critic", "evidence-researcher", "evidence", "evidence-triage", "fixer", "researcher", "web-researcher", "synthesizer", "executor", "waiter", "translator"],
       "aspects": []
     },
     {
@@ -16,7 +16,7 @@
     {
       "path": "workflows/make.js",
       "block": true,
-      "roles": ["spec-author", "scenario-author", "test-author", "code-author", "executor", "coverage-checker", "fixer"],
+      "roles": ["spec-author", "scenario-author", "test-author", "code-author", "executor", "coverage-checker", "fixer", "closure-author"],
       "aspects": []
     },
     {

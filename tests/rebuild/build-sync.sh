@@ -168,8 +168,8 @@ for (const size of ['small', 'medium']) eq(['main', 'opus', 'sonnet'].map(s => b
 eq(['main', 'opus', 'sonnet'].map(s => b.slotForSize(s, 'large')), ['opus', 'sonnet', 'sonnet'], 'slotForSize large')
 eq(b.slotForSize('main', null), 'main', 'slotForSize default size')
 
-// roles: 17 catalog rows, each with an existing tool-set agent, the split critic slot, the uplift
-eq(b.roleNames().length, 17, 'role count')
+// roles: 18 catalog rows, each with an existing tool-set agent, the split critic slot, the uplift
+eq(b.roleNames().length, 18, 'role count')
 eq(b.roleAgent('code-author'), 'tools-edit', 'roleAgent code-author')
 eq(b.roleSlot('code-author'), 'sonnet', 'roleSlot code-author')
 eq(b.roleSlot('translator', 'large'), 'sonnet', 'roleSlot translator large')
