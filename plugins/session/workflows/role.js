@@ -9,11 +9,11 @@ One catalog role, one agent, one file.
 role (required): plan-author spec-author scenario-author code-author test-author coverage-checker closure-author critic evidence-researcher evidence evidence-triage fixer researcher web-researcher synthesizer executor waiter translator
 in (absolute paths array, default [])
 ask (the job in prose, required)
-out (absolute path, required: the output file, or a task directory ending in / for the role's layout file)
+out (absolute output file, or a task directory ending in / for the layout file, required)
 class (c1-c5, default c3)
 submodes (array: no-sonnet no-opus no-fable, default [])
-size (small medium large, default medium; large moves the role one slot down)
-Out: the file named by out; returns {role, out, class, slot, label}; a failure returns blocked.
+size (small medium large, default medium; large drops one slot)
+Out: the file named by out; returns {role, out, class, slot, label}, or blocked; closure-author writes no file: out null, report in the return.
 Use: one agent's job. Not: a flow of roles.
 */
 
@@ -418,6 +418,20 @@ function outDir(out) {
   return cut < 1 ? '/' : s.slice(0, cut)
 }
 
+// taskDirOf(out): the task directory an argument that names a directory stands for. Nothing is
+// read out of the last segment: a task directory is a directory whatever its slug looks like, so
+// `2026-09-20-v0.16` stays itself where outDir()'s dot rule would drop it and put every file of
+// the task one level up, in `tasks/`. A last segment carrying a document suffix is a file, never
+// a task directory: it stops the launch instead of becoming a directory of that name.
+function taskDirOf(out) {
+  const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!s || s[0] !== '/' || s.length < 2) throw new Error(`taskDirOf needs an absolute task directory, got ${out}`)
+  if (/\.(md|jsonl?|txt|js|sh|ya?ml)$/i.test(s.slice(s.lastIndexOf('/') + 1))) {
+    throw new Error(`taskDirOf needs a task directory, got the file ${out}`)
+  }
+  return s
+}
+
 // ---- the task file group of idea 8.8 ----
 // One layout for every process and every depth, source lib/task-layout.md: bin/build.sh renders
 // its two tables here, so the file a stage writes and the file the process skill reads are one
@@ -602,8 +616,9 @@ function taskPath(dir, key, stem) {
 // the layout puts its file one level below the task directory, and the roles on a shell-only tool
 // set create their output with a redirect: `> <dir>/runs/run.md` dies with "No such file or
 // directory" when `<dir>/runs` is absent, and no stage, script or role text of this flow runs
-// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself), and
-// a file that sits directly in the task directory needs none either: the launcher made that one.
+// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself); a
+// shell-only role gets the mkdir for the directory its file sits in, the task directory included,
+// because a launcher that only hands over a path may never have created it.
 function writeHint(out, hasShell) {
   const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
   if (!s || s[0] !== '/') throw new Error(`writeHint needs an absolute output path, got ${out}`)
@@ -646,6 +661,19 @@ function closureReport(ret) {
   const text = lines.join('\n').trim()
   if (!text) return { ok: false, report: null, gap: 'the closing report carried nothing but its last line' }
   return { ok: true, report: text, gap: null }
+}
+
+// textResult(ret, head, agent): the whole return of a stage whose output is its return and not a
+// file — the closure role. `out` is null in both shapes, because no file was written and a
+// launcher that reads a path here would look for a file nobody creates; a return closureReport()
+// calls a gap becomes a blocked result, never a finished one, and the agent type stands only on a
+// result that carries a report. The decision lives here, not in workflows/role.js, so a test can
+// execute it instead of grepping the script.
+function textResult(ret, head, agent) {
+  const h = { ...(head || {}), out: null }
+  const c = closureReport(ret)
+  if (!c.ok) return { ...h, blocked: blockedLine(c.gap) }
+  return { ...h, agent, report: c.report, result: lastLine(ret) }
 }
 
 // ---- the review chain of idea 3.6 ----
@@ -1486,8 +1514,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
-    LAYOUT, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
+    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
+    LAYOUT, taskDirOf, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
@@ -1569,7 +1597,13 @@ const TEXTMODE = roleReturnsText(ROLE)
 // the task file group, and the role writes the file lib/task-layout.md gives it (idea 8.8), so a
 // launcher never has to know the file name of a level it did not write. A role with no row of
 // that table writes no file of the group and keeps needing a path of its own.
-const FILE = TEXTMODE ? outDir(OUT) : /\/$/.test(OUT) ? roleOutPath(OUT, ROLE) : OUT
+// A text-mode role reads `out` as the task directory itself, through taskDirOf() of the shared
+// block: a slug carrying a dot (`2026-09-20-v0.16`) is a directory like any other, and a launch
+// that hands over a file there stops here instead of naming a directory nobody has.
+let FILE
+try {
+  FILE = TEXTMODE ? taskDirOf(OUT) : /\/$/.test(OUT) ? roleOutPath(OUT, ROLE) : OUT
+} catch (e) { return fail(String((e && e.message) || e)) }
 if (!FILE) return fail(`role ${ROLE} has no file of the task layout: args.out must name the output file`, { keys: taskKeys() })
 if (!CLASSES.table[CLS]) return fail(`unknown class ${CLS}`, { classes: Object.keys(CLASSES.table) })
 if (!CLASSES.sizes.includes(SIZE)) return fail(`unknown size ${SIZE}`, { sizes: CLASSES.sizes })
@@ -1619,13 +1653,11 @@ const TAIL = TEXTMODE
   ? `\n\nRead only inside the directories the paths above name, and write no file: a subagent of this harness returns its findings as text, so a report written into a file reaches nobody. Return the report the job above asks for. On a permission denial stop at once and return BLOCKED: <the denied action>.`
   : `\n\nWork only inside the directories the paths above name. Write ${FILE} yourself.${writeHint(FILE, BASH_AGENTS.includes(AGENT))} Start your return with one line \`${FILE} <n> bytes\` giving the size of what you wrote (${COUNT}), then the return the job above asks for. A file you did not write, or left empty, is not a finished job: return BLOCKED: <why> instead of a size. On a permission denial stop at once and return BLOCKED: <the denied action>.`
 const r = await agent(PROMPT + TAIL, O)
-// a role whose output is its return is checked on that return by closureReport() of the shared
-// block: an empty or blocked return is a blocked stage, never a finished one
-if (TEXTMODE) {
-  const c = closureReport(r)
-  if (!c.ok) return { role: ROLE, out: null, class: JOB.class, slot: SLOT, label: O.label, blocked: blockedLine(c.gap) }
-  return { role: ROLE, out: null, class: JOB.class, slot: SLOT, label: O.label, agent: AGENT, report: c.report, result: lastLine(r) }
-}
+// a role whose output is its return is checked on that return, by textResult() of the shared block:
+// an empty or blocked return is a blocked stage, never a finished one, and `out` is null in both
+// shapes because no file was written. The whole decision is that one function, so a test executes
+// it instead of reading this line.
+if (TEXTMODE) return textResult(r, { role: ROLE, class: JOB.class, slot: SLOT, label: O.label }, AGENT)
 // the stage is done only when the return names the output file and reports a positive size for it;
 // a stage that wrote nothing, or an empty file, returns blocked, never done. The whole verdict is
 // outVerdict() of the shared block, so a test can execute it instead of reading this line.

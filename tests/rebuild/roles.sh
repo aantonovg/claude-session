@@ -376,8 +376,10 @@ if [ -f "$ROLEJS" ]; then
   # a layout directory is one level below the task directory and a shell redirect makes no
   # directory: the tail carries the mkdir, built by writeHint() of the shared block
   check "r8 role.js tells a shell-only role to make its directory" grep -Fq 'writeHint(' <<<"$code"
-  # the one role whose output is its return writes no file, so no path is demanded of it
-  check "r8 role.js checks the closure role on its return, not on a file" grep -Fq 'closureReport(' <<<"$code"
+  # the one role whose output is its return writes no file, so no path is demanded of it: the
+  # whole decision is textResult() of the shared block, executed by r9 below
+  check "r8 role.js checks the closure role on its return, not on a file" grep -Fq 'textResult(' <<<"$code"
+  check "r8 role.js reads a text-mode out through taskDirOf()" grep -Fq 'taskDirOf(' <<<"$code"
   check "r8 the contract of role names the task-directory form of out" \
     grep -qiE "^out \(.*(task|layout)" <<<"$(awk 'f==0&&/^\/\* usage:/{f=1} f{print} f&&/\*\//{exit}' "$ROLEJS")"
 fi
@@ -408,6 +410,68 @@ PY
   check "r8 chain.js spells no stage path by hand" bash -c '! grep -qE "\\$\{DIR\}/[a-z]" <<<"$1"' _ "$ccode"
   check "r8 chain.js tells a shell-only stage to make its directory" grep -Fq 'writeHint(' <<<"$ccode"
 fi
+
+# ---- r9 (P5): the text-mode stage and the task directory, executed, not grepped ----
+# The role whose whole output is its return (closure-author) is decided by textResult() of the
+# shared block, and the task directory of an `out` argument by taskDirOf(): both run here over
+# lib/block.js, and the mutants below prove the suite really decides them.
+cat > "$T/textres.js" <<'JS'
+const b = require(process.argv[2])
+const out = []
+const ck = (cond, what) => out.push(`${cond ? 'ok' : 'bad'} ${what}`)
+const head = { role: 'closure-author', class: 'c3', slot: 'sonnet', label: 'son-hi-closure-author' }
+const AG = 'session:tools-read-write'
+const good = b.textResult('the run closed every subtask\nDONE', head, AG)
+ck(good.out === null, 'a finished text stage returns no path: no file was written')
+ck(good.report === 'the run closed every subtask', 'the report is the return without its shape line')
+ck(good.blocked === undefined, 'a finished text stage carries no blocked line')
+ck(good.role === 'closure-author' && good.slot === 'sonnet' && good.label === head.label, 'the head fields stand')
+ck(good.agent === AG, 'the agent type stands on a finished stage')
+ck(good.result === 'DONE', 'the last line of the return is the result line')
+const denied = b.textResult('BLOCKED: denied', head, AG)
+ck(denied.out === null, 'a blocked text stage returns no path either')
+ck(/^BLOCKED: /.test(String(denied.blocked)), 'a blocked return is a blocked stage')
+ck(denied.report === undefined, 'and carries no report')
+ck(/^BLOCKED: /.test(String(b.textResult('DONE', head, AG).blocked)), 'a return of nothing but its shape line is blocked')
+ck(/^BLOCKED: /.test(String(b.textResult('', head, AG).blocked)), 'an empty return is blocked')
+// taskDirOf: a task directory is a directory whatever its slug reads like
+ck(b.taskDirOf('/p/tasks/2026-09-20-v0.16') === '/p/tasks/2026-09-20-v0.16', 'a dotted slug keeps its own directory')
+ck(b.taskDirOf('/p/tasks/t/') === '/p/tasks/t', 'a trailing slash is stripped')
+ck(b.taskPath(b.taskDirOf('/p/tasks/2026-09-20-v0.16'), 'report') === '/p/tasks/2026-09-20-v0.16/report.md', 'and its stage files stay inside it')
+let threw = false
+try { b.taskDirOf('/p/tasks/t/report.md') } catch (e) { threw = true }
+ck(threw, 'a document path is no task directory')
+threw = false
+try { b.taskDirOf('rel/dir') } catch (e) { threw = true }
+ck(threw, 'a relative path is refused')
+console.log(out.join('\n'))
+JS
+node "$T/textres.js" "$LIB/block.js" > "$T/textres.out" 2>&1
+if [ ! -s "$T/textres.out" ]; then
+  fail "r9 the text-mode suite produced no line (node failed)"
+  sed 's/^/  /' "$T/textres.out" 2>/dev/null
+else
+  while IFS= read -r line; do
+    case $line in
+      "ok "*) pass ;;
+      "bad "*) fail "r9 ${line#bad }" ;;
+      *) fail "r9 unexpected output: $line" ;;
+    esac
+  done < "$T/textres.out"
+fi
+i=0
+while IFS='|' read -r what expr; do
+  [ -n "$what" ] || continue
+  i=$((i + 1))
+  perl -pe "$expr" "$LIB/block.js" > "$T/tmutant$i.js"
+  check "r9 mutant $i is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$LIB/block.js" "$T/tmutant$i.js"
+  node "$T/textres.js" "$T/tmutant$i.js" > "$T/tmutant$i.out" 2>&1
+  check "r9 the suite catches the mutant: $what" grep -q '^bad ' "$T/tmutant$i.out"
+done <<'MUT'
+a text stage hands back a path to a file nobody wrote|s/out: null \}/out: 'x' }/
+a gap of the closing report passes as a finished stage|s/if \(!c\.ok\) return \{ \.\.\.h/if (false) return { ...h/
+a task directory with a document suffix is taken as one|s/\.\(md\|jsonl/.(mdx|jsonl/
+MUT
 
 if [ "$FAILS" -eq 0 ]; then echo "roles: PASS $N"; exit 0; fi
 echo "roles: FAIL $FAILS failures, $N checks passed"
