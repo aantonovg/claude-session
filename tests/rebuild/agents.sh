@@ -10,7 +10,12 @@
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-P=$REPO/plugins/session
+# TOOLPLUGIN=<root> runs the same checks against another plugin's root (P7: the tool plugin
+# template and the stub fixture are plugins of their own). In that mode the agent roster and the
+# workflow list come from that root, and an MCP tool name (mcp__<server>__<tool>) counts as a tool
+# of the set: a tool plugin exists to carry exactly those.
+FOREIGN=${TOOLPLUGIN:-}
+P=${FOREIGN:-$REPO/plugins/session}
 A=$P/agents
 
 N=0; FAILS=0
@@ -19,7 +24,13 @@ fail() { echo "FAIL $1"; FAILS=$((FAILS + 1)); }
 check() { local label=$1; shift; if "$@"; then pass; else fail "$label"; fi; }
 
 ALLOWED="Bash Edit Read Write WebFetch WebSearch"
-WANT="tools-read-write tools-read-bash tools-read-write-bash tools-edit tools-web"
+if [ -n "$FOREIGN" ]; then
+  WANT=
+  WORKFLOWS=$(for f in "$P"/workflows/*.js; do [ -f "$f" ] && basename "$f" .js; done)
+else
+  WANT="tools-read-write tools-read-bash tools-read-write-bash tools-edit tools-web"
+  WORKFLOWS="role chain make probe"
+fi
 
 for w in $WANT; do
   check "a1 agents/$w.md exists" test -f "$A/$w.md"
@@ -47,7 +58,12 @@ for f in "${FILES[@]}"; do
   check "a2 $b no effort key (A9: the call site passes it)" bash -c '! grep -Eq "^effort:" <<<"$1"' _ "$fm"
   tools=$(grep -E '^tools: ' <<<"$fm" | sed 's/^tools: //' | tr -d ' ' | tr ',' ' ')
   extra=
-  for t in $tools; do case " $ALLOWED " in *" $t "*) ;; *) extra="$extra $t" ;; esac; done
+  for t in $tools; do
+    case " $ALLOWED " in *" $t "*) continue ;; esac
+    # a tool plugin carries its server's tools, which are no built-ins by construction
+    if [ -n "$FOREIGN" ] && printf '%s' "$t" | grep -Eq '^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$'; then continue; fi
+    extra="$extra $t"
+  done
   check "a2 $b tools are built-ins of the allowed set (extra:$extra)" test -z "$extra"
   check "a2 $b names its tool list in the body" bash -c 'for t in $2; do grep -q "$t" <<<"$1" || exit 1; done' _ "$body" "$tools"
   check "a2 $b states a return shape" grep -q '^Return:' <<<"$body"
@@ -55,13 +71,13 @@ for f in "${FILES[@]}"; do
   check "a2 $b states the working directory rule" grep -Eq 'only inside the directory|only inside the directory the output path names' <<<"$body"
 done
 
-# a3: every agentType a new workflow launches resolves to an agent file of this plugin.
-for w in role chain make probe; do
+# a3: every agentType a workflow of this root launches resolves to an agent file of the same root.
+for w in $WORKFLOWS; do
   f=$P/workflows/$w.js
   [ -f "$f" ] || continue
   types=$(grep -oE "agentType: *['\"][^'\"]+['\"]" "$f" | sed -E "s/agentType: *['\"]//; s/['\"]$//" | sort -u)
   for t in $types; do
-    name=${t#session:}
+    name=${t##*:}
     check "a3 $w.js agentType $t has an agent file" test -f "$A/$name.md"
   done
 done

@@ -11,11 +11,24 @@
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-P=$REPO/plugins/session
-PJ=$P/.claude-plugin/plugin.json
-COLLECTOR=$P/bin/workflow-usage.sh
-NEW="role chain make probe"
 CAP=110
+# TOOLPLUGIN=<root> runs the same checks against another plugin's root (P7: the tool plugin
+# template and the stub fixture are plugins of their own and pass this oracle with their own root).
+# In that mode the workflow list, the launch prefix and the hook command all come from that root,
+# and no path of this repo's plugin is read.
+FOREIGN=${TOOLPLUGIN:-}
+if [ -n "$FOREIGN" ]; then
+  P=$FOREIGN
+  PJ=$P/.claude-plugin/plugin.json
+  [ -f "$PJ" ] || { echo "contracts: FAIL no plugin.json under $P"; exit 1; }
+  PREFIX=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$PJ")
+  NEW=$(for f in "$P"/workflows/*.js; do [ -f "$f" ] && basename "$f" .js; done)
+else
+  P=$REPO/plugins/session
+  PJ=$P/.claude-plugin/plugin.json
+  PREFIX=session
+  NEW="role chain make probe"
+fi
 
 T=$(mktemp -d) || exit 1
 trap 'rm -rf "$T"' EXIT
@@ -58,42 +71,52 @@ for w in $NEW; do
   check "n3 $w contract names no model" bash -c '! grep -Eqi "(^|[^-a-z])(opus|sonnet|fable|haiku)([^-a-z]|$)" <<<"$1"' _ "$inner"
   check "n3 $w contract names no reasoning level or tier" bash -c '! grep -Eqi "\b(effort|tier)\b" <<<"$1"' _ "$inner"
 
-  # ---- plugin.json: exactly one SessionStart entry, and the collector prints one line for it ----
-  want="sh \${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file \${CLAUDE_PLUGIN_ROOT}/workflows/$w.js --prefix session"
-  hits=$(python3 -c '
+  # ---- plugin.json: exactly one SessionStart entry, and that very command prints one line ----
+  # The command read out of plugin.json is the one that runs: the entry a session uses and the
+  # line this test judges are the same thing, in this plugin and in a tool plugin alike.
+  cmd=$(python3 -c '
 import json, sys
 groups = json.load(open(sys.argv[1]))["hooks"]["SessionStart"]
-print(sum(1 for g in groups for h in g["hooks"] if h.get("command", "") == sys.argv[2]))
-' "$PJ" "$want")
-  check "n4 $w exactly one SessionStart entry in plugin.json (got $hits)" test "$hits" = 1
-  (cd "$REPO" && env -u CLAUDE_PROJECT_DIR HOME="$T" sh "$COLLECTOR" --hook --file "$f" --prefix session > "$T/$w.out" 2> "$T/$w.err"); rc=$?
-  check "n4 $w collector exit 0" test "$rc" -eq 0
-  check "n4 $w collector no stderr" test ! -s "$T/$w.err"
-  check "n4 $w collector prints exactly one contract line naming session:$w" python3 -c '
+c = [h.get("command", "") for g in groups for h in g["hooks"] if ("workflows/%s.js" % sys.argv[2]) in h.get("command", "")]
+print(c[0] if len(c) == 1 else "")
+' "$PJ" "$w")
+  check "n4 $w exactly one SessionStart entry naming workflows/$w.js" test -n "$cmd"
+  if [ -z "$FOREIGN" ]; then
+    want="sh \${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file \${CLAUDE_PLUGIN_ROOT}/workflows/$w.js --prefix session"
+    check "n4 $w SessionStart entry has the collector form" test "$cmd" = "$want"
+  fi
+  [ -n "$cmd" ] || continue
+  (cd "$T" && env -u CLAUDE_PROJECT_DIR HOME="$T" CLAUDE_PLUGIN_ROOT="$P" sh -c "$cmd" > "$T/$w.out" 2> "$T/$w.err"); rc=$?
+  check "n4 $w hook command exit 0" test "$rc" -eq 0
+  check "n4 $w hook command no stderr" test ! -s "$T/$w.err"
+  check "n4 $w hook command prints exactly one contract line naming $PREFIX:$w" python3 -c '
 import json, sys
 raw = open(sys.argv[1], encoding="utf-8").read()
 assert raw.strip("\n") and "\n" not in raw.rstrip("\n"), "not one line"
 c = json.loads(raw)["hookSpecificOutput"]["additionalContext"]
-assert c.startswith("Workflow session:%s " % sys.argv[2]), c[:60]
+assert c.startswith("Workflow %s:%s " % (sys.argv[3], sys.argv[2])), c[:60]
 assert "\n" not in c, "contract line holds a newline"
-' "$T/$w.out" "$w"
+' "$T/$w.out" "$w" "$PREFIX"
 done
 
 check "n0 at least one new workflow exists (got $found)" test "$found" -ge 1
 
-# ---- every SessionStart --file entry of plugin.json points at a file that exists ----
-check "n5 every SessionStart --file entry names an existing file" python3 -c '
+# ---- every path a SessionStart entry names inside the plugin exists on disk ----
+# Every token of a command that starts at ${CLAUDE_PLUGIN_ROOT} is a file of this plugin: the
+# script that runs, the workflow file it reads. A missing one is a hook that prints nothing at
+# session start, in this plugin and in a tool plugin alike.
+check "n5 every SessionStart entry names existing files of the plugin" python3 -c '
 import json, os, sys
 pj, plugin = sys.argv[1], sys.argv[2]
 bad = []
 for g in json.load(open(pj))["hooks"]["SessionStart"]:
     for h in g["hooks"]:
-        c = h.get("command", "")
-        if "workflow-usage.sh" not in c or "--file" not in c:
-            continue
-        path = c.split("--file", 1)[1].split()[0].replace("${CLAUDE_PLUGIN_ROOT}", plugin)
-        if not os.path.exists(path):
-            bad.append(path)
+        for tok in h.get("command", "").split():
+            if not tok.startswith("${CLAUDE_PLUGIN_ROOT}"):
+                continue
+            path = tok.replace("${CLAUDE_PLUGIN_ROOT}", plugin)
+            if not os.path.exists(path):
+                bad.append(path)
 if bad:
     print("missing:", " ".join(bad))
 sys.exit(1 if bad else 0)
