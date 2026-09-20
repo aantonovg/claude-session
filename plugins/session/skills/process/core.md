@@ -35,10 +35,14 @@ of that level.
 ## Resume
 
 A session that lost its context resumes from these files alone: read the pointer, then the intent,
-the ledger and the last file of the chain that exists, and continue at the first level that has no
-file. No stage researches again what a file already holds, and no stage trusts a memory of the
-conversation over a file of this group. The same rule carries a task across `/compact`, across an
-interruption and into a new session.
+the ledger and the last file of the chain that exists, and continue at the first level whose file
+is not whole. A level counts as done only when its file is complete: the launch that wrote it has a
+stop row in `ledger.jsonl`, or the file carries the closing marker of its level (the status block,
+the last section the level asks for). A file that exists but is not whole — a stage killed
+mid-write by a compact, an interruption or a denied capability — is redone from that level, not
+read as a result. No stage researches again what a whole file already holds, and no stage trusts a
+memory of the conversation over a file of this group. The same rule carries a task across
+`/compact`, across an interruption and into a new session.
 
 ## Ledger
 
@@ -48,14 +52,17 @@ Every launch is one line in `<task dir>/ledger.jsonl`, appended **before** the l
 {"ts","stage","step","role","kind","class","submodes","depth","slot","label","agent_id"}
 ```
 
+The same field set stands in the `ledger` row of `lib/task-layout.md`, "The files", and in the hook
+that appends the stop row, `hooks/ledger-stop.sh`: a field added or renamed is changed in all three.
+
 `label` is the launch label, whose prefix carries the resolved cell of the class table, so the
 ledger proves after the fact which cell each stage ran on. `agent_id` is the one field that cannot
 be known before the launch: it is filled in from the launch result in the same turn the launch
-returns, and a row left without one is a defect fixed in that turn, because the plugin hook that
-appends the stop row finds the launch row by that id and writes nothing when it finds none. A
-launch whose result carries no id keeps the field null; rows with no stop row end at the next row
-of the same kind. The ledger is also the count the ceilings are read against, and the loop guard reads it
-to see the same check fixed twice.
+returns, and a row left without one is a defect fixed in that turn, because that hook finds the
+launch row by that id and writes nothing when it finds none. A launch whose result carries no id
+keeps the field null; rows with no stop row end at the next row of the same kind. The ledger is
+also the count the ceilings are read against, and the loop guard reads it to see the same check
+fixed twice.
 
 ## Cost rules
 
