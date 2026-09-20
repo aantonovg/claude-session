@@ -224,6 +224,60 @@ ck(/folded/.test(String(foldedRun.status)), 'the status says it too')
 ck(b.makeResult({}).ok === false, 'an empty state is no finished run')
 ck(typeof b.makeResult({}).status === 'string', 'every make result carries a status sentence')
 
+// ---- a range with no oracle stage: judged on what it promised, never on a check nobody ran ----
+const PART = {
+  out: '/tmp/run/report.md', from: 'spec', until: 'tests',
+  stages: ['spec', 'scenarios', 'tests'], done: ['spec', 'scenarios', 'tests'], files: [],
+}
+const part = b.makeResult(PART)
+ck(part.ok === true, 'a range without the oracle that ran every stage it named is a finished run')
+ck(part.oracle === false, 'and the result says no oracle stage stood in it')
+ck(part.gap.length === 0, 'so an empty gap list is no hidden failure')
+ck(/no stage of this range runs the check/.test(String(part.status)),
+  `the status says the check never ran here (${part.status})`)
+ck(b.makeResult({ ...PART, done: ['spec'] }).ok === false, 'a range that stopped in the middle is no finished run')
+ck(b.makeResult({ ...PART, stage: 'tests', blocked: 'the tool was denied' }).ok === false,
+  'a blocked stage of a partial range is no finished run either')
+ck(b.makeResult({ ...S, run: 'PASS' }).oracle === true, 'a range with the executor is decided by the check')
+ck(b.makeResult({ ...PART, stages: ['coverage', 'fixer'], done: ['coverage'] }).oracle === true,
+  'the fix stage is an oracle stage too: it ends on a check')
+
+// ---- the fix stage is a gate of its own: a launch that starts there still runs (idea 7) ----
+const alone = b.stageRange('fixer', 'fixer')
+const f0 = b.fixerState(alone, null)
+ck(f0.enter === true, 'a fixer-only launch enters the fix stage')
+ck(f0.probe === true, 'and runs the check itself first: no executor stage ran before it')
+ck(b.fixerState(b.stageRange('coverage', 'fixer'), null).probe === true,
+  'coverage..fixer carries no executor either, so the fix stage learns the state itself')
+ck(b.fixerState(alone, 'FAIL').enter === true, 'a failing oracle enters the fix stage')
+ck(b.fixerState(alone, 'FAIL').probe === false, 'with a verdict in hand it needs no run of its own')
+ck(b.fixerState(alone, 'unreadable').enter === true, 'an unreadable verdict is worked like a failure')
+ck(b.fixerState(alone, 'PASS').enter === false, 'a check that already passes is nothing to fix')
+ck(b.fixerState(b.stageRange('spec', 'coverage'), 'FAIL').enter === false,
+  'a range without the fix stage enters no fix stage')
+ck(b.fixerState(b.stageRange('nosuch', 'fixer'), null).enter === false, 'a rejected range enters nothing')
+
+// ---- the key document: what the chain could not settle travels on as a gap ----
+const KEY = '/tmp/run/make-spec.md'
+const clean = b.keyCheckState({ out: '/tmp/run/make-spec-check.md', undetermined: [], unanswered: [], gap: [] }, KEY)
+ck(clean.ok === true && clean.check === '/tmp/run/make-spec-check.md', 'a clean chain hands its file on')
+ck(clean.gap.length === 0, 'and writes no gap')
+const und = b.keyCheckState({ out: '/x.md', undetermined: ['g2: the retry count — the sources disagree'] }, KEY)
+ck(und.ok === false, 'a specification the chain could not settle is no clean key document')
+ck(und.gap.length === 1 && /retry count/.test(String(und.gap[0])),
+  `the undetermined row of the chain stands in the gap list (${und.gap[0]})`)
+ck(new RegExp(KEY).test(String(und.gap[0])), 'and names the document it stands over')
+const openRow = b.keyCheckState({ out: '/x.md', unanswered: ['g3 at lib/a.js: no readable answer'] }, KEY)
+ck(openRow.ok === false && openRow.gap.length === 1, 'an unanswered row of the chain is a gap of this run too')
+const chainGap = b.keyCheckState({ out: '/x.md', gap: ['aspect three never started: the ceiling was full'] }, KEY)
+ck(chainGap.ok === false && chainGap.gap.length === 1, 'a gap of the chain is a gap of this run too')
+const noChain = b.keyCheckState(null, KEY)
+ck(noChain.ok === false && /needs chain/.test(String(noChain.check)), 'no return from the chain is the needs chain fallback')
+ck(noChain.gap.length === 1 && /needs chain/.test(String(noChain.gap[0])), 'and the fallback stands in the gap list')
+const blockedChain = b.keyCheckState({ blocked: 'BLOCKED: the tool was denied' }, KEY)
+ck(blockedChain.ok === false && /needs chain/.test(String(blockedChain.check)), 'a blocked chain is that fallback too')
+ck(/denied/.test(String(blockedChain.gap[0])), `and its gap says why (${blockedChain.gap[0]})`)
+
 const PB = {
   out: '/tmp/run/synthesis.md', directions: ['one', 'two'],
   bundles: ['/tmp/run/probe-1.md', '/tmp/run/probe-2.md'],
@@ -241,6 +295,15 @@ ck(b.probeResult({ ...PB, bundles: [] }).ok === false, 'no bundle, no finished p
 ck(b.probeResult({}).ok === false, 'an empty state is no finished probe')
 ck(b.probeResult({ ...PB, gap: ['direction three never started: the ceiling was full'] }).gap.length === 1,
   'a direction the ceiling left out stands in the result as a gap')
+const lostOne = b.probeResult({
+  ...PB, bundles: [PB.bundles[0]],
+  blockedStages: ['direction 2 (read notes-b.md): BLOCKED: the tool was denied'],
+})
+ck(lostOne.ok === false, 'a direction that came back blocked is no whole research stage')
+ck(lostOne.gap.filter(g => /direction 2/.test(g)).length === 1,
+  `and it stands in the gap list of the answer (${lostOne.gap.join(' ;; ')})`)
+ck(/direction/.test(String(lostOne.status)), 'the status of that answer counts it too')
+ck(b.probeResult({ ...PB, blockedStages: [] }).ok === true, 'no blocked direction, a whole research stage')
 ck(typeof b.probeResult(PB).status === 'string', 'every probe result carries a status sentence')
 console.log(out.join('\n'))
 JS
@@ -278,6 +341,10 @@ the fix cycle ceiling is never hit|s/const hit = ceilingHit\(depth, 'cycles', n\
 a blocked stage returns the shape of a finished run|s/const ok = !blocked/const ok = true || !blocked/
 the control gap no longer stops the run|s/&& \(!nc \|\| nc\.ok\)//
 an unreadable run counts as a pass|s/const verdict = v === 'PASS' \|\| v === 'FAIL' \? v : 'unreadable'/const verdict = 'PASS'/
+a launch that starts at the fix stage does nothing|s/return \{ enter: true, probe: true,/return { enter: false, probe: false,/
+the rows the chain could not settle are dropped|s/for \(const r of c\.undetermined \|\| \[\]\)/for (const r of [])/
+a range without the oracle reads as a failing run|s/\(oracle \? run === 'PASS' : ranAll\)/run === 'PASS'/
+a blocked direction leaves the probe answer whole|s/ && lost\.length === 0//
 MUT
 
 # ---- s3: the wiring of workflows/make.js ----
@@ -289,7 +356,7 @@ if [ -f "$MAKE" ]; then
   check "s3 make.js stamp is in sync with its sources" bash "$BUILD" --check "$MAKE"
 
   # every decision comes from the shared block, so a test executes it instead of reading this file
-  for fn in stageRange stageOn makePlan negativeControl cycleState runVerdict makeResult outVerdict; do
+  for fn in stageRange stageOn makePlan negativeControl cycleState runVerdict fixerState keyCheckState makeResult outVerdict; do
     check "s3 make.js decides through $fn() of the shared block" grep -q "$fn(" <<<"$code"
   done
   check "s3 make.js takes the slot from the role map" grep -q 'roleSlot(' <<<"$code"
@@ -340,10 +407,22 @@ sys.exit(1 if bad else 0)
   check "s3 make.js runs the coverage check of ladder level c" grep -Fq "'coverage-checker'" <<<"$code"
   check "s3 make.js requires the check command that decides" grep -Fq 'args.test' <<<"$code"
 
-  # the negative control of 3.5 rule 1: the tests run on the base version and must fail there
-  check "s3 make.js runs the tests against the base version" grep -q 'BASE' <<<"$code"
+  # the negative control of 3.5 rule 1: the new tests run on the base code and must fail there
+  check "s3 make.js runs the control stage against the base version" grep -Fq 'the code of the base version ${BASE}' <<<"$code"
+  check "s3 that control run keeps the new tests of the working tree" grep -Fq 'keep every test file of the working tree' <<<"$code"
   check "s3 make.js decides that control run through negativeControl" grep -Fq 'negativeControl(DEPTH' <<<"$code"
-  check "s3 make.js hands the control verdict to the result builder" grep -Fq 'control' <<<"$code"
+  # the verdict itself is decided in the block and executed in s1; here only the wiring is read:
+  # the one result builder of this flow must carry the control field, or no exit can report it
+  check "s3 make.js hands the control verdict to its result builder" python3 -c '
+import re, sys
+code = sys.argv[1]
+m = re.search(r"(?ms)makeResult\(\{(.*?)\}\)", code)
+if not m: print("no makeResult call"); sys.exit(1)
+body = m.group(1)
+missing = [f for f in ("control", "run", "gap", "done", "stages", "check") if not re.search(r"\b%s\b" % f, body)]
+if missing: print("the result builder call misses:", " ".join(missing))
+sys.exit(1 if missing else 0)
+' "$code"
 
   # the key document goes to the evidence chain one class step up (3.5 rule 3), never to a reviewer
   check "s3 make.js routes the key document to the evidence chain" grep -Fq "workflow('session:chain'" <<<"$code"
@@ -426,7 +505,19 @@ sys.exit(1 if bad else 0)
   check "s4 probe.js builds that result through probeResult" grep -Fq 'probeResult({' <<<"$code"
   check "s4 probe.js runs its directions in parallel" grep -q 'parallel(' <<<"$code"
   check "s4 probe.js seats the directions under the ceiling of A30" grep -Eq 'stageSeats\(|chainSeats\(' <<<"$code"
-  check "s4 probe.js writes the directions the ceiling left out as a gap" grep -q 'gap' <<<"$code"
+  # the gap rule itself is decided in the block and executed in s1; here only the wiring is read:
+  # the directions the ceiling cut and the ones that came back blocked both reach the result builder
+  check "s4 probe.js hands the cut and the blocked directions to its result builder" python3 -c '
+import re, sys
+code = sys.argv[1]
+m = re.search(r"(?ms)probeResult\(\{(.*?)\}\)", code)
+if not m: print("no probeResult call"); sys.exit(1)
+body = m.group(1)
+missing = [f for f in ("gap", "blockedStages", "bundles", "directions") if not re.search(r"\b%s\b" % f, body)]
+if missing: print("the result builder call misses:", " ".join(missing))
+sys.exit(1 if missing else 0)
+' "$code"
+  check "s4 probe.js collects a blocked direction instead of dropping it" grep -Fq 'blockedStages.push(' <<<"$code"
   # the critique of probe stands over research bundles, an output no oracle can decide
   check "s4 probe.js critiques the bundles" grep -Fq "'critic'" <<<"$code"
   check "s4 probe.js synthesises them" grep -Fq "'synthesizer'" <<<"$code"
