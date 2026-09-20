@@ -20,6 +20,7 @@ set -u
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 HERE=$REPO/tests/rebuild
 DOC=$REPO/docs/tool-plugin
+PLUG=$REPO/plugins/session
 TPL=$DOC/template
 STUB=$HERE/fixtures/tool-stub
 ENVSH=$HERE/scenario-env.sh
@@ -80,6 +81,20 @@ for root in "$TPL" "$STUB"; do
   done
 done
 
+# t3 executed, not read: agents.sh reads the launch names of a root through block.js agentTypesOf(),
+# because both workflows here write the name through a const (`agentType: AGENT`) and a grep for
+# `agentType: '...'` inspects zero names there. A stub whose const names an agent of another plugin
+# — the base plugin's own, or any other prefix — must turn that oracle red.
+j=0
+for mutant in "session:tools-edit" "other:tools-x"; do
+  j=$((j + 1)); M=$T/mutant-agent-$j
+  cp -R "$STUB" "$M" || exit 1
+  perl -pi -e "s/'toolstub:tools-metrics'/'$mutant'/" "$M/workflows/metrics.js"
+  check "t3 the mutant agentType $mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$STUB/workflows/metrics.js" "$M/workflows/metrics.js"
+  TOOLPLUGIN=$M bash "$HERE/agents.sh" > "$T/mutant-agent-$j.out" 2>&1
+  check "t3 agents.sh catches the agentType $mutant of another plugin" test "$?" -ne 0
+done
+
 # ---- t4: A8, neither root names anything of the base plugin ----
 # What counts as naming a carrier is no pattern list of this file: it is carrierTokens() of the
 # shared block, executed over every file of the two roots and re-run over a mutant of that function
@@ -133,6 +148,30 @@ check "t4 the mutant of carrierTokens is really a mutation" bash -c '! cmp -s "$
 check "t4 the mutant that drops the workflow names is caught" \
   bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/carrier.js" "$T/mutant-carrier.js" "$T/carrier-wf.md"
 
+# t4 the carrier list is the whole roster of the plugin tree, not a sample of it: every entry one
+# level below a directory of plugins/session must be seen in its bare path form (`skills/ask`,
+# `agents/waiter.md`, `monitors/ping.sh`, `bin/build.sh`) — the form a tool plugin would write it in
+# without the `plugins/session` prefix. A carrier added to the plugin and left out of the list would
+# otherwise leave a hole in A8 that no file here notices.
+cat > "$T/roster.js" <<'JS'
+const b = require(process.argv[2])
+const miss = process.argv.slice(3).filter(p => b.carrierTokens(p).length === 0)
+miss.forEach(p => console.log(`no carrier token for ${p}`))
+process.exit(miss.length ? 1 : 0)
+JS
+ROSTER=()
+for d in "$PLUG"/*/; do
+  dn=$(basename "$d")
+  for e in "$d"*; do [ -e "$e" ] && ROSTER+=("$dn/$(basename "$e")"); done
+done
+if [ "${#ROSTER[@]}" -eq 0 ]; then
+  fail "t4 the plugin tree has carriers to check"
+else
+  pass
+  check "t4 every carrier of the plugin tree is named by the carrier list ($(node "$T/roster.js" "$BLOCKJS" "${ROSTER[@]}" | head -3 | tr '\n' ' '))" \
+    node "$T/roster.js" "$BLOCKJS" "${ROSTER[@]}"
+fi
+
 # ---- t5: the stub's SessionStart hook command prints one contract line, no session needed ----
 STUB_PJ=$STUB/.claude-plugin/plugin.json
 CMD=$(python3 -c '
@@ -176,7 +215,6 @@ if [ -s "$STORE" ]; then
 fi
 
 # ---- t7: scenario-env.sh builds every variant, with and without --hide-old ----
-PLUG=$REPO/plugins/session
 i=0
 for variant in base stub-on stub-off-deny; do
   for flag in "" --hide-old; do
@@ -215,8 +253,11 @@ d = json.load(open(sys.argv[1]))
 sys.exit(1 if d.get("permissions", {}).get("deny") else 0)' "$D/.claude/settings.json" ;;
     esac
     if [ -n "$flag" ]; then
-      copy=$D/plugin
-      check "t7 [$tag] the plugin argument points into the run directory" bash -c 'grep -qF -- "--plugin-dir $1" "$2"' _ "$copy" "$D/claude-args"
+      copy=$D-plugin
+      check "t7 [$tag] the plugin argument points at the copy" bash -c 'grep -qF -- "--plugin-dir $1" "$2"' _ "$copy" "$D/claude-args"
+      # the session works in $D: a copy inside it would put every workflow script of the measured
+      # set within reach of the session's own Glob, Grep and Read
+      check "t7 [$tag] the copy stands outside the project directory" bash -c 'test ! -e "$1/plugin" && case "$2" in "$1"/*) exit 1 ;; esac' _ "$D" "$copy"
       check "t7 [$tag] the copy exists" test -f "$copy/.claude-plugin/plugin.json"
       for w in $OLD_WF; do
         check "t7 [$tag] no contract entry for the old $w" bash -c '! grep -qF "workflows/$1.js" "$2"' _ "$w" "$copy/.claude-plugin/plugin.json"
@@ -235,7 +276,7 @@ sys.exit(1 if d.get("permissions", {}).get("deny") else 0)' "$D/.claude/settings
       check "t7 [$tag] the copy keeps lib and workflows" bash -c 'test -f "$1/lib/block.js" && test -d "$1/workflows"' _ "$copy"
     else
       check "t7 [$tag] the plugin argument names the worktree plugin" bash -c 'grep -qF -- "--plugin-dir $1" "$2"' _ "$PLUG" "$D/claude-args"
-      check "t7 [$tag] no copy is made" test ! -e "$D/plugin"
+      check "t7 [$tag] no copy is made" bash -c 'test ! -e "$1/plugin" && test ! -e "$1-plugin"' _ "$D"
     fi
   done
 done
@@ -246,9 +287,10 @@ for gv in gate gate-stub-on gate-stub-off-deny; do
   bash "$ENVSH" "$gv" "$D" > "$T/env-$i.out" 2>&1; rc=$?
   check "t7 [$gv] scenario-env exit 0 ($(tail -1 "$T/env-$i.out"))" test "$rc" -eq 0
   check "t7 [$gv] records its own variant name" grep -qxF "$gv" "$D/variant"
-  check "t7 [$gv] hides the old set" test -f "$D/plugin/.claude-plugin/plugin.json"
-  check "t7 [$gv] no old contract entry" bash -c '! grep -qF "workflows/dev.js" "$1"' _ "$D/plugin/.claude-plugin/plugin.json"
-  check "t7 [$gv] no old workflow file in the copy" test ! -e "$D/plugin/workflows/dev.js"
+  check "t7 [$gv] hides the old set" test -f "$D-plugin/.claude-plugin/plugin.json"
+  check "t7 [$gv] no old contract entry" bash -c '! grep -qF "workflows/dev.js" "$1"' _ "$D-plugin/.claude-plugin/plugin.json"
+  check "t7 [$gv] no old workflow file in the copy" test ! -e "$D-plugin/workflows/dev.js"
+  check "t7 [$gv] the copy is out of the project the session works in" test ! -e "$D/plugin"
 done
 
 # ---- t8: refusals ----
@@ -326,6 +368,18 @@ for pair in "$STUB/workflows/metrics.js|$STUB_ARGS" "$TPL/workflows/example.js|$
   node "$T/run-wf.js" "$T/$tag-mutant.js" "$a" "$T/ret-$tag-ok.txt" > "$T/$tag-mut.json" 2>/dev/null
   if blocked_key "$T/$tag-mut.json"; then pass; else fail "t10 $b the whole-return mutant is caught"; fi
 done
+
+# t10 the size line of the template is the FIRST line, the one its prompt asks for, and the output
+# path is compared as text: a size quoted further down is no evidence that the file was written, and
+# a path holding a regex metacharacter must return the blocked shape instead of throwing out of the
+# script.
+printf 'the answer\nthe run log says /tmp/example-out.md 42 bytes\nthe answer\n' > "$T/ret-tpl-late.txt"
+node "$T/run-wf.js" "$TPL/workflows/example.js" "$TPL_ARGS" "$T/ret-tpl-late.txt" > "$T/tpl-late.json" 2>/dev/null
+if blocked_key "$T/tpl-late.json"; then pass; else fail "t10 example.js takes the size off the first line only ($(cat "$T/tpl-late.json"))"; fi
+META_ARGS='{"object":"an object","ask":"read it","out":"/tmp/ex(1)[a]/out.md"}'
+printf '/tmp/ex(1)[a]/out.md 42 bytes\nthe answer\n' > "$T/ret-tpl-meta.txt"
+node "$T/run-wf.js" "$TPL/workflows/example.js" "$META_ARGS" "$T/ret-tpl-meta.txt" > "$T/tpl-meta.json" 2>/dev/null
+if blocked_key "$T/tpl-meta.json"; then fail "t10 example.js survives an out path with regex metacharacters ($(cat "$T/tpl-meta.json"))"; else pass; fi
 
 if [ "$FAILS" -eq 0 ]; then echo "toolplugin: PASS $N"; exit 0; fi
 echo "toolplugin: FAIL $FAILS failures, $N checks passed"
