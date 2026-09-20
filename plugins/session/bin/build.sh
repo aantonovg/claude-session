@@ -18,8 +18,9 @@
 #     It carries no markers of its own and is never hand-edited.
 # A file with none of these markers is skipped and stays byte-identical. A manifest target that
 # does not exist yet is skipped; a file named on the command line must exist and must be a target
-# of lib/build-manifest.json, so --check over a file this build step does not own can never print
-# clean over a stale region. A manifest key
+# of lib/build-manifest.json, and a named file that is the source of a "fromBase" target drags that
+# target into the same run, so --check over a file this build step does not own, and --check over a
+# source whose generated copy is stale, can never print clean over a stale region. A manifest key
 # ("block", "table", "roles", "aspects") whose marker pair is missing from the target is an error,
 # never a silent skip. A hand edit inside a generated region is lost at the next build; --check
 # catches it before a commit.
@@ -198,6 +199,15 @@ if files:
     if unknown:
         print('build.sh: %s is no target of %s' % (unknown[0], mpath)); sys.exit(2)
     targets = [(os.path.abspath(f), by_path[norm(f)]) for f in files]
+    # a fromBase target is carried along with the source it names, even when the command line
+    # names only that source: `build.sh [--check] base/BASE.md` that left skills/base/SKILL.md
+    # untouched would write a new base and print clean over a stale generated skill
+    named = set(norm(f) for f in files)
+    for t in manifest:
+        fb = t.get('fromBase')
+        tp = os.path.join(plugin, t['path'])
+        if fb and norm(os.path.join(plugin, fb)) in named and norm(tp) not in named:
+            targets.append((tp, t))
 else:
     targets = [(os.path.join(plugin, t['path']), t) for t in manifest]
 
