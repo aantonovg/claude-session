@@ -6,17 +6,18 @@ export const meta = {
 }
 /* usage:
 Verification-first build, one stage or all.
-ask (task with its acceptance, required)
+ask (task with acceptance, required)
 in (absolute paths array, default [])
 out (absolute task directory, required)
-test (shell line that decides, required)
+run (short key of this launch, required)
+test (shell line, required)
 from, until (stage range: spec scenarios tests code executor coverage fixer)
 base (control-run version, default HEAD)
 depth (lite std full, default std)
 class (c1-c5, default c3)
 submodes (array: no-sonnet no-opus no-fable, default [])
 size (small medium large, default medium)
-Out: stage files in out and out/{runs,changes,reviews}; the closing report is result.report, no file — save it; the check decides, no review of tested code; a needs chain gap wants session:chain.
+Out: stage files in out and out/{runs,changes,reviews}; the closing report is result.report, no file; the check decides, no review of tested code; a gap wants session:chain.
 Use: build, or one stage. Not: review (chain), facts (probe).
 */
 
@@ -426,13 +427,30 @@ function outDir(out) {
 // `2026-09-20-v0.16` stays itself where outDir()'s dot rule would drop it and put every file of
 // the task one level up, in `tasks/`. A last segment carrying a document suffix is a file, never
 // a task directory: it stops the launch instead of becoming a directory of that name.
+const TASK_FILE_SUFFIX = /\.(md|jsonl?|txt|js|sh|ya?ml)$/i
 function taskDirOf(out) {
   const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
   if (!s || s[0] !== '/' || s.length < 2) throw new Error(`taskDirOf needs an absolute task directory, got ${out}`)
-  if (/\.(md|jsonl?|txt|js|sh|ya?ml)$/i.test(s.slice(s.lastIndexOf('/') + 1))) {
+  if (TASK_FILE_SUFFIX.test(s.slice(s.lastIndexOf('/') + 1))) {
     throw new Error(`taskDirOf needs a task directory, got the file ${out}`)
   }
   return s
+}
+
+// outForm(out) -> { dir, file }: the one rule every workflow reads its `out` argument by. The
+// contract of all four scripts says the same thing — an absolute task directory, or one file
+// inside a task directory — so the form may never hang on a trailing slash a launcher is free to
+// drop: a task directory handed over without one would fall to the file branch, and the hints, the
+// bundles and the change lists of that run would land in `tasks/` beside the task instead of in
+// it. The rule is the rule of taskDirOf(): a last segment carrying a document suffix is a file,
+// anything else is the task directory itself, whatever its slug reads like.
+function outForm(out) {
+  const p = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!p || p[0] !== '/' || p.length < 2) throw new Error(`out must be an absolute task directory or a file inside one, got ${out}`)
+  const cut = p.lastIndexOf('/')
+  if (!TASK_FILE_SUFFIX.test(p.slice(cut + 1))) return { dir: taskDirOf(p), file: null }
+  if (cut < 1) throw new Error(`out must name a file inside a task directory, got ${out}`)
+  return { dir: taskDirOf(p.slice(0, cut)), file: p }
 }
 
 // ---- the task file group of idea 8.8 ----
@@ -615,6 +633,17 @@ function taskPath(dir, key, stem) {
   return `${d}/${e.path}/${s}.md`
 }
 
+// runStem(stem, run): the stem of one file of a `dir` row. A `dir` row of lib/task-layout.md is
+// one file per run of its stage, and a script has no clock, no random and no file access: the key
+// that tells two runs apart comes from the launcher (`args.run`). Without it the second launch of
+// the same role into the same task directory would write over the file of the first one and hand
+// its launcher a success-shaped result, so a missing key is an error here, never a silent overwrite.
+function runStem(stem, run) {
+  const k = String(run == null ? '' : run).trim()
+  if (!k) throw new Error(`a file of one run needs a run key (args.run): ${stem || '(no stem)'} would write over the file of the run before it`)
+  return stem ? `${stem}-${k}` : k
+}
+
 // writeHint(out, hasShell): the sentence a stage needs before it can write `out`. A `dir` row of
 // the layout puts its file one level below the task directory, and the roles on a shell-only tool
 // set create their output with a redirect: `> <dir>/runs/run.md` dies with "No such file or
@@ -645,9 +674,13 @@ function roleOut(role) {
   const r = LAYOUT.roleOut[role]
   return r ? { key: r.key, stem: r.stem || '' } : null
 }
-function roleOutPath(dir, role) {
+// roleOutPath(dir, role, run): that file under the task directory. A `dir` row is one file per
+// run, so it takes the run key of the launch and throws without one (runStem); a `file` row is one
+// document of the task and takes no key.
+function roleOutPath(dir, role, run) {
   const r = roleOut(role)
-  return r ? taskPath(dir, r.key, r.stem) : null
+  if (!r) return null
+  return taskPath(dir, r.key, taskEntry(r.key).kind === 'dir' ? runStem(r.stem, run) : r.stem)
 }
 
 // closureReport(ret): the closing report of a run, read out of the return of its closure stage.
@@ -1518,7 +1551,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
-    LAYOUT, taskDirOf, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
+    LAYOUT, taskDirOf, outForm, taskEntry, taskKeys, taskPath, runStem, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
@@ -1583,6 +1616,9 @@ if (typeof A === 'string') A = JSON.parse(A)
 const IN = A.in == null ? [] : A.in
 const ASK = A.ask
 const OUT = A.out
+// the key that tells one launch from the next: the change lists, the check runs and the review
+// files of this run are files of a `dir` row of the layout, one file per run, and each carries it
+const RUNKEY = A.run == null ? '' : String(A.run).trim()
 const TEST = A.test
 const BASE = A.base || 'HEAD'
 const DEPTH = A.depth || 'std'
@@ -1606,6 +1642,7 @@ if (!OUT) return fail('args.out (one absolute path: the directory the stage file
 // nobody can find: the contract says absolute, and the script holds the launcher to it
 if (typeof OUT !== 'string' || OUT[0] !== '/' || OUT.replace(/\/+$/, '').length < 2) return fail(`args.out must be an absolute path, got ${OUT}`)
 if (!TEST) return fail('args.test (one shell line that decides the result) is required: a flow with no oracle is not this one')
+if (!RUNKEY) return fail('args.run (a short key of this launch, e.g. r1) is required: the change lists, the check runs and the review files of this run carry it, so a second launch writes its own files instead of over the first one\'s')
 if (!Array.isArray(IN)) return fail('args.in must be a JSON array of absolute paths')
 if (!CLASSES.table[CLS]) return fail(`unknown class ${CLS}`, { classes: Object.keys(CLASSES.table) })
 if (!CLASSES.sizes.includes(SIZE)) return fail(`unknown size ${SIZE}`, { sizes: CLASSES.sizes })
@@ -1626,17 +1663,20 @@ if (!RANGE.ok) return fail(RANGE.why, { stages: MAKE_STAGES })
 const PLAN = makePlan(DEPTH, RANGE)
 
 const RUN = bindClass(CLS, SUBS)
-// `out` is the task directory the stage files go to, read as a directory whatever its slug looks
-// like: taskDirOf() of the shared block drops no segment, so a task `2026-09-20-v0.16` keeps its
-// own directory instead of writing every stage file one level up into `tasks/`. A launch naming a
-// file there stops here with that message, because no stage of this flow writes a report file:
-// the closing report comes back in the return (the harness allows nothing else).
-let DIR
-try { DIR = taskDirOf(OUT) } catch (e) { return fail(String((e && e.message) || e)) }
+// `out` is the task directory the stage files go to, read by outForm() of the shared block — the
+// one rule all four scripts read `out` by, and it drops no segment: a task `2026-09-20-v0.16`
+// keeps its own directory instead of writing every stage file one level up into `tasks/`. A launch
+// naming a file there stops here, because no stage of this flow writes a report file: the closing
+// report comes back in the return (the harness allows nothing else).
+let FORM
+try { FORM = outForm(OUT) } catch (e) { return fail(String((e && e.message) || e)) }
+if (FORM.file) return fail(`args.out must name the task directory, not a file inside it: no stage of this flow writes a report file, the closing report comes back in the return (got ${OUT})`)
+const DIR = FORM.dir
 // every stage file is a file of the task group: the key comes from lib/task-layout.md and the path
 // from taskPath() of the shared block, so this script spells no file name of its own and the
-// process skill reads what a stage wrote without a second agreement (idea 8.8).
-const side = (key, stem) => taskPath(DIR, key, stem)
+// process skill reads what a stage wrote without a second agreement (idea 8.8). A `dir` row is one
+// file per run, so its stem carries the run key of this launch (runStem).
+const side = (key, stem) => taskPath(DIR, key, taskEntry(key).kind === 'dir' ? runStem(stem, RUNKEY) : stem)
 const F = {
   spec: side('specification'), scenarios: side('scenarios'), tests: side('tests'), code: side('changes', 'code'),
   run: side('runs', 'run'), control: side('runs', 'control'), coverage: side('coverage'),

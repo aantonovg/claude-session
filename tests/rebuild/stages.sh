@@ -588,9 +588,14 @@ sys.exit(1 if bad else 0)
   check "s3 that report stage runs on every exit, once" grep -Fq 'if (!reported)' <<<"$code"
   check "s3 make.js hands that report to its result builder" grep -Fq 'report: s.report' <<<"$code"
   check "s3 make.js names no report file anywhere" bash -c '! grep -Eq "report\.md|summary\.md" <<<"$1"' _ "$code"
-  # `out` is the task directory itself: taskDirOf() reads it as a directory whatever its slug looks
-  # like, where outDir() drops a last segment carrying a dot and writes one level up
-  check "s3 make.js takes the stage-file directory from taskDirOf" grep -Fq 'taskDirOf(OUT)' <<<"$code"
+  # `out` is the task directory itself, read by the one rule all four scripts share: outForm()
+  # reads a directory as a directory whatever its slug looks like and whether or not a trailing
+  # slash stands, where a hand-written last-segment rule writes every stage file one level up
+  check "s3 make.js takes the stage-file directory from outForm" grep -Fq 'outForm(OUT)' <<<"$code"
+  # a `dir` row is one file per run: its stem carries the run key of the launch, so a second launch
+  # into the same task directory writes its own files instead of over the first one's
+  check "s3 make.js builds the files of a run directory with the run key" grep -Fq 'runStem(stem, RUNKEY)' <<<"$code"
+  check "s3 make.js demands that run key" grep -Fq 'if (!RUNKEY) return fail(' <<<"$code"
   check "s3 make.js stamps the closure role (stamped: $(stamped_roles "$MAKE" 2>/dev/null))" \
     bash -c 'case " $1 " in *" closure-author "*) exit 0 ;; *) exit 1 ;; esac' _ "$(stamped_roles "$MAKE" 2>/dev/null)"
   check "s3 the report carries the stages, the verdicts and the gaps" python3 -c '
@@ -706,6 +711,11 @@ if [ -f "$PROBE" ]; then
   done
   nag=$(grep -c 'await agent(' <<<"$code")
   check "s4 probe.js launches agents from one stage helper only (got $nag)" test "$nag" -eq 1
+  # the same one rule over `out` as the other three scripts: a task directory handed over without a
+  # trailing slash is still the task directory, so the bundles and the critique stay inside it
+  check "s4 probe.js takes its task directory from outForm" grep -Fq 'outForm(OUT)' <<<"$code"
+  check "s4 probe.js builds the files of a run directory with the run key" grep -Fq 'runStem(stem, RUNKEY)' <<<"$code"
+  check "s4 probe.js demands that run key" grep -Fq 'if (!RUNKEY) return fail(' <<<"$code"
   check "s4 that helper checks the output of every stage" python3 -c '
 import re, sys
 code = sys.argv[1]
