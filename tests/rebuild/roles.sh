@@ -48,7 +48,7 @@ NODE_ROLES=$(node -e 'console.log(require(process.argv[1]).roleNames().sort().jo
 check "r1 lib/block.js loads its catalog ($(tail -1 "$T/node.err" 2>/dev/null))" test -n "$NODE_ROLES"
 check "r1 lib/roles/ equals the catalog of lib/block.js (files: $CATALOG)" test "$CATALOG" = "$NODE_ROLES "
 nfiles=${#FILES[@]}
-check "r1 17 role texts (got $nfiles)" test "$nfiles" -eq 17
+check "r1 18 role texts (got $nfiles)" test "$nfiles" -eq 18
 
 # ---- r2: the stamped subset of every new workflow ----
 keys_of() { # keys_of <file>: the role names stamped between the roles markers

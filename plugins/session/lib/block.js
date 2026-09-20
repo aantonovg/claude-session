@@ -133,6 +133,11 @@ const CLASSES = {
       "slot": "sonnet",
       "uplift": false
     },
+    "closure-author": {
+      "agent": "tools-read-write",
+      "slot": "sonnet",
+      "uplift": false
+    },
     "critic": {
       "agent": "tools-read-write",
       "slot": "main",
@@ -319,7 +324,9 @@ function blockedLine(why) {
 // and an agent that worked in that directory writes the file the way it typed it at the shell —
 // `out/make-tests.md` for `/p/out/make-tests.md`. That is the same file, so it counts. A tail of
 // the path counts only when it starts at a directory boundary of the path and stands in the text as
-// a whole path of its own: `/other/dir/make-tests.md` and `my-make-tests.md` never pass for it.
+// a whole path of its own: `/other/dir/make-tests.md`, `my-make-tests.md` and `make-tests.md.bak`
+// never pass for it — a neighbour whose name carries this one is another file, and a size line
+// about it is no evidence that this one was written.
 const PATH_CHAR = /[A-Za-z0-9_.\\/-]/
 function namesOut(text, out) {
   if (!out) throw new Error('namesOut needs the output path')
@@ -329,7 +336,13 @@ function namesOut(text, out) {
   for (let i = 0; i < abs.length - 1; i++) if (abs[i] === '/') forms.push(abs.slice(i + 1))
   for (const form of forms) {
     for (let at = s.indexOf(form); at !== -1; at = s.indexOf(form, at + 1)) {
-      if (at === 0 || !PATH_CHAR.test(s[at - 1])) return true
+      const after = at + form.length
+      const opens = at === 0 || !PATH_CHAR.test(s[at - 1])
+      // a full stop that ends the sentence is not a longer name: `.md.` closes the path, `.md.bak`
+      // is another file, so a dot counts as a boundary only when no path character follows it
+      const stop = s[after] === '.' && (after + 1 >= s.length || !PATH_CHAR.test(s[after + 1]))
+      const closes = after >= s.length || !PATH_CHAR.test(s[after]) || stop
+      if (opens && closes) return true
     }
   }
   return false
@@ -1010,10 +1023,23 @@ function keyCheckState(c, file) {
   return { ok: gap.length === 0, ran: true, check: c.out || where, gap }
 }
 
-// stageSeats(depth, wanted): the ceiling of A30 over the units of one parallel stage, for any flow.
-// It is the rule chainSeats() carries for the review chain, under a name the other flows can read.
-function stageSeats(depth, wanted) {
-  return chainSeats(depth, wanted)
+// stageStop(s, name): what a stage result does to the run. A stage whose output check came back
+// bad — a blocked agent, a file nobody wrote, an empty one — ends the run at that stage, and the
+// control run is no exception: a control that never spoke says nothing about the base version, so
+// nothing may be built on what it left behind. The return is the extra the result builder takes,
+// so every stage of a flow stops through the one builder and names itself while doing it.
+function stageStop(s, name) {
+  if (!name) throw new Error('stageStop needs the stage name')
+  if (s && s.ok === true) return { stop: false, stage: name, blocked: null }
+  const why = (s && s.blocked) || 'the stage came back with nothing'
+  return { stop: true, stage: name, blocked: blockedLine(why) }
+}
+
+// fixerDone(capped): the stages the fix loop adds to the ran list. A loop the cycle ceiling cut
+// left the check failing, so the fix stage never did its job: it is a gap of the run, never a
+// stage that ran. A loop that ended by itself ended on a passing check.
+function fixerDone(capped) {
+  return capped === true ? [] : ['fixer']
 }
 
 // makeStatus(s) / makeResult(s): the one return of a make run. Every exit of the flow is built here
@@ -1050,6 +1076,9 @@ function makeStatus(s) {
       ? ' The tests failed on the base version, as a negative control must.'
       : ' The negative control did not hold.'
     : ''
+  const treeText = o.tree && o.tree.untouched !== true
+    ? ' The control-run stage left the working tree unverified: what stands in it now is nobody\'s statement.'
+    : ''
   const gapText = gap.length
     ? ` ${gap.length} gap(s) stand in this return and in ${where}: they are unfinished work, not a silent retry.`
     : ''
@@ -1057,15 +1086,20 @@ function makeStatus(s) {
   const foldText = folded.length
     ? ` The depth folded ${folded.join(', ')} into the short form: those levels were not written as files of their own.`
     : ''
-  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${keyText}${foldText}${gapText}${stopped}`
+  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${treeText}${keyText}${foldText}${gapText}${stopped}`
 }
 function makeResult(s) {
   const o = s || {}
   const stages = o.stages || []
   const done = o.done || []
   const nc = o.control || null
+  // what the control run left in the working tree: a tree it changed, and a tree it never spoke
+  // about, are both unverified ground under every later stage, so they take the run down and name
+  // the stage that left them — the gap alone would stand in a return whose `ok` says finished
+  const tr = o.tree || null
   const gap = (o.gap || []).slice()
   if (nc && nc.gap) gap.push(nc.gap)
+  if (tr && tr.gap) gap.push(`the control-run stage: ${tr.gap}`)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
   const run = o.run == null ? null : String(o.run)
   // the oracle stages of this range: with one of them in the range the check decides the result,
@@ -1078,7 +1112,8 @@ function makeResult(s) {
   // what the chain found in the key document decides this run too: a specification it could not
   // settle never turns into a finished run because the oracle below it passed
   const key = o.key == null ? true : o.key !== false
-  const ok = !blocked && key && (!nc || nc.ok) && (noop || (oracle ? run === 'PASS' : ranAll))
+  const treeOk = !tr || tr.untouched === true
+  const ok = !blocked && key && (!nc || nc.ok) && treeOk && (noop || (oracle ? run === 'PASS' : ranAll))
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1091,13 +1126,14 @@ function makeResult(s) {
     run,
     oracle,
     control: nc ? { required: nc.required, ran: nc.ran, verdict: nc.verdict, ok: nc.ok } : null,
+    tree: tr ? { stated: tr.stated === true, untouched: tr.untouched === true } : null,
     cycles: Number(o.cycles || 0),
     check: o.check == null ? null : o.check,
     keyCheck: key,
     folded: o.folded || [],
     gap,
     status: makeStatus({
-      run, gap, oracle, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
+      run, gap, oracle, out: o.out, control: nc, tree: tr, stage: o.stage, blocked, folded: o.folded || [],
       key, noop, done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
     }),
   }
@@ -1111,40 +1147,58 @@ function makeResult(s) {
 // its synthesis, its critique or every direction is not finished, whatever else it wrote. A
 // direction that came back blocked is a hole in the material the answer rests on: it stands in
 // `gap` like a direction the ceiling cut, and it takes `ok` down with it — a partly failed research
-// stage never returns the shape of a whole one.
+// stage never returns the shape of a whole one. A direction the ceiling of A30 never seated is the
+// same hole from the other side: the ceiling ends the stage and writes the gap (A30), so the run
+// that asked five directions and ran two is unfinished work, and the status says both numbers.
 function probeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
+  const asked = Number(o.directions || 0)
+  const seated = Number(o.seated == null ? asked : o.seated)
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
+  const seatText = seated < asked
+    ? ` The ceiling of ${Number(o.room || 0)} agents per stage seated ${seated} of the ${asked} direction(s) asked; the rest never started.`
+    : ''
   const gapText = gap.length
     ? ` ${gap.length} direction(s) are missing from this answer — the ceiling of the stage cut them or they came back blocked — and that is a gap of it, never a second round.`
     : ''
   const where = o.out ? ` The answer stands in ${o.out}; every claim in it carries the pointer it rests on.` : ''
-  return `${Number(o.bundles || 0)} of ${Number(o.directions || 0)} direction(s) came back, ${o.critique ? 'critiqued' : 'with no critique'}, ${o.synthesis ? 'synthesised' : 'with no synthesis'}.${where}${gapText}${stopped}`
+  return `${Number(o.bundles || 0)} of ${asked} direction(s) asked came back, ${o.critique ? 'critiqued' : 'with no critique'}, ${o.synthesis ? 'synthesised' : 'with no synthesis'}.${where}${seatText}${gapText}${stopped}`
 }
 function probeResult(s) {
   const o = s || {}
   const bundles = o.bundles || []
   const directions = o.directions || []
+  // the directions the ceiling never seated: their gap lines are written here, with the room that
+  // cut them, so no caller can hand the ceiling to the result without the run losing its `ok`
+  const cut = o.cut || []
+  const seated = directions.length - cut.length
   const gap = (o.gap || []).slice()
+  for (let i = 0; i < cut.length; i++) {
+    gap.push(`direction ${seated + i + 1} (${cut[i]}) never started: the ceiling of ${Number(o.room || 0)} agents per stage ended the research stage`)
+  }
   const lost = o.blockedStages || []
   // a direction the flow started and lost is a gap of the answer, on the same line as one the
   // ceiling never seated: the synthesis was written over less material than the question asked for
   for (const s of lost) gap.push(`${s} — that direction brought nothing, so the answer rests on less material than the question asked for`)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
-  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis && lost.length === 0
+  const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis
+    && lost.length === 0 && cut.length === 0
   const res = {
     out: o.out == null ? null : o.out,
     ok,
     directions,
+    asked: directions.length,
+    seated,
+    cut,
     bundles,
     critique: o.critique == null ? null : o.critique,
     synthesis: o.synthesis == null ? null : o.synthesis,
     gap,
     blockedStages: o.blockedStages || [],
     status: probeStatus({
-      bundles: bundles.length, directions: directions.length, critique: o.critique,
-      synthesis: o.synthesis, out: o.out, gap, stage: o.stage, blocked,
+      bundles: bundles.length, directions: directions.length, seated, room: o.room,
+      critique: o.critique, synthesis: o.synthesis, out: o.out, gap, stage: o.stage, blocked,
     }),
   }
   if (o.stage) res.stage = o.stage
@@ -1163,6 +1217,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
-    fixerState, keyCheckState, controlTree, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
+    fixerState, fixerDone, keyCheckState, controlTree, stageStop, makeStatus, makeResult,
+    probeStatus, probeResult,
   }
 }
