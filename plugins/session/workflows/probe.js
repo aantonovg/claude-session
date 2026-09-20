@@ -401,6 +401,35 @@ function outVerdict(ret, out) {
   return { ok: true, out, bytes: n }
 }
 
+// outDir(out): the directory the files of a run go to, from the `out` argument. The argument names
+// that directory; a caller that names a file inside it names the directory that file sits in, and
+// nothing of this flow writes that file — the closing report of a run comes back in the return,
+// because the harness lets no subagent write a report file. A last segment carrying a dot is read
+// as a file name, any other segment as the directory itself.
+function outDir(out) {
+  const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!s || s[0] !== '/') throw new Error(`outDir needs an absolute path, got ${out}`)
+  const cut = s.lastIndexOf('/')
+  if (s.slice(cut + 1).indexOf('.') === -1) return s
+  return cut < 1 ? '/' : s.slice(0, cut)
+}
+
+// closureReport(ret): the closing report of a run, read out of the return of its closure stage.
+// A subagent of this harness returns its findings as text and writes no report file, so the return
+// itself is the report and this is the only check over it: a return that came back empty, blocked,
+// or carrying nothing but its shape line is a gap of the run, never a report.
+function closureReport(ret) {
+  const s = String(ret == null ? '' : ret).trim()
+  if (!s) return { ok: false, report: null, gap: 'the closing report came back empty: this run states nothing about itself' }
+  if (isBlocked(ret)) return { ok: false, report: null, gap: `the closing report was not returned: ${lastLine(s)}` }
+  const lines = s.split('\n')
+  // the last line of every tool-set return is the shape line, no part of the report itself
+  while (lines.length && /^DONE[.!]?$/i.test(lines[lines.length - 1].trim())) lines.pop()
+  const text = lines.join('\n').trim()
+  if (!text) return { ok: false, report: null, gap: 'the closing report carried nothing but its last line' }
+  return { ok: true, report: text, gap: null }
+}
+
 // ---- the review chain of idea 3.6 ----
 // Every decision of the chain lives here as a pure function over the returns of its stages, so a
 // test executes it instead of grepping workflows/chain.js. A workflow script has no file access:
@@ -1067,8 +1096,9 @@ function fixerDone(capped) {
 // makeStatus(s) / makeResult(s): the one return of a make run. Every exit of the flow is built here
 // — a blocked stage, a failing oracle and a finished run alike — so a run that stopped can never
 // carry the shape of one that finished: `ok` is true only when the oracle said PASS, no stage
-// blocked, and the negative control (when the depth asked for one) really failed on the base
-// version, and the check of the key document (when the depth asked for one) left no row open. A
+// blocked, the closing report came back in `report`, and the negative control (when the depth asked
+// for one) really failed on the base version, and the check of the key document (when the depth
+// asked for one) left no row open. A
 // range that carries no oracle stage at all (`spec..tests` and its kind) is judged on what it
 // promised instead: every stage of the range ran, and the status says in words that no check ran
 // here, so a partial range is never read as a failing one. A range the depth folds to nothing
@@ -1077,7 +1107,6 @@ function fixerDone(capped) {
 function makeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
-  const where = o.out || 'the report file'
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
   const runText = o.noop
     ? 'the depth folded every stage of this range, so nothing ran and nothing is open'
@@ -1102,7 +1131,7 @@ function makeStatus(s) {
     ? ' The control-run stage left the working tree unverified: what stands in it now is nobody\'s statement.'
     : ''
   const gapText = gap.length
-    ? ` ${gap.length} gap(s) stand in this return and in ${where}: they are unfinished work, not a silent retry.`
+    ? ` ${gap.length} gap(s) stand in this return and in the closing report it carries: they are unfinished work, not a silent retry.`
     : ''
   const folded = o.folded || []
   const foldText = folded.length
@@ -1122,6 +1151,12 @@ function makeResult(s) {
   const gap = (o.gap || []).slice()
   if (nc && nc.gap) gap.push(nc.gap)
   if (tr && tr.gap) gap.push(`the control-run stage: ${tr.gap}`)
+  // the closing report travels in this return, never in a file: the harness lets no subagent write
+  // a report file. A run that came back without one says nothing about itself, so that is a gap of
+  // it and it takes `ok` down like any unverified ground
+  const report = String(o.report == null ? '' : o.report).trim()
+  const reportOk = report !== ''
+  if (!reportOk) gap.push(o.reportGap || 'the closing report came back empty: this run states nothing about itself')
   const blocked = o.blocked ? blockedLine(o.blocked) : null
   const run = o.run == null ? null : String(o.run)
   // the oracle stages of this range: with one of them in the range the check decides the result,
@@ -1135,7 +1170,7 @@ function makeResult(s) {
   // settle never turns into a finished run because the oracle below it passed
   const key = o.key == null ? true : o.key !== false
   const treeOk = !tr || tr.untouched === true
-  const ok = !blocked && key && (!nc || nc.ok) && treeOk && (noop || (oracle ? run === 'PASS' : ranAll))
+  const ok = !blocked && key && (!nc || nc.ok) && treeOk && reportOk && (noop || (oracle ? run === 'PASS' : ranAll))
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1144,6 +1179,7 @@ function makeResult(s) {
     range: `${o.from || first}..${o.until || last}`,
     stages,
     done,
+    report: reportOk ? report : null,
     files: o.files || [],
     run,
     oracle,
@@ -1232,7 +1268,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, namesOut, mustExist, outVerdict,
+    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,

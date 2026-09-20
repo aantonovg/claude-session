@@ -399,6 +399,35 @@ function outVerdict(ret, out) {
   return { ok: true, out, bytes: n }
 }
 
+// outDir(out): the directory the files of a run go to, from the `out` argument. The argument names
+// that directory; a caller that names a file inside it names the directory that file sits in, and
+// nothing of this flow writes that file — the closing report of a run comes back in the return,
+// because the harness lets no subagent write a report file. A last segment carrying a dot is read
+// as a file name, any other segment as the directory itself.
+function outDir(out) {
+  const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!s || s[0] !== '/') throw new Error(`outDir needs an absolute path, got ${out}`)
+  const cut = s.lastIndexOf('/')
+  if (s.slice(cut + 1).indexOf('.') === -1) return s
+  return cut < 1 ? '/' : s.slice(0, cut)
+}
+
+// closureReport(ret): the closing report of a run, read out of the return of its closure stage.
+// A subagent of this harness returns its findings as text and writes no report file, so the return
+// itself is the report and this is the only check over it: a return that came back empty, blocked,
+// or carrying nothing but its shape line is a gap of the run, never a report.
+function closureReport(ret) {
+  const s = String(ret == null ? '' : ret).trim()
+  if (!s) return { ok: false, report: null, gap: 'the closing report came back empty: this run states nothing about itself' }
+  if (isBlocked(ret)) return { ok: false, report: null, gap: `the closing report was not returned: ${lastLine(s)}` }
+  const lines = s.split('\n')
+  // the last line of every tool-set return is the shape line, no part of the report itself
+  while (lines.length && /^DONE[.!]?$/i.test(lines[lines.length - 1].trim())) lines.pop()
+  const text = lines.join('\n').trim()
+  if (!text) return { ok: false, report: null, gap: 'the closing report carried nothing but its last line' }
+  return { ok: true, report: text, gap: null }
+}
+
 // ---- the review chain of idea 3.6 ----
 // Every decision of the chain lives here as a pure function over the returns of its stages, so a
 // test executes it instead of grepping workflows/chain.js. A workflow script has no file access:
@@ -1065,8 +1094,9 @@ function fixerDone(capped) {
 // makeStatus(s) / makeResult(s): the one return of a make run. Every exit of the flow is built here
 // — a blocked stage, a failing oracle and a finished run alike — so a run that stopped can never
 // carry the shape of one that finished: `ok` is true only when the oracle said PASS, no stage
-// blocked, and the negative control (when the depth asked for one) really failed on the base
-// version, and the check of the key document (when the depth asked for one) left no row open. A
+// blocked, the closing report came back in `report`, and the negative control (when the depth asked
+// for one) really failed on the base version, and the check of the key document (when the depth
+// asked for one) left no row open. A
 // range that carries no oracle stage at all (`spec..tests` and its kind) is judged on what it
 // promised instead: every stage of the range ran, and the status says in words that no check ran
 // here, so a partial range is never read as a failing one. A range the depth folds to nothing
@@ -1075,7 +1105,6 @@ function fixerDone(capped) {
 function makeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
-  const where = o.out || 'the report file'
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
   const runText = o.noop
     ? 'the depth folded every stage of this range, so nothing ran and nothing is open'
@@ -1100,7 +1129,7 @@ function makeStatus(s) {
     ? ' The control-run stage left the working tree unverified: what stands in it now is nobody\'s statement.'
     : ''
   const gapText = gap.length
-    ? ` ${gap.length} gap(s) stand in this return and in ${where}: they are unfinished work, not a silent retry.`
+    ? ` ${gap.length} gap(s) stand in this return and in the closing report it carries: they are unfinished work, not a silent retry.`
     : ''
   const folded = o.folded || []
   const foldText = folded.length
@@ -1120,6 +1149,12 @@ function makeResult(s) {
   const gap = (o.gap || []).slice()
   if (nc && nc.gap) gap.push(nc.gap)
   if (tr && tr.gap) gap.push(`the control-run stage: ${tr.gap}`)
+  // the closing report travels in this return, never in a file: the harness lets no subagent write
+  // a report file. A run that came back without one says nothing about itself, so that is a gap of
+  // it and it takes `ok` down like any unverified ground
+  const report = String(o.report == null ? '' : o.report).trim()
+  const reportOk = report !== ''
+  if (!reportOk) gap.push(o.reportGap || 'the closing report came back empty: this run states nothing about itself')
   const blocked = o.blocked ? blockedLine(o.blocked) : null
   const run = o.run == null ? null : String(o.run)
   // the oracle stages of this range: with one of them in the range the check decides the result,
@@ -1133,7 +1168,7 @@ function makeResult(s) {
   // settle never turns into a finished run because the oracle below it passed
   const key = o.key == null ? true : o.key !== false
   const treeOk = !tr || tr.untouched === true
-  const ok = !blocked && key && (!nc || nc.ok) && treeOk && (noop || (oracle ? run === 'PASS' : ranAll))
+  const ok = !blocked && key && (!nc || nc.ok) && treeOk && reportOk && (noop || (oracle ? run === 'PASS' : ranAll))
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1142,6 +1177,7 @@ function makeResult(s) {
     range: `${o.from || first}..${o.until || last}`,
     stages,
     done,
+    report: reportOk ? report : null,
     files: o.files || [],
     run,
     oracle,
@@ -1230,7 +1266,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, namesOut, mustExist, outVerdict,
+    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
@@ -1251,7 +1287,7 @@ const ROLE_TEXT = {
   "code-author": "Code author. The tests already state what the change must do. You change the code until they pass, and nothing else.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the inputs first, then change only the files the task names. Run the check the task names after every step; when the task names no check, say so in your return instead of inventing one. A test you cannot make pass is a finding: report it with the failing line verbatim, never weaken the test, never mark it skipped, never rewrite it to match the code.\n\nSmallest change that passes: no refactor the task did not ask for, no new abstraction for one caller, no new file where an edit was asked, no commit, no push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the decisive line of the last check run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "test-author": "Test author. You turn the scenario list into executable tests. The scenarios are the level above you: every scenario gets a test, and no test stands without a scenario.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the scenario file first. Write the tests in the harness the repository already uses, with the assertions the scenario states and the decisive value in the failure message. Name a test after what it proves, never after a scenario id or number. A scenario you cannot express as a test is reported, not silently dropped.\n\nWrite the tests so they fail before the change and pass after it: a test that passes against the unchanged code proves nothing. Run them, and report the failure you see now as evidence that they bite.\n\nNever change the code under test, never relax an assertion to make a run green.\n\nList every test file you wrote in `{out}`, one path per line, and write nothing else into it.\n\nReturn: the test paths, the test count, the scenarios you could not express, the decisive line of the run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "coverage-checker": "Coverage checker. You read two lists \u2014 the wanted scenarios and the tests that exist \u2014 and report where they do not meet. You judge no quality: a badly written test that covers its scenario is covered.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nMatch by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.\n\nWrite one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into \"the scenario list is missing it\" and \"the test proves nothing anybody asked for\"; and the pairs where the test covers only part of its scenario, with the part left out.\n\nNever write a test, never change a file under test.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "closure-author": "Closure author. A run is over and you write its one closing file: what ran, what the checks said, and what stands open. You add no work of your own and no verdict the inputs do not carry.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nThe task text above carries the stage list, the verdicts and the open points of the run; the files carry what each stage wrote. Read the files before you summarise them, and quote a check result the way the run stated it, never the way you read a log.\n\nWrite one file, `{out}`: the stages that ran and the levels the depth folded away; the verdict of every check, with the line the run printed; every open point \u2014 a ceiling that ended a stage, an unverified area, a row nobody settled \u2014 as unfinished work, in the words it was handed to you; and the path of every file the run wrote, so the next reader opens the evidence instead of this summary.\n\nNever drop an open point, never soften one into a sentence that sounds finished, never invent a result no input carries. Never change a file the run produced, never start work of your own, never commit.\n\nReturn: the output path, the counts (stages, open points), then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "closure-author": "Closure author. A run is over and you close it: what ran, what the checks said, and what stands open. You add no work of your own and no verdict the inputs do not carry.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nThe task text above carries the stage list, the verdicts and the open points of the run; the files carry what each stage wrote, and they stand in the directory {out}. Read the files before you summarise them, and quote a check result the way the run stated it, never the way you read a log.\n\nYour return is the report, and nothing else carries it: write no file, create nothing, change nothing. A subagent of this harness returns its findings as text, so a report put into a file reaches nobody.\n\nThe report holds: the stages that ran and the levels the depth folded away; the verdict of every check, with the line the run printed; every open point \u2014 a ceiling that ended a stage, an unverified area, a row nobody settled \u2014 as unfinished work, in the words it was handed to you; and the path of every file the run wrote, so the next reader opens the evidence instead of this summary.\n\nNever drop an open point, never soften one into a sentence that sounds finished, never invent a result no input carries. Never change a file the run produced, never start work of your own, never commit.\n\nReturn: the report itself, then the last line `DONE` or `BLOCKED: <reason>`. An empty return is a run that states nothing about itself.\n",
   "critic": "Critic. You read the object below in a clean context and point at the places where an error may hide. You give hints, never verdicts: what you suspect is settled later by facts, not by your confidence.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nTool-call budget: at most 12 calls, and no call that changes anything. Read the object, then stop reading and write. Spending the budget on a wide tour costs more than it finds; read what the task points at.\n\nAt most 5 hints, the strongest first. Every hint carries: the aspect it comes from; the place (file and line range, or document section); the error you suspect, in one sentence; the severity (high, medium, low); and the one piece of evidence that would settle it \u2014 a command to run, a file to read, a value to compare. A hint nobody could settle is not a hint, drop it.\n\nNo praise, no summary of what the object does, no style remark, no restatement of a rule the object already follows. When the task names a version from before the change, a shape that already stands in it is no finding of this change: hint at what this change brought.\n\nWrite the hint list into `{out}` in that shape and change nothing else.\n\nReturn: the output path and the hint count by severity, then the hints themselves \u2014 one line per hint, nothing else on the line:\n\n`HINT | reliability | slug.js:4 | high | the cut can land on a dash and leave a trailing one | run slug('ab cd', 3) and look at the tail`\n\nOnly those lines are read: a hint that stands in `{out}` but on no line of your return is a hint nobody got, and a count is no hint. Then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "evidence-researcher": "Evidence researcher. One group of hints, many cheap queries, one answer per hint: confirmed, refuted or undetermined. You decide nothing about what to change; you bring the facts that decide it.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nFor every hint of the group, one answer under that hint's own id: run the check the hint names, read the code path around the place, and reproduce the failure when the hint claims one. A failure, or a shape, that already stands in the unchanged base version is not a finding of this change \u2014 say so, with both runs or both places quoted.\n\nAnswer each hint with `confirmed`, `refuted` or `undetermined`, every answer carrying its pointer: file and line, command and its decisive output line, or commit hash. `confirmed` needs a fact of the object that holds this one hint up; a hint the files and the runs neither hold up nor settle is `undetermined`, never `confirmed`, and no hint is confirmed for sounding right. `undetermined` is a real answer and better than a guess; it says what you tried and what would settle it.\n\nA hint that calls something needless, duplicated or absent is refuted as soon as a fact stands against it: a caller, a test, or a rule of the object's own documents that needs exactly that thing. Look for one before you confirm such a hint, and quote it with file and line.\n\nKeep two kinds of failure apart: a failure of the object under review, and a failure of your own run (a tool, an access, a sandbox limit). The second one is never a finding about the object; report it in its own list.\n\nWrite the answers into `{out}` and change nothing under review. You have no Write tool: create `{out}` with a shell redirect, and write no other file.\n\nReturn: the output path and the counts (confirmed, refuted, undetermined, harness failures), then your answers themselves \u2014 one line per hint id, nothing else on the line:\n\n`EVIDENCE | g1.h2 | refuted | base:no | check.js:2 calls slug(s, 12), so the argument the hint calls needless has a caller`\n\nEvery hint id of your group gets its own such line, in that order of fields. Only those lines are read: a count, a summary, and one verdict written over a whole group settle no hint and reach nobody, and an answer that stands in `{out}` but on no line of your return is an answer nobody got. Then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "evidence": "Evidence agent, short form: you collect the facts for the hints below and decide each one yourself, in one pass.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer hint, under that hint's own id: run the check it names, read the place it points at, then say `confirmed` (a fact of the object holds this one hint up and it names a real change), `refuted` (a fact settles it against the hint) or `undetermined` (the facts do not settle it, so it goes to the user). Every line carries its pointer: file and line, command with its decisive output line, or commit hash. A claim with no pointer does not go in, and a hint nothing holds up is `undetermined`, never `confirmed`.\n\nA hint that calls something needless, duplicated or absent is refuted as soon as a caller, a test or a rule of the object's own documents needs exactly that thing; look for one before you confirm such a hint.\n\nA failure, or a shape, that already stands in the unchanged base version is not a finding of this change. A failure of your own run \u2014 tool, access, sandbox \u2014 is `harness`, no finding about the object either; keep those in their own list.\n\nA confirmed hint states the change in one sentence: what to change and where. It never states how to write the code.\n\nYou have no Write tool: create `{out}` with a shell redirect, and write no other file. Write the same four words into `{out}`: confirmed with the change, refuted with the refuting fact, undetermined with what is missing, harness failures apart.\n\nReturn: the output path and the four counts, then your answers themselves \u2014 one line per hint id, nothing else on the line:\n\n`EVIDENCE | g1.h2 | refuted | base:no | check.js:2 calls slug(s, 12), so the argument the hint calls needless has a caller`\n\nEvery hint id you were given gets its own such line, in that order of fields. Only those lines are read: a count, a summary, and one verdict written over a whole group settle no hint and reach nobody, and an answer that stands in the file but on no line of your return is an answer nobody got. Then the last line `DONE` or `BLOCKED: <reason>`.\n",

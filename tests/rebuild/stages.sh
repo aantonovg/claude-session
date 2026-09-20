@@ -219,8 +219,9 @@ ck(b.runVerdict('') === 'unreadable', 'an empty return, no verdict')
 
 // ---- one result builder per flow: a blocked stage never returns the shape of a finished run ----
 const S = {
-  out: '/tmp/run/report.md', from: 'spec', until: 'fixer', stages: ALL,
+  out: '/tmp/run', from: 'spec', until: 'fixer', stages: ALL,
   done: ALL, files: ['/tmp/run/make-spec.md'],
+  report: 'spec, scenarios, tests, code, executor, coverage, fixer ran; the check passed',
 }
 const stopped = b.makeResult({ ...S, done: ['spec'], stage: 'code', blocked: 'the tool was denied' })
 ck(stopped.ok === false, 'a blocked stage is never a finished run')
@@ -281,7 +282,8 @@ ck(b.makeResult({ ...S, run: 'PASS' }).keyCheck === true, 'a depth that asks for
 
 // ---- a range the depth folded to nothing: a finished no-op, never a failure nobody wrote ----
 const noop = b.makeResult({
-  out: '/tmp/run/report.md', from: 'spec', until: 'spec', stages: [], done: [], folded: ['spec'],
+  out: '/tmp/run', from: 'spec', until: 'spec', stages: [], done: [], folded: ['spec'],
+  report: 'the depth folded every stage of this range: nothing ran',
 })
 ck(noop.ok === true, 'a range the depth folded away ran everything it promised: nothing')
 ck(noop.blocked === undefined && noop.gap.length === 0, 'and it carries no blocked line and no gap')
@@ -291,8 +293,9 @@ ck(b.makeResult({ ...S, stages: [], done: [], folded: [] }).ok === false,
 
 // ---- a range with no oracle stage: judged on what it promised, never on a check nobody ran ----
 const PART = {
-  out: '/tmp/run/report.md', from: 'spec', until: 'tests',
+  out: '/tmp/run', from: 'spec', until: 'tests',
   stages: ['spec', 'scenarios', 'tests'], done: ['spec', 'scenarios', 'tests'], files: [],
+  report: 'spec, scenarios, tests ran; no check ran in this range',
 }
 const part = b.makeResult(PART)
 ck(part.ok === true, 'a range without the oracle that ran every stage it named is a finished run')
@@ -365,6 +368,46 @@ ck(b.outVerdict(`out/make-tests.md 117 bytes\nDONE`, OUTP).ok === true,
 ck(b.outVerdict(`out/make-tests.md 117 bytes\nDONE`, OUTP).bytes === 117, 'and that size is the size')
 ck(b.outVerdict('/other/dir/make-tests.md 117 bytes\nDONE', OUTP).ok === false,
   'a size line about another file is no evidence of this one')
+
+// ---- `out` names the directory the stage files go to, never a report file a stage must write ----
+eq(b.outDir('/p/proj/out'), '/p/proj/out', 'a directory is the directory')
+eq(b.outDir('/p/proj/out/'), '/p/proj/out', 'a trailing slash changes nothing')
+eq(b.outDir('/p/proj/out/report.md'), '/p/proj/out', 'a file named inside it names its directory')
+eq(b.outDir('/report.md'), '/', 'a file at the root names the root')
+try { b.outDir('out/report.md'); ck(false, 'a relative out is rejected') } catch (e) {
+  ck(/absolute/.test(String(e.message)), `outDir says what it wanted (${e.message})`)
+}
+try { b.outDir(null); ck(false, 'no out at all is rejected') } catch (e) { ck(true, 'no out at all is rejected') }
+
+// ---- the closing report travels in the return: no subagent of this harness writes a report file --
+const rep = b.closureReport('Stages: spec, tests, code. The check said PASS.\nDONE')
+ck(rep.ok === true, 'a return with text in it is the report')
+ck(/Stages: spec/.test(String(rep.report)), `and the report is that text (${String(rep.report).slice(0, 30)})`)
+ck(/DONE/.test(String(rep.report)) === false, 'the shape line is no part of the report')
+ck(rep.gap === null, 'a report that came back writes no gap')
+const repEmpty = b.closureReport('')
+ck(repEmpty.ok === false && repEmpty.report === null, 'an empty return is no report')
+ck(/closing report/.test(String(repEmpty.gap)), `and it names itself in the gap (${repEmpty.gap})`)
+ck(b.closureReport(null).ok === false, 'no return at all is no report either')
+ck(b.closureReport('DONE').ok === false, 'a return carrying nothing but its shape line is no report')
+const repBlocked = b.closureReport('I could not read the files\nBLOCKED: the tool was denied')
+ck(repBlocked.ok === false, 'a blocked closure stage returned no report')
+ck(/denied/.test(String(repBlocked.gap)), `and the gap carries the reason (${repBlocked.gap})`)
+const noReport = b.makeResult({ ...S, run: 'PASS', report: null })
+ck(noReport.ok === false, 'a run that came back without its closing report is no finished run')
+ck(noReport.report === null, 'and the result names no report it does not carry')
+ck(noReport.gap.filter(g => /closing report/.test(g)).length === 1,
+  `the missing report stands in the gap list (${noReport.gap.join(' ;; ')})`)
+ck(b.makeResult({ ...S, run: 'PASS', report: '   ', reportGap: 'the closure stage was denied its tool' })
+  .gap.filter(g => /denied its tool/.test(g)).length === 1, 'the reason the closure gave is the gap')
+const NOREP = { ...S }
+delete NOREP.report
+ck(b.makeResult({ ...NOREP, run: 'PASS' }).report === null, 'a state with no report field carries none')
+ck(b.makeResult({ ...NOREP, run: 'PASS' }).ok === false, 'and it is no finished run')
+ck(/gap\(s\) stand in this return/.test(String(noReport.status)),
+  `the status says the gaps travel in the return (${noReport.status})`)
+ck(String(b.makeResult({ ...S, run: 'PASS' }).report) !== String(S.out), 'the report is text, never a path')
+ck(b.makeResult({ ...S, run: 'PASS' }).out === '/tmp/run', 'out is the directory of the stage files')
 
 const PB = {
   out: '/tmp/run/synthesis.md', directions: ['one', 'two'],
@@ -459,6 +502,9 @@ a blocked stage no longer stops the run|s/if \(s && s\.ok === true\)/if (true)/
 the fix stage the ceiling cut is counted as one that ran|s/return capped === true \? \[\] : \['fixer'\]/return ['fixer']/
 a working tree the control run changed leaves the run ok|s/const treeOk = !tr \|\| tr\.untouched === true/const treeOk = true/
 the directions the ceiling cut leave the probe answer whole|s/ && cut\.length === 0//
+a run that returned no closing report is finished anyway|s/const reportOk = report !== ''/const reportOk = true/
+a file named as out is taken for the directory of the stage files|s/if \(s\.slice\(cut \+ 1\)\.indexOf\('\.'\) === -1\) return s/return s/
+a closure return carrying nothing but its shape line passes for a report|s/while \(lines\.length && \/\^DONE\[\.!\]\?\$\/i\.test\(lines\[lines\.length - 1\]\.trim\(\)\)\) lines\.pop\(\)//
 MUT
 
 # ---- s3: the wiring of workflows/make.js ----
@@ -514,12 +560,15 @@ sys.exit(1 if bad else 0)
   check "s3 make.js builds that result through makeResult" grep -Fq 'makeResult({' <<<"$code"
   check "s3 a blocked stage of make.js returns through the result builder" grep -Eq 'return await result\(stop' <<<"$code"
 
-  # the report the contract promises: one stage writes `out` on the way out, whichever exit the
-  # flow takes, and its output is checked like any other stage's (the check itself is outVerdict,
-  # inside the one stage helper above)
-  check "s3 make.js writes the report file its contract names" grep -Fq 'out: OUT }, DONE_SHAPE)' <<<"$code"
+  # the report the contract promises: the closure stage returns it as text on every exit, because
+  # this harness lets no subagent write a report file, and the run carries that text in its result
+  check "s3 make.js asks its closure stage for a return, not a file" grep -Fq "REPORT_SHAPE, 'text')" <<<"$code"
+  check "s3 that closure stage is told to write no file" grep -Fq 'write no file' <<<"$code"
+  check "s3 make.js checks that return through closureReport" grep -Fq 'closureReport(' <<<"$code"
   check "s3 that report stage runs on every exit, once" grep -Fq 'if (!reported)' <<<"$code"
-  check "s3 make.js names no report path it did not write" grep -Fq 's.out = null' <<<"$code"
+  check "s3 make.js hands that report to its result builder" grep -Fq 'report: s.report' <<<"$code"
+  check "s3 make.js names no report file anywhere" bash -c '! grep -Eq "report\.md|summary\.md" <<<"$1"' _ "$code"
+  check "s3 make.js takes the stage-file directory from outDir" grep -Fq 'outDir(OUT)' <<<"$code"
   check "s3 make.js stamps the closure role (stamped: $(stamped_roles "$MAKE" 2>/dev/null))" \
     bash -c 'case " $1 " in *" closure-author "*) exit 0 ;; *) exit 1 ;; esac' _ "$(stamped_roles "$MAKE" 2>/dev/null)"
   check "s3 the report carries the stages, the verdicts and the gaps" python3 -c '
@@ -566,7 +615,7 @@ code = sys.argv[1]
 m = re.search(r"(?ms)makeResult\(\{(.*?)\}\)", code)
 if not m: print("no makeResult call"); sys.exit(1)
 body = m.group(1)
-missing = [f for f in ("control", "run", "gap", "done", "stages", "check", "key") if not re.search(r"\b%s\b" % f, body)]
+missing = [f for f in ("control", "run", "gap", "done", "stages", "check", "key", "report") if not re.search(r"\b%s\b" % f, body)]
 if missing: print("the result builder call misses:", " ".join(missing))
 sys.exit(1 if missing else 0)
 ' "$code"
@@ -727,6 +776,9 @@ if [ -f "$SCEN" ]; then
   check "s5 make-smoke demands scenarios and tests" bash -c 'grep -qi "scenario" <<<"$1" && grep -qi "test" <<<"$1"' _ "$mk"
   check "s5 make-smoke demands a PASS from the executor" grep -qi 'executor' <<<"$mk"
   check "s5 make-smoke fails on a review stage over the tested code" grep -qi 'no review stage' <<<"$mk"
+  # the closing report comes back in the result, so the scenario judges that text, never a file
+  check "s5 make-smoke demands a non-empty report text in the result" grep -qi 'report text' <<<"$mk"
+  check "s5 make-smoke makes no report file its acceptance" bash -c '! grep -Eqi "report\.md (exists|is)" <<<"$1"' _ "$mk"
 
   pr=$(block_of probe-smoke)
   check "s5 the scenario probe-smoke exists" test -n "$pr"
