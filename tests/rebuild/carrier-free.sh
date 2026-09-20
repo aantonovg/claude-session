@@ -113,7 +113,11 @@ printf 'The tools-edit agent writes the code.\n' > "$T/agent.md"
 printf 'The chain workflow reads the object.\n' > "$T/flow.md"
 printf 'The stage asks through AskUserQuestion.\n' > "$T/tool.md"
 printf 'The stage runs it with `Bash`.\n' > "$T/toolplain.md"
-for c in launch agent flow tool toolplain; do
+# the roles of the new set are carriers too: a hyphenated role name counts bare, a one-word role
+# name counts beside a carrier noun
+printf 'The spec-author writes the specification.\n' > "$T/rolehyph.md"
+printf 'The stage goes to the executor carrier.\n' > "$T/rolenoun.md"
+for c in launch agent flow tool toolplain rolehyph rolenoun; do
   check "g1 the scan sees a carrier of kind $c" \
     bash -c '! node "$1" "$2" process "$3" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/$c.md"
 done
@@ -138,6 +142,16 @@ check "g1 the mutant that drops the tool shape is caught" \
 mut noagent "s/'tools-edit'/'zz-never-an-agent'/"
 check "g1 the mutant that drops an agent of the roster is caught" \
   bash -c 'node "$1" "$2" process "$3" > /dev/null' _ "$T/scan.js" "$T/noagent.js" "$T/agent.md"
+mut norolehyph "s/ROLE_HYPHEN = '-'/ROLE_HYPHEN = 'zzznotinanyname'/"
+check "g1 the mutant that drops the bare hyphenated role name is caught" \
+  bash -c 'node "$1" "$2" process "$3" > /dev/null' _ "$T/scan.js" "$T/norolehyph.js" "$T/rolehyph.md"
+mut norolenoun "s/'role', 'roles', 'carrier', 'carriers'/'zzrole', 'zzroles', 'zzcarrier', 'zzcarriers'/"
+check "g1 the mutant that drops the role-beside-a-noun shape is caught" \
+  bash -c 'node "$1" "$2" process "$3" > /dev/null' _ "$T/scan.js" "$T/norolenoun.js" "$T/rolenoun.md"
+# the roster is the two generated tables, never a list of this test: an empty roster is no rule
+check "g1 the role roster comes from the generated tables, not from a list of this file" \
+  bash -c 'n=$(node -e "process.stdout.write(String(require(process.argv[1]).roleCarrierNames().length))" "$1"); [ "$n" -ge 15 ]' \
+  _ "$BLOCK"
 
 # ---- g2: the base text, carrier half ----
 if [ -f "$B" ]; then
@@ -162,10 +176,12 @@ entries = json.loads(subprocess.run(
     ['node', '-e', 'process.stdout.write(JSON.stringify(Object.values(require(process.argv[1]).LAYOUT.files)))', block],
     capture_output=True, text=True, check=True).stdout)
 paths = [e['path'] for e in entries]
-# every document of lib/task-layout.md is written by some stage of the master table: a file the
-# layout declares and the mkdir of core.md creates, with no stage that writes it, is a gap the
-# per-row check above cannot see (a row naming one other layout path already satisfies it)
-docs = [e['path'] for e in entries if e.get('kind') == 'file']
+# every document and every directory of lib/task-layout.md is written by some stage of the master
+# table: a place the layout declares and the mkdir of core.md creates, with no stage that writes
+# it, is a gap the per-row check above cannot see (a row naming one other layout path already
+# satisfies it). The `dir` rows count as well as the `file` rows — `evidence` is filled by a stage
+# exactly as `report.md` is — and only the machine-written `state` rows are left out
+docs = [e['path'] for e in entries if e.get('kind') in ('file', 'dir')]
 HEAD = ['stage', 'task file', 'gate', 'lite', 'std', 'full']
 def cells(line):
     return [c.strip() for c in line.strip().strip('|').split('|')]
@@ -353,13 +369,35 @@ else
 fi
 
 # ---- g6: ops.md carries the control-call file of decision 17 ----
+# The rule is asked for by its decisive words, through phraseGap() of the shared block: a check for
+# one common word ("after") is satisfied by any prose and proves nothing.
+cat > "$T/gap.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const mode = process.argv[3] // 'old' = the retired carrier names, 'phrases' = the list that follows
+const text = fs.readFileSync(process.argv[4], 'utf8')
+const gap = mode === 'old' ? b.oldCarrierGap(text) : b.phraseGap(text, process.argv.slice(5))
+gap.forEach(g => console.log('missing: ' + g))
+process.exit(gap.length ? 1 : 0)
+JS
 O=$S/ops.md
 if [ -f "$O" ]; then
   check "g6 ops.md names the control-call file" grep -qi 'control call' "$O"
   check "g6 ops.md states the expected result per command" grep -qi 'expected result' "$O"
-  check "g6 ops.md runs the calls before and after the change" \
-    grep -qi 'before the change' "$O"
-  check "g6 ops.md names the pair of runs as the verdict" grep -qi 'after' "$O"
+  check "g6 ops.md runs the calls before the change and again after it, and calls the pair of runs the verdict" \
+    node "$T/gap.js" "$BLOCK" phrases "$O" \
+    'written before the change' 'run before the change' 'run again after the change' \
+    'The pair of runs is the verdict'
+  # executed, not read: a text without the phrase must come back with a gap, and a mutant that
+  # never finds a phrase missing must stop seeing it
+  printf 'The calls run whenever it suits, and somebody looks after.\n' > "$T/ops-thin.md"
+  check "g6 a text that only says 'after' is seen as a gap" \
+    bash -c '! node "$1" "$2" phrases "$3" "The pair of runs is the verdict" > /dev/null' \
+    _ "$T/gap.js" "$BLOCK" "$T/ops-thin.md"
+  mut nogap 's/\) === -1\)/) === -2)/'
+  check "g6 the mutant that never finds a phrase missing is caught" \
+    bash -c 'node "$1" "$2" phrases "$3" "The pair of runs is the verdict" > /dev/null' \
+    _ "$T/gap.js" "$T/nogap.js" "$T/ops-thin.md"
 else
   fail "g6 skills/process/ops.md exists"
 fi
@@ -386,9 +424,22 @@ if [ -f "$SCEN" ]; then
     [ -n "$block" ] || continue
     check "g7 $k gates the reading prompt on the workflow finish notice" \
       grep -qE "^[[:space:]]+finish: [0-9]+ [0-9]+$" <<<"$block"
-    check "g7 $k makes a launch of an old carrier name a FAIL" \
-      grep -qi 'old' <<<"$block"
+    # the PASS rule has to name every retired launch name inside a sentence that calls such a
+    # launch a FAIL: oldCarrierGap() of the shared block reads the FAIL sentences and reports what
+    # the text forgot, so the word "old" standing anywhere settles nothing
+    printf '%s\n' "$block" > "$T/scen-$k.txt"
+    check "g7 $k makes a launch of any old carrier name a FAIL" \
+      node "$T/gap.js" "$BLOCK" old "$T/scen-$k.txt"
   done
+  # executed, not read: a text that names an old carrier outside any FAIL sentence is a gap, and a
+  # mutant of the retired list stops seeing the name it no longer carries
+  printf 'The old carriers session:build, session:dev, session:research, session:review-fix, session:translate-ru and session:stage- are gone; a second Workflow call is a FAIL.\n' \
+    > "$T/scen-loose.txt"
+  check "g7 a text naming the old carriers outside a FAIL sentence is a gap" \
+    bash -c '! node "$1" "$2" old "$3" > /dev/null' _ "$T/gap.js" "$BLOCK" "$T/scen-loose.txt"
+  mut noold "s/'session:review-fix'/'session:zz-review-fix'/"
+  check "g7 the mutant that renames a retired carrier is caught" \
+    bash -c '! node "$1" "$2" old "$3" > /dev/null' _ "$T/gap.js" "$T/noold.js" "$T/scen-carrier-pick.txt"
   # the prompts of a carrier-free run never name the carrier themselves, or the scenario would
   # prove nothing about the skill: the main session picks it from its contracts
   block=$(awk '$0 ~ "^carrier-pick[[:space:]]"{f=1} f&&/^[A-Za-z][A-Za-z0-9_-]*[[:space:]].*prompts:/&&$1!="carrier-pick"{exit} f{print}' "$SCEN")

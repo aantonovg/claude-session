@@ -388,6 +388,24 @@ const TOOL_CAMEL = ['WebFetch', 'WebSearch', 'AskUserQuestion', 'TodoWrite', 'No
   'SlashCommand', 'BashOutput', 'KillShell', 'ExitPlanMode', 'ListAgents', 'ToolSearch',
   'ReadNotifications', 'DesignSync']
 const TOOL_NOUNS = ['tool', 'tools']
+// The roles of this plugin are carriers of the new set, exactly as its workflows and its agents
+// are: a process file that sends a stage to `spec-author` names the carrier the rule forbids. The
+// roster comes from the two generated tables (lib/classes.json through roleNames(), the role output
+// table of lib/task-layout.md through LAYOUT.roleOut), never from a list written here, so a role
+// added to the plugin is guarded with no edit of this function.
+// A role name with a hyphen is no English word and counts bare; a one-word role name ("critic",
+// "evidence", "executor", "fixer") is ordinary prose and counts only beside a carrier noun, so
+// "one merged critic" and "the evidence chain" stay sayable and "the executor carrier" does not.
+const ROLE_HYPHEN = '-'
+const ROLE_NOUNS = ['role', 'roles', 'carrier', 'carriers', 'subagent', 'subagents']
+function roleCarrierNames() {
+  const out = []
+  const add = n => { if (n && out.indexOf(n) === -1) out.push(n) }
+  try { roleNames().forEach(add) } catch (e) { /* an unbuilt copy has no class table */ }
+  const ro = (typeof LAYOUT !== 'undefined' && LAYOUT && LAYOUT.roleOut) || {}
+  Object.keys(ro).forEach(add)
+  return out
+}
 function carrierFreeTokens(line, opts) {
   const o = opts || {}
   const s = String(line == null ? '' : line)
@@ -396,6 +414,10 @@ function carrierFreeTokens(line, opts) {
   const flows = CARRIER_WORKFLOWS.map(rxEsc).join('|')
   const words = CARRIER_WORKFLOWS.concat(CARRIER_AGENT_WORDS).map(rxEsc).join('|')
   const nouns = CARRIER_NOUNS.map(rxEsc).join('|')
+  const roles = roleCarrierNames()
+  const rhyph = roles.filter(r => r.indexOf(ROLE_HYPHEN) !== -1).map(rxEsc).join('|')
+  const rwords = roles.map(rxEsc).join('|')
+  const rnouns = ROLE_NOUNS.concat(CARRIER_NOUNS).map(rxEsc).join('|')
   const parts = [
     `\\b${rxEsc(CARRIER_PREFIX)}:[a-z][a-z0-9-]*`, // a launch name under this plugin's prefix
     `\\b(?:${CARRIER_AGENTS.map(rxEsc).join('|')})\\b`, // an agent file name, bare
@@ -403,6 +425,11 @@ function carrierFreeTokens(line, opts) {
     `\\b(?:${words})\\b[\`*_ -]+(?:${nouns})\\b`, // "the chain workflow", "the waiter agent"
     `\\b(?:${nouns})[\`*_ -]+(?:${words})\\b`, // "workflow make", "agent: waiter"
   ]
+  if (rhyph) parts.push(`\\b(?:${rhyph})\\b`) // "spec-author", "coverage-checker": bare
+  if (rwords) {
+    parts.push(`\\b(?:${rwords})\\b[\`*_ -]+(?:${rnouns})\\b`) // "the executor carrier"
+    parts.push(`\\b(?:${rnouns})[\`*_ :,-]+(?:${rwords})\\b`) // "role: critic"
+  }
   const re = new RegExp(parts.join('|'), 'gi')
   const hits = []
   let m
@@ -423,6 +450,36 @@ function carrierFreeTokens(line, opts) {
   const tre = new RegExp(tparts.join('|'), 'g') // case-sensitive: "read the ledger" is prose
   while ((m = tre.exec(s)) !== null) hits.push(m[0])
   return hits
+}
+
+// phraseGap(text, phrases): the phrases of the list that <text> does not carry, case and line
+// wrapping ignored. A check over a rule text asks for the decisive words, never for one common
+// word of them: `grep -qi 'after'` is satisfied by any prose and proves nothing, so the tests of
+// this tree call this function with the whole phrase and report what is missing.
+// The emphasis marks of the text are dropped, so a rule written "**before the change**" is found
+// by the words of the phrase; the line wrapping of a markdown file is dropped for the same reason.
+function normPhrase(s) {
+  // \x60 is the backtick: written as an escape because a backtick inside a regex literal reads as
+  // the start of a template literal to stripComments() and would swallow the code that follows
+  return String(s == null ? '' : s).replace(/[\x60*]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+function phraseGap(text, phrases) {
+  const s = normPhrase(text)
+  const list = Array.isArray(phrases) ? phrases : (phrases == null ? [] : [phrases])
+  return list.map(p => String(p)).filter(p => s.indexOf(normPhrase(p)) === -1)
+}
+// The launch names of the 0.15 set that the 0.16 process replaces. A behavior scenario of the gate
+// proves the process picks a carrier of the new set, so its PASS rule has to call a launch of one of
+// these a FAIL; oldCarrierGap() reports the ones a scenario text forgets.
+const OLD_CARRIERS = ['session:build', 'session:dev', 'session:research', 'session:review-fix',
+  'session:translate-ru', 'session:stage-']
+// oldCarrierGap(text): the old carrier names that <text> does not name in a sentence that calls
+// such a launch a FAIL. Only the sentences carrying the word FAIL are read, so a text that merely
+// mentions an old name somewhere else still comes back with a gap.
+function oldCarrierGap(text) {
+  const s = String(text == null ? '' : text).replace(/\s+/g, ' ')
+  const failing = s.split(/(?<=[.;])\s+/).filter(x => /\bFAIL\b/.test(x)).join(' ')
+  return phraseGap(failing, OLD_CARRIERS)
 }
 
 // agentTypesOf(src): every agentType a workflow script of a plugin launches, resolved as far as a
@@ -1777,7 +1834,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
-    carrierTokens, TOOL_PLAIN, TOOL_CAMEL, carrierFreeTokens, agentTypesOf,
+    carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
+    phraseGap, OLD_CARRIERS, oldCarrierGap, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
