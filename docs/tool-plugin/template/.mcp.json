@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "example": {
+      "command": "/absolute/path/to/example-mcp-server",
+      "args": [
+        "--stdio"
+      ],
+      "env": {}
+    }
+  }
+}

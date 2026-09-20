@@ -3,8 +3,20 @@
 #
 #   tests/rebuild/scenario-env.sh [--hide-old] <variant> <dir>
 #
-# Variants: base (P1). stub-on, stub-off-deny and the --hide-old flag arrive with P7; this script
-# refuses them until then instead of building half an environment.
+# Variants:
+#   base            the worktree plugin alone
+#   stub-on         plus the stub tool plugin of tests/rebuild/fixtures/tool-stub (a second
+#                   --plugin-dir; U7 froze that two of them are accepted in one command)
+#   stub-off-deny   the stub is not loaded and one built-in tool is denied in the project
+#                   (U10: the project disable is complete; U11: a bare tool name in
+#                   permissions.deny removes the tool from the session and from its agents)
+#   gate, gate-stub-on, gate-stub-off-deny
+#                   the same three with --hide-old built in: the names the behavior gate runs
+#                   under, so the variant of a verdict line says which set was measured
+# --hide-old: the plugin argument points at a copy of the worktree plugin made inside <dir>, with
+#   the contract entries of the five old workflows taken out of the copy's plugin.json and the old
+#   process skills left out of the copy, so the gate measures the new set only. The files
+#   themselves are deleted in P9; this flag only hides them from one session.
 #
 # The mechanism is the one the U7 answer line froze (plan/control-calls.md):
 #   real HOME, a scratch project directory whose .claude/settings.json sets
@@ -13,14 +25,21 @@
 # the project-level disable hides the installed plugin in that project only.
 #
 # Credential rule (section 6): nothing is read, listed or copied from ~/.claude, ~/.claude.json, a
-# keychain or any login state. This script writes three files and nothing else. The user-level
+# keychain or any login state. This script writes inside <dir> and nowhere else. The user-level
 # skills of the real ~/.claude/skills stay visible to the session; that loss of isolation is
 # accepted and named under "what no oracle covers".
 #
-# Writes into <dir>: .claude/settings.json, claude-args (the argument list for `claude`), variant.
+# Writes into <dir>: .claude/settings.json, claude-args (the argument list for `claude`), variant,
+# and with --hide-old the plugin copy plugin/.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+PLUG=$REPO/plugins/session
+STUB=$REPO/tests/rebuild/fixtures/tool-stub
+OLD_WF="build dev research review-fix translate-ru"
+OLD_SKILLS="pipeline review"
+DENY_TOOL=Read
+
 HIDE_OLD=0
 ARGS=()
 for a in "$@"; do
@@ -38,34 +57,94 @@ fi
 VARIANT=${ARGS[0]}
 DIR=${ARGS[1]}
 
+# the gate names carry the flag: one variant name per line of a verdict file, no second argument
+# that a runner could forget
+case $VARIANT in
+  gate) BUILD=base; HIDE_OLD=1 ;;
+  gate-stub-on) BUILD=stub-on; HIDE_OLD=1 ;;
+  gate-stub-off-deny) BUILD=stub-off-deny; HIDE_OLD=1 ;;
+  base | stub-on | stub-off-deny) BUILD=$VARIANT ;;
+  *) echo "scenario-env: unknown variant $VARIANT (base stub-on stub-off-deny gate gate-stub-on gate-stub-off-deny)" >&2; exit 2 ;;
+esac
+
 case $DIR in
   /*) ;;
   *) echo "scenario-env: <dir> must be an absolute path" >&2; exit 2 ;;
 esac
-
-if [ "$HIDE_OLD" = 1 ]; then
-  echo "scenario-env: --hide-old is built in P7, not here" >&2
-  exit 2
-fi
-if [ "$VARIANT" != base ]; then
-  echo "scenario-env: variant $VARIANT is built in P7; P1 builds base only" >&2
-  exit 2
-fi
 
 if [ -e "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
   echo "scenario-env: $DIR is not empty; a run never reuses a project directory" >&2
   exit 2
 fi
 
+if [ "$BUILD" = stub-on ] && [ ! -f "$STUB/.claude-plugin/plugin.json" ]; then
+  echo "scenario-env: no stub tool plugin at $STUB" >&2
+  exit 1
+fi
+
 mkdir -p "$DIR/.claude" || exit 1
-cat > "$DIR/.claude/settings.json" <<'JSON'
-{
-  "enabledPlugins": {
-    "session@claude-session": false
-  }
-}
-JSON
-printf -- '--plugin-dir %s/plugins/session\n' "$REPO" > "$DIR/claude-args"
+
+# ---- the plugin the session loads: the worktree plugin, or a copy without the old set ----
+LOADED=$PLUG
+if [ "$HIDE_OLD" = 1 ]; then
+  LOADED=$DIR/plugin
+  mkdir -p "$LOADED" || exit 1
+  # copied entry by entry, skills apart: the old process skills are left out of the copy instead
+  # of being copied and then removed, so this script deletes nothing anywhere
+  [ -e "$PLUG/.claude-plugin" ] && { cp -R "$PLUG/.claude-plugin" "$LOADED/" || exit 1; }
+  for e in "$PLUG"/*; do
+    [ -e "$e" ] || continue
+    [ "$(basename "$e")" = skills ] && continue
+    cp -R "$e" "$LOADED/" || exit 1
+  done
+  if [ -d "$PLUG/skills" ]; then
+    mkdir -p "$LOADED/skills" || exit 1
+    for s in "$PLUG"/skills/*; do
+      [ -e "$s" ] || continue
+      b=$(basename "$s")
+      skip=0
+      for o in $OLD_SKILLS; do [ "$b" = "$o" ] && skip=1; done
+      [ "$skip" = 1 ] && continue
+      cp -R "$s" "$LOADED/skills/$b" || exit 1
+    done
+  fi
+  python3 - "$LOADED/.claude-plugin/plugin.json" $OLD_WF <<'PY' || exit 1
+import json, sys
+path, old = sys.argv[1], set(sys.argv[2:])
+d = json.load(open(path, encoding='utf-8'))
+def keep(h):
+    c = h.get('command', '')
+    return not any(('workflows/%s.js' % o) in c for o in old)
+groups = []
+for g in d.get('hooks', {}).get('SessionStart', []):
+    hooks = [h for h in g.get('hooks', []) if keep(h)]
+    if hooks:
+        g = dict(g)
+        g['hooks'] = hooks
+        groups.append(g)
+d['hooks']['SessionStart'] = groups
+with open(path, 'w', encoding='utf-8') as fh:
+    json.dump(d, fh, indent=2)
+    fh.write('\n')
+PY
+fi
+
+# ---- the project settings: the installed plugin off, and for one variant a denied tool ----
+python3 - "$DIR/.claude/settings.json" "$BUILD" "$DENY_TOOL" <<'PY' || exit 1
+import json, sys
+path, build, tool = sys.argv[1], sys.argv[2], sys.argv[3]
+s = {"enabledPlugins": {"session@claude-session": False}}
+if build == 'stub-off-deny':
+    s["permissions"] = {"deny": [tool]}
+with open(path, 'w', encoding='utf-8') as fh:
+    json.dump(s, fh, indent=2)
+    fh.write('\n')
+PY
+
+# ---- the argument list for `claude` ----
+ARGLINE="--plugin-dir $LOADED"
+[ "$BUILD" = stub-on ] && ARGLINE="$ARGLINE --plugin-dir $STUB"
+printf '%s\n' "$ARGLINE" > "$DIR/claude-args"
 printf '%s\n' "$VARIANT" > "$DIR/variant"
 
-echo "scenario-env: $VARIANT built in $DIR (args: $(cat "$DIR/claude-args"))"
+echo "scenario-env: $VARIANT built in $DIR (args: $ARGLINE)"

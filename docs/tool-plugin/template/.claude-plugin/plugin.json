@@ -1,0 +1,23 @@
+{
+  "name": "example-tools",
+  "version": "0.1.0",
+  "description": "Template of a tool plugin: one MCP server, the agents that carry its tools, the workflows that need them, one contract line per workflow.",
+  "keywords": [
+    "tools",
+    "mcp",
+    "template"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/contract.sh ${CLAUDE_PLUGIN_ROOT}/workflows/example.js example-tools",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
