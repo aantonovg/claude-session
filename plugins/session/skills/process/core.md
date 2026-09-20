@@ -87,16 +87,22 @@ The sources and the checks a task needs are a hard requirement, not a nice-to-ha
 3. On every following ping the same health check runs silently: back again means the stage resumes
    from the last ledger row without asking; still missing means one line `still unavailable:
    <list>` after the pong.
-4. A project may take a capability away from this session on purpose. Then the gate names it in
-   one chat line and the stage picks another way to the same fact out of the contracts present;
-   the missing capability stays in the block and in the report. A carrier that comes back blocked
-   because a capability it needed is denied ends that launch, never the stage: the missing
-   capability goes into one chat line and the same need is launched once more on a carrier that
-   does not need it. A denied way of writing the output file is the same case, never the end of the
-   task: the need goes once more to a carrier that writes that file another way, through the shell
-   where nothing else is left. A stage reports blocked only when no carrier of the contracts can
-   reach the fact, and the task never ends with the wanted file unwritten while a way to write it
-   is still open.
+4. A project may take a capability away from this session on purpose. That is a decision of the
+   project, not a fault: the gate names the missing capability in one chat line, the work goes on
+   without it, and the session never asks the user to give it back. The capability stays in the
+   block and in the report. Three cases, all of them a re-send and none of them an end:
+   - Before the launch: read each contract of the session and send the need to one whose work
+     needs nothing this project denies.
+   - A launch that comes back blocked on a denied capability ends that launch, never the stage: the
+     same need goes out once more, with the denied capability named in the launch text, so what
+     comes next reaches the same fact another way.
+   - A denied way of writing the wanted file is the same case: the need goes out again, asking for
+     that file to be written another way.
+   The main session never does the stage itself instead: a fact it looked up in its own turn is no
+   result of this task, and one chat line that reports the missing capability is a report, never a
+   request. A stage reports blocked only when every contract of the session needs what this project
+   denies; the task never ends with the wanted file unwritten while one untried way to write it is
+   left.
 5. "Continue without <name>" from the user overrides the gate, and the unavailable list stays in
    the report.
 
@@ -166,10 +172,17 @@ changes only on facts:
 4. **Fix.** The accepted list, and nothing else, changes the object; then the oracle runs where
    one exists.
 
-Rules: a hint without evidence changes nothing; an `undetermined` hint goes to the user and never
-to the fix step; a failure that also shows on the version before the change is no finding; a
+Rules: a hint without evidence changes nothing — the claim it points at stays as it was, marked as
+not checked, and the check the hint asks for is written down as the next step; a claim is dropped
+only where a fact refutes it, and that fact is named with its pointer; an `undetermined` hint goes
+to the user and never to the fix step; a failure that also shows on the version before the change is no finding; a
 failure of our own side (a missing source, an access, a sandbox) is kept in its own list and never
 becomes a finding; one round, and a second round only on the user's word.
+
+Where step 2 is skipped — a short route whose critique reaches the author of the result directly —
+the rule is the same and matters more: the critique is a list of doubts nobody settled, so the
+result keeps every fact its sources carry, each marked checked or not checked. A result that states
+nothing its sources stated, because a hint doubted it, is wrong and goes back once.
 
 The aspect list is proposed by the main session from the quality criteria agreed with the intent,
 cut to the count the depth allows, and approved by the user. No aspect critic runs without that

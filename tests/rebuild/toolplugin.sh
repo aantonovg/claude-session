@@ -282,7 +282,7 @@ sys.exit(0 if d["enabledPlugins"]["session@claude-session"] is False else 1)' "$
 import json, sys
 d = json.load(open(sys.argv[1]))
 deny = d.get("permissions", {}).get("deny", [])
-sys.exit(0 if len(deny) == 1 and deny[0] == "Read" else 1)' "$D/.claude/settings.json" ;;
+sys.exit(0 if len(deny) == 1 and deny[0] == "Bash" else 1)' "$D/.claude/settings.json" ;;
       *) check "t7 [$tag] no tool denied" python3 -c '
 import json, sys
 d = json.load(open(sys.argv[1]))

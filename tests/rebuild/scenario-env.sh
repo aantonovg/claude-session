@@ -43,7 +43,12 @@ PLUG=$REPO/plugins/session
 STUB=$REPO/tests/rebuild/fixtures/tool-stub
 OLD_WF="build dev research review-fix translate-ru"
 OLD_SKILLS="pipeline review"
-DENY_TOOL=Read
+# The denied tool of the stub-off-deny variant: a tool the carriers normally use, whose loss still
+# leaves reading and writing files possible. A bare `Read` in permissions.deny stood here first and
+# made the scenario unpassable by construction: the harness reads that rule as a rule over paths, so
+# every Write came back "File is covered by a Read deny rule" and the wanted file could never be
+# written by anyone.
+DENY_TOOL=Bash
 
 HIDE_OLD=0
 ARGS=()
