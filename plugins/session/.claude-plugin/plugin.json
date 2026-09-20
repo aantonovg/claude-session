@@ -107,6 +107,24 @@
         "hooks": [
           {
             "type": "command",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/role.js --prefix session",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/chain.js --prefix session",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/translate-ru.js --prefix session",
             "timeout": 5
           }

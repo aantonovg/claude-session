@@ -1,0 +1,83 @@
+{
+  "defaultClass": "c3",
+  "slots": ["main", "opus", "sonnet"],
+  "slotDown": { "main": "opus", "opus": "sonnet", "sonnet": "sonnet" },
+  "sizes": ["small", "medium", "large"],
+  "defaultSize": "medium",
+  "models": { "fab": "fable", "ops": "opus", "son": "sonnet" },
+  "efforts": { "lo": "low", "me": "medium", "hi": "high" },
+  "submodeOrder": ["no-sonnet", "no-opus", "no-fable"],
+  "submodeKeys": ["none", "no-sonnet", "no-opus", "no-fable", "no-sonnet no-opus", "no-sonnet no-fable", "no-opus no-fable"],
+  "table": {
+    "c1": {
+      "none": "ops-lo/ops-lo/son-lo",
+      "no-sonnet": "ops-lo/ops-lo/ops-lo",
+      "no-opus": "son-me/son-me/son-lo",
+      "no-fable": "ops-lo/ops-lo/son-lo",
+      "no-sonnet no-opus": "fab-lo/fab-lo/fab-lo",
+      "no-sonnet no-fable": "ops-lo/ops-lo/ops-lo",
+      "no-opus no-fable": "son-me/son-me/son-lo"
+    },
+    "c2": {
+      "none": "fab-lo/ops-lo/son-me",
+      "no-sonnet": "fab-lo/ops-lo/ops-lo",
+      "no-opus": "fab-lo/son-me/son-me",
+      "no-fable": "ops-me/ops-lo/son-me",
+      "no-sonnet no-opus": "fab-lo/fab-lo/fab-lo",
+      "no-sonnet no-fable": "ops-me/ops-lo/ops-lo",
+      "no-opus no-fable": "son-me/son-me/son-me"
+    },
+    "c3": {
+      "none": "fab-lo/ops-me/son-hi",
+      "no-sonnet": "fab-lo/ops-me/ops-me",
+      "no-opus": "fab-lo/son-hi/son-hi",
+      "no-fable": "ops-me/ops-me/son-hi",
+      "no-sonnet no-opus": "fab-lo/fab-lo/fab-lo",
+      "no-sonnet no-fable": "ops-me/ops-me/ops-me",
+      "no-opus no-fable": "son-me/son-hi/son-hi"
+    },
+    "c4": {
+      "none": "fab-me/ops-hi/son-hi",
+      "no-sonnet": "fab-me/ops-hi/ops-me",
+      "no-opus": "fab-me/fab-me/son-hi",
+      "no-fable": "ops-hi/ops-hi/son-hi",
+      "no-sonnet no-opus": "fab-me/fab-me/fab-lo",
+      "no-sonnet no-fable": "ops-hi/ops-hi/ops-me",
+      "no-opus no-fable": "son-hi/son-hi/son-hi"
+    },
+    "c5": {
+      "none": "fab-hi/ops-hi/ops-hi",
+      "no-sonnet": "fab-hi/ops-hi/ops-hi",
+      "no-opus": "fab-hi/fab-me/fab-me",
+      "no-fable": "ops-hi/ops-hi/ops-hi",
+      "no-sonnet no-opus": "fab-hi/fab-me/fab-me",
+      "no-sonnet no-fable": "ops-hi/ops-hi/ops-hi",
+      "no-opus no-fable": "son-hi/son-hi/son-hi"
+    }
+  },
+  "classStep": { "c1": "c2", "c2": "c3", "c3": "c4", "c4": "c5", "c5": "c5" },
+  "roles": {
+    "plan-author": { "agent": "tools-read-write", "slot": "main", "uplift": true },
+    "spec-author": { "agent": "tools-read-write", "slot": "main", "uplift": true },
+    "scenario-author": { "agent": "tools-read-write", "slot": "main", "uplift": true },
+    "code-author": { "agent": "tools-edit", "slot": "sonnet", "uplift": false },
+    "test-author": { "agent": "tools-edit", "slot": "sonnet", "uplift": false },
+    "coverage-checker": { "agent": "tools-read-write", "slot": "sonnet", "uplift": false },
+    "critic": { "agent": "tools-read-write", "slot": "main", "splitSlot": "opus", "uplift": false },
+    "evidence-researcher": { "agent": "tools-read-bash", "slot": "sonnet", "uplift": false },
+    "evidence": { "agent": "tools-read-bash", "slot": "sonnet", "uplift": false },
+    "evidence-triage": { "agent": "tools-read-write", "slot": "main", "uplift": false },
+    "fixer": { "agent": "tools-edit", "slot": "opus", "uplift": false },
+    "researcher": { "agent": "tools-read-write-bash", "slot": "sonnet", "uplift": false },
+    "web-researcher": { "agent": "tools-web", "slot": "sonnet", "uplift": false },
+    "synthesizer": { "agent": "tools-read-write", "slot": "main", "uplift": true },
+    "executor": { "agent": "tools-read-bash", "slot": "sonnet", "uplift": false },
+    "waiter": { "agent": "tools-read-bash", "slot": "sonnet", "uplift": false },
+    "translator": { "agent": "tools-read-write", "slot": "opus", "uplift": false }
+  },
+  "ceilings": {
+    "lite": { "agents": 2, "cycles": 1 },
+    "std": { "agents": 5, "cycles": 2 },
+    "full": { "agents": 10, "cycles": 3 }
+  }
+}

@@ -279,8 +279,22 @@ import json, sys
 a = json.load(open(sys.argv[1]))["hooks"]; b = json.load(open(sys.argv[2]))["hooks"]
 for ev in ("SubagentStop", "UserPromptSubmit", "PostToolUse", "PreCompact"):
     assert a[ev] == b[ev], ev
-sm = [g for g in a["SessionStart"] if any("session-modes.sh" in h.get("command", "") for h in g["hooks"])]
-assert sm == b["SessionStart"], sm
+def modes(h): return [g for g in h["SessionStart"] if any("session-modes.sh" in k.get("command", "") for k in g["hooks"])]
+assert modes(a) == modes(b), modes(a)
+# Every SessionStart group of HEAD is still present, in order. A group HEAD does not have is
+# allowed only as one contract entry of a workflow file that exists: P2-P4 of the 0.16 rebuild add
+# one per new workflow, and contracts.sh owns their shape. Anything else fails here.
+kept = [g for g in a["SessionStart"] if g in b["SessionStart"]]
+assert kept == b["SessionStart"], "a SessionStart group of HEAD is gone or moved"
+import os
+plugin = os.path.dirname(os.path.dirname(sys.argv[1]))
+for g in a["SessionStart"]:
+    if g in b["SessionStart"]:
+        continue
+    cmds = [h.get("command", "") for h in g["hooks"]]
+    assert len(cmds) == 1 and "workflow-usage.sh --hook --file" in cmds[0], "new SessionStart group is no contract entry: %s" % cmds
+    path = cmds[0].split("--file", 1)[1].split()[0].replace("${CLAUDE_PLUGIN_ROOT}", plugin)
+    assert os.path.exists(path), "new contract entry names a missing file: %s" % path
 ' "$PJ" "$T/pj-head.json"
 cat > "$T/k6.py" <<'PY'
 import json, os, sys, glob
@@ -339,39 +353,25 @@ for f in "${SCRIPTS[@]}"; do
   check "k7 $s A.<arg> set equals args_of (got $got)" test "$got" = "$want"
 done
 
-# k8: translate-ru and agents in plugin
-TR=$P/workflows/translate-ru.js
-check "k8 translate-ru.js in plugin" test -f "$TR"
-at=$(grep -oE "agentType: *['\"][^'\"]+['\"]" "$TR" 2>/dev/null | sed -E "s/agentType: *['\"]//; s/['\"]$//" | sort -u | tr '\n' ' ')
-check "k8 translate-ru agentTypes session:size-estimator session:translator (got $at)" test "$at" = "session:size-estimator session:translator "
-for a in translator size-estimator; do
+# k8: the role workflow and the tool-set agents it may launch (rewritten in P2 of the 0.16
+# rebuild: the old check read translate-ru.js, whose two agents leave with it in P9)
+RL=$P/workflows/role.js
+check "k8 role.js in plugin" test -f "$RL"
+# comment lines are stripped first: an agent named only in a comment reaches no launch, so it must
+# not keep this check green
+at=$(grep -vE '^[[:space:]]*(//|\*|/\*)' "$RL" 2>/dev/null | grep -oE "session:tools-[a-z-]+" | sort -u | tr '\n' ' ')
+check "k8 role.js agentTypes are the five tool-set agents (got $at)" test "$at" = "session:tools-edit session:tools-read-bash session:tools-read-write session:tools-read-write-bash session:tools-web "
+check "k8 role.js passes its agent as agentType" grep -qE "agentType: *AGENT" "$RL"
+for a in tools-edit tools-read-bash tools-read-write tools-read-write-bash tools-web; do
   fm=$(awk 'NR==1&&/^---$/{f=1; next} f&&/^---$/{exit} f{print}' "$P/agents/$a.md" 2>/dev/null)
   check "k8 agents/$a.md frontmatter name" grep -Fxq "name: $a" <<<"$fm"
   check "k8 agents/$a.md frontmatter description" grep -Eq '^description: .+' <<<"$fm"
   check "k8 agents/$a.md frontmatter tools" grep -Eq '^tools: .+' <<<"$fm"
 done
 
-# k9: no stale references
-check "k9 no bare translate-ru or unprefixed translator/size-estimator agentType" python3 -c '
-import re, subprocess, sys
-repo = sys.argv[1]
-ls = subprocess.run(["git", "-C", repo, "ls-files"], capture_output=True, text=True).stdout.split()
-ls += subprocess.run(["git", "-C", repo, "ls-files", "--others", "--exclude-standard"], capture_output=True, text=True).stdout.split()
-r1 = re.compile(r"(?<!session:)(?<!workflows/)translate-ru")
-r2 = re.compile(r"(agentType|subagent_type)\s*[:=]\s*[\x27\"]?(translator|size-estimator)\b")
-ver = re.compile(r"^[-*] *\**0\.[0-9]+\.[0-9]+")
-bad = []
-for p in sorted(set(ls)):
-    if p == "tests/workflows/usage-test.sh": continue
-    # translate-ru.js keeps its own bare meta.name and log name (launch name comes from the plugin prefix)
-    try: lines = open(repo + "/" + p, encoding="utf-8").read().split("\n")
-    except Exception: continue
-    for n, l in enumerate(lines, 1):
-        if p == "plugins/session/README.md" and ver.match(l): continue
-        if (r1.search(l) and p != "plugins/session/workflows/translate-ru.js") or r2.search(l): bad.append("%s:%d" % (p, n))
-if bad: print("k9 hits:", " ".join(bad[:10]))
-sys.exit(1 if bad else 0)
-' "$REPO"
+# k9 (the repo-wide scan for translate-ru, translator and size-estimator) is gone: `translator` is
+# a live role name of lib/roles/ from P2 on, so the scan would be red by construction. P9 puts
+# tests/rebuild/stale.sh here instead, which matches qualified forms only.
 
 # k10: base
 for f in "$BASE" "$SKILL"; do
@@ -403,7 +403,7 @@ pre=$(awk '/^## Version log/{exit} {print}' "$RD")
 check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
 
 # k13: changed paths, no version bump (suite pass itself is the rest of k13)
-bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE '\.claude-plugin/marketplace.json|plugins/session/bin/workflow-usage.sh|plugins/session/\.claude-plugin/plugin.json|plugins/session/workflows/(build|dev|research|review-fix|translate-ru)\.js|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|plugins/session/agents/(translator|size-estimator)\.md|plugins/session/base/BASE.md|plugins/session/base/split.sh|plugins/session/skills/base/SKILL.md|plugins/session/README.md|plugins/session/monitors/.*|plugins/session/skills/start-ping/.*|tests/monitors/.*|tests/workflows/usage-test.sh' | tr '\n' ' ')
+bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE '\.claude-plugin/marketplace.json|plugins/session/lib/.*|plugins/session/bin/build\.sh|plugins/session/agents/tools-[a-z-]+\.md|tests/rebuild/.*|plugins/session/bin/workflow-usage.sh|plugins/session/\.claude-plugin/plugin.json|plugins/session/workflows/(build|chain|dev|research|review-fix|role|translate-ru)\.js|tests/measure/rebuild-scenarios-0\.16\.txt|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|plugins/session/agents/(translator|size-estimator)\.md|plugins/session/base/BASE.md|plugins/session/base/split.sh|plugins/session/skills/base/SKILL.md|plugins/session/README.md|plugins/session/monitors/.*|plugins/session/skills/start-ping/.*|tests/monitors/.*|tests/workflows/usage-test.sh' | tr '\n' ' ')
 check "k13 changed paths within allowed list (extra: $bad)" test -z "$bad"
 check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
 
