@@ -166,6 +166,17 @@ try { b.negativeControl('deep', 'FAIL'); ck(false, 'negativeControl over an unkn
   ck(/deep/.test(String(e.message)), `negativeControl names the unknown depth (${e.message})`)
 }
 
+// ---- the working tree after the control run: the restore is verified, never assumed ----
+const treeOk = b.controlTree('/tmp/run/control.md 90 bytes\nFAIL exit 1\nTREE | untouched\nDONE')
+ck(treeOk.untouched === true && treeOk.gap === null, 'a control run that left the tree alone writes no gap')
+const treeBad = b.controlTree('/tmp/run/control.md 90 bytes\nFAIL exit 1\nTREE | changed\nDONE')
+ck(treeBad.stated === true && treeBad.untouched === false, 'a control run that changed the tree says so')
+ck(/working tree/.test(String(treeBad.gap)), `and that is a gap of the run (${treeBad.gap})`)
+const treeMute = b.controlTree('/tmp/run/control.md 90 bytes\nFAIL exit 1\nDONE')
+ck(treeMute.stated === false && String(treeMute.gap || '').length > 0,
+  'a control run that never says what it left behind verified nothing, so it is a gap too')
+ck(b.controlTree(null).stated === false, 'no return, nothing verified')
+
 // ---- the fix cycle: a ceiling that ends the stage, never a silent retry ----
 eq(b.cycleState('lite', 0), { room: 1, used: 0, hit: false, gap: null }, 'lite allows one fix cycle')
 const hit = b.cycleState('lite', 1)
@@ -224,6 +235,24 @@ ck(/folded/.test(String(foldedRun.status)), 'the status says it too')
 ck(b.makeResult({}).ok === false, 'an empty state is no finished run')
 ck(typeof b.makeResult({}).status === 'string', 'every make result carries a status sentence')
 
+// ---- the key document: a specification the chain called defective is no finished run ----
+const keyBad = b.makeResult({ ...S, run: 'PASS', key: false, check: 'needs chain: the chain returned nothing' })
+ck(keyBad.ok === false, 'a key document the chain could not settle is no finished run, oracle or not')
+ck(keyBad.keyCheck === false, 'and the result says the key check did not come back clean')
+ck(/key document/i.test(String(keyBad.status)), `the status says it too (${keyBad.status})`)
+ck(b.makeResult({ ...S, run: 'PASS', key: true }).ok === true, 'a clean key check leaves the run ok')
+ck(b.makeResult({ ...S, run: 'PASS' }).keyCheck === true, 'a depth that asks for no key check holds nothing against the run')
+
+// ---- a range the depth folded to nothing: a finished no-op, never a failure nobody wrote ----
+const noop = b.makeResult({
+  out: '/tmp/run/report.md', from: 'spec', until: 'spec', stages: [], done: [], folded: ['spec'],
+})
+ck(noop.ok === true, 'a range the depth folded away ran everything it promised: nothing')
+ck(noop.blocked === undefined && noop.gap.length === 0, 'and it carries no blocked line and no gap')
+ck(/folded/.test(String(noop.status)), `the status says what the depth folded (${noop.status})`)
+ck(b.makeResult({ ...S, stages: [], done: [], folded: [] }).ok === false,
+  'an empty stage list with nothing folded is still no finished run')
+
 // ---- a range with no oracle stage: judged on what it promised, never on a check nobody ran ----
 const PART = {
   out: '/tmp/run/report.md', from: 'spec', until: 'tests',
@@ -277,6 +306,22 @@ ck(noChain.gap.length === 1 && /needs chain/.test(String(noChain.gap[0])), 'and 
 const blockedChain = b.keyCheckState({ blocked: 'BLOCKED: the tool was denied' }, KEY)
 ck(blockedChain.ok === false && /needs chain/.test(String(blockedChain.check)), 'a blocked chain is that fallback too')
 ck(/denied/.test(String(blockedChain.gap[0])), `and its gap says why (${blockedChain.gap[0]})`)
+
+// ---- the output check of every stage: the file the agent names, however it wrote the path ----
+const OUTP = '/p/proj/out/make-tests.md'
+ck(b.namesOut(`${OUTP} 117 bytes`, OUTP) === true, 'the absolute path names the output file')
+ck(b.namesOut('out/make-tests.md 117 bytes', OUTP) === true,
+  'the same file, written the way the agent typed it in its working directory, names it too')
+ck(b.namesOut('wrote make-tests.md, 117 bytes', OUTP) === true, 'the file name alone names it')
+ck(b.namesOut('/other/dir/make-tests.md 117 bytes', OUTP) === false,
+  'another directory holding a file of the same name is not this file')
+ck(b.namesOut('my-make-tests.md 117 bytes', OUTP) === false, 'a longer name ending in this one is another file')
+ck(b.namesOut('DONE', OUTP) === false, 'a return that names no file names no output')
+ck(b.outVerdict(`out/make-tests.md 117 bytes\nDONE`, OUTP).ok === true,
+  'a stage whose agent reported the relative path and a size is done, not blocked')
+ck(b.outVerdict(`out/make-tests.md 117 bytes\nDONE`, OUTP).bytes === 117, 'and that size is the size')
+ck(b.outVerdict('/other/dir/make-tests.md 117 bytes\nDONE', OUTP).ok === false,
+  'a size line about another file is no evidence of this one')
 
 const PB = {
   out: '/tmp/run/synthesis.md', directions: ['one', 'two'],
@@ -345,6 +390,11 @@ a launch that starts at the fix stage does nothing|s/return \{ enter: true, prob
 the rows the chain could not settle are dropped|s/for \(const r of c\.undetermined \|\| \[\]\)/for (const r of [])/
 a range without the oracle reads as a failing run|s/\(oracle \? run === 'PASS' : ranAll\)/run === 'PASS'/
 a blocked direction leaves the probe answer whole|s/ && lost\.length === 0//
+the key document check no longer decides the run|s/const ok = !blocked && key/const ok = !blocked && true/
+a range the depth folded to nothing reads as a failing run|s/const noop = stages\.length === 0 && /const noop = false && /
+a control run that never said what it left behind counts as a clean tree|s/if \(v === 'untouched'\)/if (v !== 'nope')/
+a path the agent wrote relative to its working directory is not the file|s/for \(let i = 0; i < abs\.length - 1; i\+\+\) if \(abs\[i\] === '\/'\) forms\.push\(abs\.slice\(i \+ 1\)\)//
+another directory's file of the same name passes for the output|s/!PATH_CHAR\.test\(s\[at - 1\]\)/true/
 MUT
 
 # ---- s3: the wiring of workflows/make.js ----
@@ -356,7 +406,7 @@ if [ -f "$MAKE" ]; then
   check "s3 make.js stamp is in sync with its sources" bash "$BUILD" --check "$MAKE"
 
   # every decision comes from the shared block, so a test executes it instead of reading this file
-  for fn in stageRange stageOn makePlan negativeControl cycleState runVerdict fixerState keyCheckState makeResult outVerdict; do
+  for fn in stageRange stageOn makePlan negativeControl controlTree cycleState runVerdict fixerState keyCheckState makeResult outVerdict; do
     check "s3 make.js decides through $fn() of the shared block" grep -q "$fn(" <<<"$code"
   done
   check "s3 make.js takes the slot from the role map" grep -q 'roleSlot(' <<<"$code"
@@ -409,7 +459,11 @@ sys.exit(1 if bad else 0)
 
   # the negative control of 3.5 rule 1: the new tests run on the base code and must fail there
   check "s3 make.js runs the control stage against the base version" grep -Fq 'the code of the base version ${BASE}' <<<"$code"
-  check "s3 that control run keeps the new tests of the working tree" grep -Fq 'keep every test file of the working tree' <<<"$code"
+  check "s3 that control run takes the new tests into its copy" grep -Fq 'so the new tests are the ones that run' <<<"$code"
+  check "s3 that control run never checks the base version out over the working tree" grep -Fq 'never in this working tree' <<<"$code"
+  check "s3 that control run states what it left in the working tree" grep -Fq 'TREE | untouched' <<<"$code"
+  check "s3 make.js verifies that statement through controlTree" grep -Fq 'controlTree(' <<<"$code"
+  check "s3 a blocked control stage stops the run" grep -Fq "return result({ stage: 'control-run'" <<<"$code"
   check "s3 make.js decides that control run through negativeControl" grep -Fq 'negativeControl(DEPTH' <<<"$code"
   # the verdict itself is decided in the block and executed in s1; here only the wiring is read:
   # the one result builder of this flow must carry the control field, or no exit can report it
@@ -419,13 +473,18 @@ code = sys.argv[1]
 m = re.search(r"(?ms)makeResult\(\{(.*?)\}\)", code)
 if not m: print("no makeResult call"); sys.exit(1)
 body = m.group(1)
-missing = [f for f in ("control", "run", "gap", "done", "stages", "check") if not re.search(r"\b%s\b" % f, body)]
+missing = [f for f in ("control", "run", "gap", "done", "stages", "check", "key") if not re.search(r"\b%s\b" % f, body)]
 if missing: print("the result builder call misses:", " ".join(missing))
 sys.exit(1 if missing else 0)
 ' "$code"
 
+  # a stage that threw is a blocked stage of this flow, never an exception that escapes the result
+  check "s3 make.js catches a stage that threw" grep -Fq 'stage threw' <<<"$code"
+  check "s3 the cut fix stage is not counted as one that ran" grep -Fq "if (!capped) done.push('fixer')" <<<"$code"
+
   # the key document goes to the evidence chain one class step up (3.5 rule 3), never to a reviewer
   check "s3 make.js routes the key document to the evidence chain" grep -Fq "workflow('session:chain'" <<<"$code"
+  check "s3 what that chain found travels into the result" grep -Fq 'keyOk = k.ok' <<<"$code"
   check "s3 that chain run sits one class step above this run" grep -Fq 'RUN.up()' <<<"$code"
   check "s3 make.js names the chain fallback of the U8 answer in its contract" grep -q 'needs chain' "$MAKE"
 
@@ -518,6 +577,9 @@ if missing: print("the result builder call misses:", " ".join(missing))
 sys.exit(1 if missing else 0)
 ' "$code"
   check "s4 probe.js collects a blocked direction instead of dropping it" grep -Fq 'blockedStages.push(' <<<"$code"
+  check "s4 probe.js catches a direction that threw" grep -Fq 'stage threw' <<<"$code"
+  check "s4 a lane the harness lost is a direction that brought nothing" grep -Fq 'came back with nothing' <<<"$code"
+  check "s4 the synthesis is told which directions brought nothing" grep -Fq 'brought nothing' <<<"$code"
   # the critique of probe stands over research bundles, an output no oracle can decide
   check "s4 probe.js critiques the bundles" grep -Fq "'critic'" <<<"$code"
   check "s4 probe.js synthesises them" grep -Fq "'synthesizer'" <<<"$code"

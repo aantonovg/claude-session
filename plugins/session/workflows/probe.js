@@ -337,6 +337,26 @@ function blockedLine(why) {
   return /^BLOCKED:/.test(w) ? w : `BLOCKED: ${w}`
 }
 
+// namesOut(text, out): does this text name the output file? The stage asks for the absolute path,
+// and an agent that worked in that directory writes the file the way it typed it at the shell —
+// `out/make-tests.md` for `/p/out/make-tests.md`. That is the same file, so it counts. A tail of
+// the path counts only when it starts at a directory boundary of the path and stands in the text as
+// a whole path of its own: `/other/dir/make-tests.md` and `my-make-tests.md` never pass for it.
+const PATH_CHAR = /[A-Za-z0-9_.\\/-]/
+function namesOut(text, out) {
+  if (!out) throw new Error('namesOut needs the output path')
+  const s = String(text == null ? '' : text)
+  const abs = String(out)
+  const forms = [abs]
+  for (let i = 0; i < abs.length - 1; i++) if (abs[i] === '/') forms.push(abs.slice(i + 1))
+  for (const form of forms) {
+    for (let at = s.indexOf(form); at !== -1; at = s.indexOf(form, at + 1)) {
+      if (at === 0 || !PATH_CHAR.test(s[at - 1])) return true
+    }
+  }
+  return false
+}
+
 // mustExist(ret, out): the output check of every stage that names an output file. A workflow
 // script has no file access, so the agent's own return is the evidence: it names the path it
 // wrote. Returns { ok, out, reason }; a false ok stops the flow instead of feeding the next stage.
@@ -345,7 +365,7 @@ function mustExist(ret, out) {
   const s = String(ret == null ? '' : ret)
   // the agent's own last line is the reason, unprefixed here: blockedLine puts the word on once
   if (isBlocked(ret)) return { ok: false, out, reason: lastLine(s) || 'no return' }
-  if (s.indexOf(out) === -1) return { ok: false, out, reason: `return does not name ${out}` }
+  if (!namesOut(s, out)) return { ok: false, out, reason: `return does not name ${out}` }
   return { ok: true, out }
 }
 
@@ -359,7 +379,7 @@ function outVerdict(ret, out) {
   const m = mustExist(ret, out)
   if (!m.ok) return { ok: false, out, bytes: 0, reason: m.reason, blocked: blockedLine(m.reason) }
   const RE = /(\d[\d,]*) *bytes\b/
-  const line = String(ret).split('\n').filter(l => l.indexOf(out) !== -1 && RE.test(l))[0] || ''
+  const line = String(ret).split('\n').filter(l => namesOut(l, out) && RE.test(l))[0] || ''
   const n = Number(((line.match(RE) || [])[1] || '').replace(/,/g, ''))
   if (!(n > 0)) {
     const why = `return reports no non-empty ${out}: no positive byte count on a line naming it`
@@ -951,6 +971,20 @@ function negativeControl(depth, verdict) {
   return { required: true, ran, ok: false, verdict: v, gap }
 }
 
+// controlTree(ret): what the negative control left in the working tree. That run needs the base
+// version of the source, and the only honest place for it is a scratch copy: a checkout over the
+// live tree would take uncommitted work this flow never wrote, and no later stage could put it
+// back. The executor states what it left behind on a `TREE | untouched` line; a return that states
+// nothing verified nothing, so it is a gap of the run, exactly like a control nobody could read.
+function controlTree(ret) {
+  const v = word((keyedFields(ret, 'TREE', 1)[0] || [])[0] || '').toLowerCase()
+  if (v === 'untouched') return { stated: true, untouched: true, gap: null }
+  if (v === 'changed') {
+    return { stated: true, untouched: false, gap: 'the negative control left the working tree changed: the base version of the source, or a file it moved, may still stand in it — check the tree before anything else is built on it' }
+  }
+  return { stated: false, untouched: false, gap: 'the negative control never said what it left in the working tree (no `TREE | untouched` line): nothing verified that the tree it ran over is the tree the next stage gets' }
+}
+
 // cycleState(depth, used): the fix cycles of A30 as a ceiling of the fix stage. When it is hit the
 // stage ends and `gap` is what the result carries; nothing is retried in silence.
 function cycleState(depth, used) {
@@ -1008,23 +1042,31 @@ function stageSeats(depth, wanted) {
 // — a blocked stage, a failing oracle and a finished run alike — so a run that stopped can never
 // carry the shape of one that finished: `ok` is true only when the oracle said PASS, no stage
 // blocked, and the negative control (when the depth asked for one) really failed on the base
-// version. A range that carries no oracle stage at all (`spec..tests` and its kind) is judged on
-// what it promised instead: every stage of the range ran, and the status says in words that no
-// check ran here, so a partial range is never read as a failing one.
+// version, and the check of the key document (when the depth asked for one) left no row open. A
+// range that carries no oracle stage at all (`spec..tests` and its kind) is judged on what it
+// promised instead: every stage of the range ran, and the status says in words that no check ran
+// here, so a partial range is never read as a failing one. A range the depth folds to nothing
+// (`from=spec until=spec` at `lite`) promised nothing and did nothing: that is a finished no-op with
+// the folded levels named, never a failure nobody can explain.
 function makeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
   const where = o.out || 'the report file'
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
-  const runText = o.run === 'PASS'
-    ? 'the oracle passed'
-    : o.run === 'FAIL'
-      ? 'the oracle still fails'
-      : o.run === null || o.run === undefined
-        ? o.oracle === false
-          ? 'no stage of this range runs the check, so this range settles no behavior'
-          : 'no oracle run happened'
-        : `the oracle run came back unreadable (${o.run})`
+  const runText = o.noop
+    ? 'the depth folded every stage of this range, so nothing ran and nothing is open'
+    : o.run === 'PASS'
+      ? 'the oracle passed'
+      : o.run === 'FAIL'
+        ? 'the oracle still fails'
+        : o.run === null || o.run === undefined
+          ? o.oracle === false
+            ? 'no stage of this range runs the check, so this range settles no behavior'
+            : 'no oracle run happened'
+          : `the oracle run came back unreadable (${o.run})`
+  const keyText = o.key === false
+    ? ' The key document did not come back clean from its check: what it left open stands in the gaps.'
+    : ''
   const ctl = o.control && o.control.required
     ? o.control.ok
       ? ' The tests failed on the base version, as a negative control must.'
@@ -1037,7 +1079,7 @@ function makeStatus(s) {
   const foldText = folded.length
     ? ` The depth folded ${folded.join(', ')} into the short form: those levels were not written as files of their own.`
     : ''
-  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${foldText}${gapText}${stopped}`
+  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${keyText}${foldText}${gapText}${stopped}`
 }
 function makeResult(s) {
   const o = s || {}
@@ -1052,7 +1094,13 @@ function makeResult(s) {
   // without one the promise of the range is that every stage of it ran
   const oracle = stages.indexOf('executor') !== -1 || stages.indexOf('fixer') !== -1
   const ranAll = stages.length > 0 && stages.every(s => done.indexOf(s) !== -1)
-  const ok = !blocked && (!nc || nc.ok) && (oracle ? run === 'PASS' : ranAll)
+  // a range the depth folded to nothing: no stage was planned and none was promised, so the run is
+  // a finished no-op — `ok:false` with no blocked line and no gap would read as a failure nobody wrote
+  const noop = stages.length === 0 && (o.folded || []).length > 0
+  // what the chain found in the key document decides this run too: a specification it could not
+  // settle never turns into a finished run because the oracle below it passed
+  const key = o.key == null ? true : o.key !== false
+  const ok = !blocked && key && (!nc || nc.ok) && (noop || (oracle ? run === 'PASS' : ranAll))
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1067,11 +1115,12 @@ function makeResult(s) {
     control: nc ? { required: nc.required, ran: nc.ran, verdict: nc.verdict, ok: nc.ok } : null,
     cycles: Number(o.cycles || 0),
     check: o.check == null ? null : o.check,
+    keyCheck: key,
     folded: o.folded || [],
     gap,
     status: makeStatus({
       run, gap, oracle, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
-      done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
+      key, noop, done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
     }),
   }
   if (o.stage) res.stage = o.stage
@@ -1129,14 +1178,14 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, mustExist, outVerdict,
+    blockedLine, namesOut, mustExist, outVerdict,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
-    fixerState, keyCheckState, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
+    fixerState, keyCheckState, controlTree, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
   }
 }
 // ---- end shared block ----
@@ -1246,7 +1295,14 @@ async function stage(role, job, phaseName, fields, shape) {
   // researchers, whose bundles are checked by their own pointers, stay on the cheapest slot
   const JOB = bindClass(roleClass(role, CLS), SUBS)
   const o = JOB.opts(roleSlot(role, SIZE), job, { agentType, phase: phaseName })
-  const r = await agent(f.text + tail(fields.out, agentType, shape), o)
+  // agent() throws as well as returns null: a lane that threw would reach parallel() as null and
+  // its gap line would read `undefined`, so the exception becomes the blocked line of this stage
+  let r = null
+  try {
+    r = await agent(f.text + tail(fields.out, agentType, shape), o)
+  } catch (e) {
+    r = blockedLine(`the ${job} stage threw: ${(e && e.message) || e}`)
+  }
   const v = outVerdict(r, fields.out)
   return { out: fields.out, label: o.label, ret: String(r == null ? '' : r), ok: v.ok, blocked: v.ok ? null : v.blocked }
 }
@@ -1274,9 +1330,17 @@ const runs = (await parallel(RUNDIRS.map((d, i) => () => stage(RESEARCH, `direct
   in: [...IN].join('\n') || '(none named)',
   ask: `Question: ${ASK}\n\nYour direction, ${i + 1} of ${RUNDIRS.length}: ${d}\n\nStay inside this direction; the other directions have their own researcher.`,
   out: side(`direction-${i + 1}`),
-}, DONE_SHAPE)))).map((s, i) => ({ ...s, direction: RUNDIRS[i], n: i + 1 }))
+  // a lane the harness lost comes back as null: it is a direction that brought nothing, never a
+  // lane with no verdict at all
+}, DONE_SHAPE)))).map((s, i) => ({
+  ok: false, out: side(`direction-${i + 1}`), blocked: blockedLine('the research stage came back with nothing'),
+  ...(s || {}), direction: RUNDIRS[i], n: i + 1,
+}))
 bundles = runs.filter(r => r.ok).map(r => r.out)
 for (const r of runs.filter(x => !x.ok)) blockedStages.push(`direction ${r.n} (${r.direction}): ${r.blocked}`)
+// the directions this answer is missing: the ones the ceiling never seated and the ones that ran
+// and brought nothing — the synthesiser is told about both, or it writes over a hole it cannot see
+const MISSING = [...CUT, ...runs.filter(x => !x.ok).map(r => r.direction)]
 if (!bundles.length) return result({ stage: 'research', blocked: `every direction came back blocked: ${blockedStages.join(' ;; ')}` })
 
 // ---- 2. the critique: what the bundles do not carry, before an answer is written on them ----
@@ -1293,7 +1357,7 @@ critique = c.out
 phase('Synthesis')
 const s = await stage(SYNTH, 'synthesis', 'Synthesis', {
   in: [...bundles, critique].join('\n'),
-  ask: `Question: ${ASK}\n\nThe bundles and the critique above are your whole material. Where the critique withdraws a fact, drop it from the answer and name it under the open points; where two bundles disagree, keep both claims with their pointers.${gap.length ? `\n\nThese directions never ran, so the answer is missing what they would have brought: ${CUT.join('; ')}. Name that under the open points.` : ''}`,
+  ask: `Question: ${ASK}\n\nThe bundles and the critique above are your whole material. Where the critique withdraws a fact, drop it from the answer and name it under the open points; where two bundles disagree, keep both claims with their pointers.${MISSING.length ? `\n\nThese directions brought nothing — the ceiling never started them, or they came back blocked — so the answer is missing what they would have carried: ${MISSING.join('; ')}. Name that under the open points.` : ''}`,
   out: OUT,
 }, DONE_SHAPE)
 if (!s.ok) return result({ stage: 'synthesis', blocked: s.blocked })
