@@ -338,6 +338,26 @@ function blockedLine(why) {
   return /^BLOCKED:/.test(w) ? w : `BLOCKED: ${w}`
 }
 
+// namesOut(text, out): does this text name the output file? The stage asks for the absolute path,
+// and an agent that worked in that directory writes the file the way it typed it at the shell —
+// `out/make-tests.md` for `/p/out/make-tests.md`. That is the same file, so it counts. A tail of
+// the path counts only when it starts at a directory boundary of the path and stands in the text as
+// a whole path of its own: `/other/dir/make-tests.md` and `my-make-tests.md` never pass for it.
+const PATH_CHAR = /[A-Za-z0-9_.\\/-]/
+function namesOut(text, out) {
+  if (!out) throw new Error('namesOut needs the output path')
+  const s = String(text == null ? '' : text)
+  const abs = String(out)
+  const forms = [abs]
+  for (let i = 0; i < abs.length - 1; i++) if (abs[i] === '/') forms.push(abs.slice(i + 1))
+  for (const form of forms) {
+    for (let at = s.indexOf(form); at !== -1; at = s.indexOf(form, at + 1)) {
+      if (at === 0 || !PATH_CHAR.test(s[at - 1])) return true
+    }
+  }
+  return false
+}
+
 // mustExist(ret, out): the output check of every stage that names an output file. A workflow
 // script has no file access, so the agent's own return is the evidence: it names the path it
 // wrote. Returns { ok, out, reason }; a false ok stops the flow instead of feeding the next stage.
@@ -346,7 +366,7 @@ function mustExist(ret, out) {
   const s = String(ret == null ? '' : ret)
   // the agent's own last line is the reason, unprefixed here: blockedLine puts the word on once
   if (isBlocked(ret)) return { ok: false, out, reason: lastLine(s) || 'no return' }
-  if (s.indexOf(out) === -1) return { ok: false, out, reason: `return does not name ${out}` }
+  if (!namesOut(s, out)) return { ok: false, out, reason: `return does not name ${out}` }
   return { ok: true, out }
 }
 
@@ -360,7 +380,7 @@ function outVerdict(ret, out) {
   const m = mustExist(ret, out)
   if (!m.ok) return { ok: false, out, bytes: 0, reason: m.reason, blocked: blockedLine(m.reason) }
   const RE = /(\d[\d,]*) *bytes\b/
-  const line = String(ret).split('\n').filter(l => l.indexOf(out) !== -1 && RE.test(l))[0] || ''
+  const line = String(ret).split('\n').filter(l => namesOut(l, out) && RE.test(l))[0] || ''
   const n = Number(((line.match(RE) || [])[1] || '').replace(/,/g, ''))
   if (!(n > 0)) {
     const why = `return reports no non-empty ${out}: no positive byte count on a line naming it`
@@ -952,6 +972,20 @@ function negativeControl(depth, verdict) {
   return { required: true, ran, ok: false, verdict: v, gap }
 }
 
+// controlTree(ret): what the negative control left in the working tree. That run needs the base
+// version of the source, and the only honest place for it is a scratch copy: a checkout over the
+// live tree would take uncommitted work this flow never wrote, and no later stage could put it
+// back. The executor states what it left behind on a `TREE | untouched` line; a return that states
+// nothing verified nothing, so it is a gap of the run, exactly like a control nobody could read.
+function controlTree(ret) {
+  const v = word((keyedFields(ret, 'TREE', 1)[0] || [])[0] || '').toLowerCase()
+  if (v === 'untouched') return { stated: true, untouched: true, gap: null }
+  if (v === 'changed') {
+    return { stated: true, untouched: false, gap: 'the negative control left the working tree changed: the base version of the source, or a file it moved, may still stand in it — check the tree before anything else is built on it' }
+  }
+  return { stated: false, untouched: false, gap: 'the negative control never said what it left in the working tree (no `TREE | untouched` line): nothing verified that the tree it ran over is the tree the next stage gets' }
+}
+
 // cycleState(depth, used): the fix cycles of A30 as a ceiling of the fix stage. When it is hit the
 // stage ends and `gap` is what the result carries; nothing is retried in silence.
 function cycleState(depth, used) {
@@ -1009,23 +1043,31 @@ function stageSeats(depth, wanted) {
 // — a blocked stage, a failing oracle and a finished run alike — so a run that stopped can never
 // carry the shape of one that finished: `ok` is true only when the oracle said PASS, no stage
 // blocked, and the negative control (when the depth asked for one) really failed on the base
-// version. A range that carries no oracle stage at all (`spec..tests` and its kind) is judged on
-// what it promised instead: every stage of the range ran, and the status says in words that no
-// check ran here, so a partial range is never read as a failing one.
+// version, and the check of the key document (when the depth asked for one) left no row open. A
+// range that carries no oracle stage at all (`spec..tests` and its kind) is judged on what it
+// promised instead: every stage of the range ran, and the status says in words that no check ran
+// here, so a partial range is never read as a failing one. A range the depth folds to nothing
+// (`from=spec until=spec` at `lite`) promised nothing and did nothing: that is a finished no-op with
+// the folded levels named, never a failure nobody can explain.
 function makeStatus(s) {
   const o = s || {}
   const gap = o.gap || []
   const where = o.out || 'the report file'
   const stopped = o.blocked ? ` The run stopped at the ${o.stage || 'unnamed'} stage: ${o.blocked}` : ''
-  const runText = o.run === 'PASS'
-    ? 'the oracle passed'
-    : o.run === 'FAIL'
-      ? 'the oracle still fails'
-      : o.run === null || o.run === undefined
-        ? o.oracle === false
-          ? 'no stage of this range runs the check, so this range settles no behavior'
-          : 'no oracle run happened'
-        : `the oracle run came back unreadable (${o.run})`
+  const runText = o.noop
+    ? 'the depth folded every stage of this range, so nothing ran and nothing is open'
+    : o.run === 'PASS'
+      ? 'the oracle passed'
+      : o.run === 'FAIL'
+        ? 'the oracle still fails'
+        : o.run === null || o.run === undefined
+          ? o.oracle === false
+            ? 'no stage of this range runs the check, so this range settles no behavior'
+            : 'no oracle run happened'
+          : `the oracle run came back unreadable (${o.run})`
+  const keyText = o.key === false
+    ? ' The key document did not come back clean from its check: what it left open stands in the gaps.'
+    : ''
   const ctl = o.control && o.control.required
     ? o.control.ok
       ? ' The tests failed on the base version, as a negative control must.'
@@ -1038,7 +1080,7 @@ function makeStatus(s) {
   const foldText = folded.length
     ? ` The depth folded ${folded.join(', ')} into the short form: those levels were not written as files of their own.`
     : ''
-  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${foldText}${gapText}${stopped}`
+  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${keyText}${foldText}${gapText}${stopped}`
 }
 function makeResult(s) {
   const o = s || {}
@@ -1053,7 +1095,13 @@ function makeResult(s) {
   // without one the promise of the range is that every stage of it ran
   const oracle = stages.indexOf('executor') !== -1 || stages.indexOf('fixer') !== -1
   const ranAll = stages.length > 0 && stages.every(s => done.indexOf(s) !== -1)
-  const ok = !blocked && (!nc || nc.ok) && (oracle ? run === 'PASS' : ranAll)
+  // a range the depth folded to nothing: no stage was planned and none was promised, so the run is
+  // a finished no-op — `ok:false` with no blocked line and no gap would read as a failure nobody wrote
+  const noop = stages.length === 0 && (o.folded || []).length > 0
+  // what the chain found in the key document decides this run too: a specification it could not
+  // settle never turns into a finished run because the oracle below it passed
+  const key = o.key == null ? true : o.key !== false
+  const ok = !blocked && key && (!nc || nc.ok) && (noop || (oracle ? run === 'PASS' : ranAll))
   const first = stages[0] || ''
   const last = stages.length ? stages[stages.length - 1] : ''
   const res = {
@@ -1068,11 +1116,12 @@ function makeResult(s) {
     control: nc ? { required: nc.required, ran: nc.ran, verdict: nc.verdict, ok: nc.ok } : null,
     cycles: Number(o.cycles || 0),
     check: o.check == null ? null : o.check,
+    keyCheck: key,
     folded: o.folded || [],
     gap,
     status: makeStatus({
       run, gap, oracle, out: o.out, control: nc, stage: o.stage, blocked, folded: o.folded || [],
-      done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
+      key, noop, done: done.length, planned: stages.length, range: `${o.from || first}..${o.until || last}`,
     }),
   }
   if (o.stage) res.stage = o.stage
@@ -1130,14 +1179,14 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, mustExist, outVerdict,
+    blockedLine, namesOut, mustExist, outVerdict,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
-    fixerState, keyCheckState, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
+    fixerState, keyCheckState, controlTree, stageSeats, makeStatus, makeResult, probeStatus, probeResult,
   }
 }
 // ---- end shared block ----
@@ -1263,7 +1312,14 @@ async function stage(role, job, phaseName, fields, shape) {
   // the code and the tests, which the oracle decides, stay on the cheapest slot the class allows
   const JOB = bindClass(roleClass(role, CLS), SUBS)
   const o = JOB.opts(roleSlot(role, SIZE), job, { agentType, phase: phaseName })
-  const r = await agent(f.text + tail(fields.out, agentType, shape), o)
+  // agent() throws as well as returns null: an exception here would escape the result builder and
+  // end the run with no shape at all, so it becomes the blocked line of this stage
+  let r = null
+  try {
+    r = await agent(f.text + tail(fields.out, agentType, shape), o)
+  } catch (e) {
+    r = blockedLine(`the ${job} stage threw: ${(e && e.message) || e}`)
+  }
   const v = outVerdict(r, fields.out)
   return { out: fields.out, label: o.label, ret: String(r == null ? '' : r), ok: v.ok, blocked: v.ok ? null : v.blocked }
 }
@@ -1279,13 +1335,16 @@ let run = null
 let control = null
 let cycles = 0
 let check = null
+// what the chain said about the key document: `false` only after a check that came back unclean,
+// so a run whose specification nobody could settle never returns the shape of a finished one
+let keyOk = true
 const inputs = extra => [...IN, ...(extra || [])].join('\n') || '(none named)'
 // Every exit from here on is built by makeResult() of the shared block: a stage that blocked, a
 // check that still fails and a finished run all return the same shape, and `ok` is true only when
 // the oracle passed with no block and no open negative control.
 const result = extra => makeResult({
   out: OUT, from: RANGE.from, until: RANGE.until, stages: PLAN.stages, done, files,
-  run, control, cycles, check, folded: PLAN.folded, gap, ...(extra || {}),
+  run, control, cycles, check, key: keyOk, folded: PLAN.folded, gap, ...(extra || {}),
 })
 
 // ---- 1. the specification: requirements, invariants and constraints, checked against the intent -
@@ -1317,6 +1376,7 @@ if (PLAN.keyCheck && done.includes('spec')) {
   // the chain called defective never passes to the scenarios in silence
   const k = keyCheckState(c, F.spec)
   check = k.check
+  keyOk = k.ok
   for (const g of k.gap) gap.push(g)
 }
 
@@ -1352,11 +1412,17 @@ if (on('tests')) {
 if (PLAN.control && done.includes('tests')) {
   const c = await stage(EXEC, 'control-run', 'Tests', {
     in: inputs([F.tests]),
-    ask: `Negative control. Run the new tests against the code of the base version ${BASE}: put back the code under test to ${BASE} and keep every test file of the working tree as it is, so the new tests are the ones that run (check out ${BASE} for the changed source paths only, or stash the source change; a whole checkout of ${BASE} would take the new tests away with it, and what ran then would be the old suite). Report what \`${TEST}\` said there, then put the working tree back the way you found it. The wanted answer is a failure: the new tests must not pass on a version that does not carry this change. Repair nothing, and change no test.`,
+    ask: `Negative control. The new tests must be run against the code of the base version ${BASE}, and that run happens in a scratch copy, never in this working tree: this tree carries uncommitted work that is not yours, and a checkout over it cannot be undone. Make the copy outside the project (\`git worktree add <tmp> ${BASE}\` in a git repository, or a copy of the project with \`git archive ${BASE}\` unpacked over it), put every test file named in ${F.tests} into it at the same relative path, so the new tests are the ones that run, and run \`${TEST}\` from that copy; then remove the copy. When the project is under no version control, or ${BASE} does not resolve there, run nothing and report that as a harness failure instead of touching this tree. Change nothing here: no checkout, no stash, no move of a source file. Before your last line, state what you left behind on one line \`TREE | untouched\` or \`TREE | changed\`, from what \`git status --porcelain\` says in this working tree against what it said when you started. The wanted answer of the run is a failure: the new tests must not pass on a version that does not carry this change. Repair nothing, and change no test.`,
     out: F.control,
   }, RUN_SHAPE)
-  if (c.ok) files.push(c.out)
-  control = negativeControl(DEPTH, c.ok ? runVerdict(c.ret) : null)
+  // a control stage that blocked says nothing about the base version, and a denied tool is not an
+  // unreadable run: the flow stops here instead of building the code stage on what it left behind
+  if (!c.ok) return result({ stage: 'control-run', blocked: c.blocked })
+  files.push(c.out)
+  control = negativeControl(DEPTH, runVerdict(c.ret))
+  // nothing else verifies the restore: what the control says it left in the tree is the evidence
+  const tree = controlTree(c.ret)
+  if (tree.gap) gap.push(tree.gap)
 }
 
 // ---- 4. the code: changed until the check passes, and nothing else ----
@@ -1417,9 +1483,12 @@ if (on('fixer') && FIXER.enter) {
     runFile = e.out
     run = runVerdict(e.ret)
   }
+  // the ceiling ends the stage: what the check still fails is a gap, and the stage that was cut is
+  // not counted as one that ran
+  let capped = false
   while (run !== 'PASS') {
     const CY = cycleState(DEPTH, cycles)
-    if (CY.hit) { gap.push(CY.gap); break }
+    if (CY.hit) { gap.push(CY.gap); capped = true; break }
     cycles += 1
     const f = await stage(FIX, `fix-${cycles}`, 'Fix', {
       in: inputs([runFile, ...(done.includes('code') ? [F.code] : [])]),
@@ -1438,7 +1507,7 @@ if (on('fixer') && FIXER.enter) {
     runFile = e.out
     run = runVerdict(e.ret)
   }
-  done.push('fixer')
+  if (!capped) done.push('fixer')
 }
 
 // The run ends where its range ends. What the check still fails, what the ceiling cut and what the
