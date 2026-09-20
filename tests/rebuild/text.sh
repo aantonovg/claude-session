@@ -74,7 +74,12 @@ const END = ['// ---- end shared block', '// ---- end class table', '// ---- end
 const hits = []
 for (const path of process.argv.slice(3)) {
   let lines
-  try { lines = fs.readFileSync(path, 'utf8').split('\n') } catch (e) { continue }
+  // a file of the glob list nobody could read is never a clean file: it is reported like a hit,
+  // or this scan would print nothing over a text it never looked at
+  try { lines = fs.readFileSync(path, 'utf8').split('\n') } catch (e) {
+    hits.push(`${path}:0 unreadable: ${e.message}`)
+    continue
+  }
   let skip = false
   lines.forEach((line, i) => {
     const s = line.trim()
@@ -96,6 +101,19 @@ check "t1 the scan sees a cell short code" bash -c '! node "$1" "$2" "$3" > /dev
 perl -pe "s/parts\.join\('\|'\)/parts[0]/" "$P/lib/block.js" > "$T/mutant.js"
 check "t1 the mutant of cellTokens is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$P/lib/block.js" "$T/mutant.js"
 check "t1 the mutant that drops the short code is caught" bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/mutant.js" "$T/cell.md"
+
+# the same, executed, for a reasoning level named without the words "effort" and "tier": the two
+# forms a prose line really takes ("run at high reasoning", "reasoning level high"), and a mutant
+# of cellTokens that keeps the two bare words only must stop seeing both.
+printf 'run at high reasoning, the reasoning level high\n' > "$T/level.md"
+check "t1 the scan sees a reasoning level named without the word effort" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$P/lib/block.js" "$T/level.md"
+perl -pe "s/const LEVEL_NOUNS = \[.*\]/const LEVEL_NOUNS = ['effort', 'tier']/" "$P/lib/block.js" > "$T/levels.js"
+check "t1 the mutant of LEVEL_NOUNS is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$P/lib/block.js" "$T/levels.js"
+check "t1 the mutant that drops the level nouns is caught" bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/levels.js" "$T/level.md"
+# and the sentence that names the command, with no level word beside it, is no cell token
+printf 'the reasoning-level command `/model`\n' > "$T/cmd.md"
+check "t1 naming the reasoning-level command is no cell token" node "$T/scan.js" "$P/lib/block.js" "$T/cmd.md"
 
 # t2: lib/verification.md, the page every process skill and composite workflow cites.
 V=$P/lib/verification.md

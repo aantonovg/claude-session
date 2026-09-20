@@ -17,10 +17,13 @@
 #     names, after that file was stamped in this same run (skills/base/SKILL.md from base/BASE.md).
 #     It carries no markers of its own and is never hand-edited.
 # A file with none of these markers is skipped and stays byte-identical. A manifest target that
-# does not exist yet is skipped; a file named on the command line must exist and must be a target
-# of lib/build-manifest.json, and a named file that is the source of a "fromBase" target drags that
-# target into the same run, so --check over a file this build step does not own, and --check over a
-# source whose generated copy is stale, can never print clean over a stale region. A manifest key
+# does not exist yet is skipped, with one exception: a "fromBase" target is generated whole out of
+# its source, so its absence is drift, not a skip, and the skip of a later part is keyed on its
+# source instead. A file named on the command line must exist and must be a target of
+# lib/build-manifest.json; a named file that is the source of a "fromBase" target drags that target
+# into the same run, and a named "fromBase" target drags its source in the same way, so --check over
+# a file this build step does not own, and --check over either side of a stale pair, can never print
+# clean over a stale region. A manifest key
 # ("block", "table", "roles", "aspects") whose marker pair is missing from the target is an error,
 # never a silent skip. A hand edit inside a generated region is lost at the next build; --check
 # catches it before a commit.
@@ -208,6 +211,18 @@ if files:
         tp = os.path.join(plugin, t['path'])
         if fb and norm(os.path.join(plugin, fb)) in named and norm(tp) not in named:
             targets.append((tp, t))
+    # the other direction: naming the fromBase target alone drags its source in, so the source is
+    # stamped in this same run instead of being read off disk — a hand edit inside the generated
+    # region of the source would otherwise be published into the generated skill
+    for t in manifest:
+        fb = t.get('fromBase')
+        if not fb or norm(os.path.join(plugin, t['path'])) not in named:
+            continue
+        sp = norm(os.path.join(plugin, fb))
+        if sp in named or sp not in by_path:
+            continue
+        targets.append((os.path.join(plugin, fb), by_path[sp]))
+        named.add(sp)
 else:
     targets = [(os.path.join(plugin, t['path']), t) for t in manifest]
 
@@ -250,7 +265,12 @@ for path, spec in targets:
         continue
     src = os.path.join(plugin, fb)
     if not os.path.exists(src):
-        print('build.sh: %s names the missing source %s' % (path, src)); sys.exit(2)
+        # the skip rule of a later part, keyed on the source: a fromBase target is generated whole,
+        # so its own absence is drift and never a skip, but a source nobody has written yet is the
+        # target of a later part. A file named on the command line is never skipped.
+        if files:
+            print('build.sh: %s names the missing source %s' % (path, src)); sys.exit(2)
+        continue
     body = rendered.get(norm(src))
     if body is None:  # the source is not a target of this run: read what is on disk
         body = open(src, encoding='utf-8').read()

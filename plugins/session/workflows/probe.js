@@ -292,16 +292,25 @@ function slotForSize(slot, size) {
 // instead of carrying a regex of its own. Two forms are no cell token: a slot name ("opus slot",
 // "sonnet-slot") names a column of the table, a submode name ("no-sonnet") names one of its rows.
 const OFF_TABLE_MODELS = ['haiku'] // a model the class table never picks, still banned in prose
-const LEVEL_WORDS = ['effort', 'tier']
+const LEVEL_WORDS = ['effort', 'tier'] // a level noun that names the table's own vocabulary alone
+// A level can be named without either of those two words ("run at high reasoning", "reasoning level
+// high"), so the nouns below count too — but only with a level word of lib/classes.json beside
+// them, or the sentence that names `/model` as the reasoning-level command could no longer be
+// written. The level words are the values of the table, never a list of this file.
+const LEVEL_NOUNS = ['effort', 'tier', 'reasoning', 'thinking']
 function cellTokens(line) {
   const s = String(line == null ? '' : line)
   const names = Object.values(MODEL_NAME).concat(OFF_TABLE_MODELS).join('|')
   const mods = Object.keys(MODEL_NAME).join('|')
   const effs = Object.keys(EFFORT_NAME).join('|')
+  const levels = Object.values(EFFORT_NAME).join('|')
+  const nouns = LEVEL_NOUNS.join('|')
   const parts = [
     `(no-)?\\b(?:${names})\\b([- ]slot)?`, // a model name, with its submode and slot forms
     `\\b(?:${mods})-(?:${effs})\\b`, // the short code of a cell, the way a label carries it
     `\\b(?:${LEVEL_WORDS.join('|')})\\b`, // a reasoning level or a tier
+    `\\b(?:${levels})[- ]+(?:level[- ]+)?(?:${nouns})\\b`, // "high reasoning", "low effort"
+    `\\b(?:${nouns})(?:[- ]+level)?[- :]+(?:${levels})\\b`, // "reasoning level high", "effort: low"
   ]
   const re = new RegExp(parts.join('|'), 'gi')
   const hits = []
