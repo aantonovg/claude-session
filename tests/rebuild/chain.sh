@@ -184,8 +184,8 @@ const sp = b.splitFailures(ans)
 eq(sp.harness.map(a => a.group), ['g5'], 'a harness failure lands in its own list')
 eq(sp.onBase.map(a => a.group), ['g4'], 'a failure that reproduces on the base is not a finding')
 eq(sp.findings.map(a => a.group), ['g1', 'g2', 'g3'], 'the findings are what is left')
-eq(b.undeterminedOf(ans).map(a => a.group), ['g3'], 'the undetermined list is its own list')
 const groups = ['g1', 'g2', 'g3', 'g4', 'g5', 'g6'].map(id => ({ id, place: `src/${id}.js:1-2` }))
+eq(b.undeterminedOf(groups, ans).map(r => r.id), ['g3'], 'the undetermined list is its own list')
 const toFix = b.fixerInput(groups, ans).map(x => x.id)
 eq(toFix, ['g1'], 'only a confirmed hint reaches the fixer')
 ck(!toFix.includes('g3'), 'A28 an undetermined hint never reaches the fixer')
@@ -199,7 +199,7 @@ const undBase = b.parseEvidence('EVIDENCE | g9 | undetermined | base:yes | the s
 const spBase = b.splitFailures(undBase)
 eq(spBase.onBase.map(a => a.group), [],
    'an undetermined answer on the base version is closed by nobody')
-eq(b.undeterminedOf(undBase).map(a => a.group), ['g9'],
+eq(b.undeterminedOf([{ id: 'g9', place: 'src/x.js:1' }], undBase).map(r => r.id), ['g9'],
    'an undetermined answer on the base version stays open and goes to the user')
 eq(b.fixerInput([{ id: 'g9', place: 'src/x.js:1' }], undBase), [],
    'it still reaches no fixer')
@@ -312,12 +312,12 @@ eq(b.dedupeAnswers(dup).length, 3, 'two answer lines for one group give one answ
 eq(b.dedupeAnswers(dup).map(a => a.verdict), ['confirmed', 'refuted', 'undetermined'],
    'the stronger evidence wins, and two settled answers that contradict each other settle nothing')
 eq(b.fixerInput(groups, dup).map(x => x.id), ['g1'], 'a group answered twice reaches the fixer once')
-eq(b.undeterminedOf(dup).map(a => a.group), ['g3'],
+eq(b.undeterminedOf(groups, dup).map(r => r.id), ['g3'],
    'a group confirmed once and undetermined once no longer stands in both lists')
 
 // --- the confirmed count is the facts; what reached the fixer is its own number ---
-eq(b.confirmedOf(ans).map(a => a.group), ['g1'], 'confirmedOf counts the facts of the run')
-eq(b.confirmedOf([]).length, 0, 'no answer, no confirmation')
+eq(b.confirmedOf(groups, ans).map(r => r.id), ['g1'], 'confirmedOf counts the facts of the run')
+eq(b.confirmedOf(groups, []).length, 0, 'no answer, no confirmation')
 const blkT = b.chainResult({ ...state, stage: 'triage', blocked: 'the judge stopped', fixing: 0 })
 eq(blkT.confirmed, 1, 'a blocked triage still reports the fact the evidence confirmed')
 eq(blkT.fixing, 0, 'a blocked triage reports nothing reaching the fixer')
@@ -358,6 +358,66 @@ const shortRuns = b.chainEvidenceRuns('lite', 'short', evg)
 eq(shortRuns.gap, [], 'the short form is one agent: it cuts no group')
 eq(shortRuns.ran.map(x => x.id), ['g2', 'g3', 'g1'], 'the short form takes every group')
 eq(b.chainEvidenceRuns('full', 'long', []).ran, [], 'no group, no evidence run')
+
+// --- the answers are per hint: one group, one evidence run, one verdict per hint of it ---
+const mixed = b.groupHints(b.parseHints([
+  'HINT | reliability | src/x.js:1-7 | high | the cut leaves a trailing dash | run the check',
+  'HINT | simplicity | src/x.js:6 | high | the wrapper is needless, drop it | grep its callers',
+  'HINT | simplicity | src/x.js:3 | medium | the default is written twice | compare both',
+].join('\n'), 'x'))
+eq(mixed.length, 1, 'hints on one place are one group, one evidence run')
+eq(mixed[0].hints.map(h => h.id), ['g1.h1', 'g1.h2', 'g1.h3'],
+   'every hint of a group carries its own id')
+const mixedAns = b.parseEvidence([
+  'EVIDENCE | g1.h1 | confirmed | base:no | the check fails at src/x.js:4',
+  'EVIDENCE | g1.h2 | refuted | base:yes | the wrapper already stands in the base version',
+  'EVIDENCE | g1.h3 | undetermined | base:no | no rule says which spelling is meant',
+].join('\n'))
+eq(b.fixerInput(mixed, mixedAns).map(g => g.hints.map(h => h.id)), [['g1.h1']],
+   'only the confirmed hint of the group reaches the fixer, the refuted and the unsettled stay out')
+eq(b.chainRows(mixed, mixedAns).onBase.map(r => r.id), ['g1.h2'],
+   'a hint whose shape already stands on the base version is no finding of this change')
+eq(b.chainRows(mixed, mixedAns).undetermined.map(r => r.id), ['g1.h3'],
+   'the unsettled hint of a confirmed group is its own row')
+eq(b.judgedInput(mixed, mixedAns, b.parseAccepted('ACCEPTED | g1.h2 | drop the wrapper')), [],
+   'the judge cannot accept a hint no fact confirmed, however its group was answered')
+eq(b.judgedInput(mixed, mixedAns, b.parseAccepted('ACCEPTED | g1.h1 | trim the dash'))
+   .map(g => g.hints.map(h => h.id)), [['g1.h1']],
+   'the judge accepts a confirmed hint by that hint id')
+const wholeGroup = b.parseEvidence('EVIDENCE | g1 | confirmed | base:no | one verdict for the whole group')
+eq(b.fixerInput(mixed, wholeGroup), [],
+   'one verdict over a group of several hints settles no hint of it and reaches no fixer')
+eq(b.chainRows(mixed, wholeGroup).unanswered.map(r => r.id), ['g1.h1', 'g1.h2', 'g1.h3'],
+   'those hints are unanswered and go to the user')
+const single = b.groupHints(b.parseHints('HINT | cost | src/one.js:1-2 | low | one hint | read it', 'cost'))
+eq(b.fixerInput(single, b.parseEvidence('EVIDENCE | g1 | confirmed | base:no | src/one.js:2')).map(g => g.id),
+   ['g1'], 'a group of one hint is that hint: an answer naming the group settles it')
+eq(b.fixerInput(mixed, b.parseEvidence('EVIDENCE | g1.h2 | confirmed |  | no control run')), [],
+   'a hint whose answer has no readable control run reaches no fixer either')
+
+// --- the return and the review file come from one table ---
+// one hint confirmed, one unsettled, one nobody answered: both kinds of open row in one run
+const partial = b.parseEvidence([
+  'EVIDENCE | g1.h1 | confirmed | base:no | the check fails at src/x.js:4',
+  'EVIDENCE | g1.h2 | undetermined | base:no | nothing here settles it',
+].join('\n'))
+const tbl = b.chainRows(mixed, partial)
+eq(tbl.open.map(r => r.id), ['g1.h2', 'g1.h3'],
+   'the open rows are the unsettled hints and the hints nobody answered')
+const one = b.chainResult({ out: '/tmp/r/out.md', form: 'long', groups: mixed, ran: mixed,
+                            answers: partial, base: 'v1.2' })
+eq(one.undetermined.map(s => s.split(':')[0]).concat(one.unanswered.map(s => s.split(' ')[0])),
+   tbl.open.map(r => r.id), 'the return carries exactly the open rows of the table')
+const openText = b.openRowsText(tbl)
+eq(openText.split('\n').length, tbl.open.length,
+   'the unsettled section holds one row per open row of the table')
+ck(tbl.open.every(r => openText.includes(r.id)),
+   'every open row of the return stands in the unsettled section of the file')
+eq(b.openRowsText(b.chainRows(mixed, b.parseEvidence(
+   ['EVIDENCE | g1.h1 | confirmed | base:no | a fact',
+    'EVIDENCE | g1.h2 | refuted | base:no | a fact',
+    'EVIDENCE | g1.h3 | refuted | base:no | a fact'].join('\n')))), '(none)',
+   'nothing open, no unsettled row for the file')
 console.log(out.join('\n'))
 JS
 
@@ -403,24 +463,29 @@ while IFS='|' read -r what pat expr; do
 done <<'MUT'
 two critics on one place cost two evidence runs|two critics on one place give one group|s/^function hintsOverlap\(a, b\) \{/function hintsOverlap(a, b) { return false;/
 the hint cap lets every hint through|one critic gives at most 5 hints|s/return hints\.slice\(0, n\)/return hints.slice(0)/
-an undetermined hint reaches the fixer|an undetermined hint never reaches the fixer|s/a\.verdict === 'confirmed'/a.verdict !== 'refuted'/
+an undetermined hint reaches the fixer|an undetermined hint never reaches the fixer|s/findings\.filter\(r => r\.verdict === 'confirmed'\)/findings.filter(r => r.verdict !== 'refuted')/
 a base-version failure stays a finding|reproduces on the base is not a finding|s/const onBase = rest\.filter\(a => closed\(a\)\)/const onBase = []/
 an undetermined answer is closed by the control run|on the base version is closed by nobody|s/a\.onBase && a\.verdict !== 'undetermined'/a.onBase/
 the short form is taken everywhere|full takes the long form at any severity|s/depth === 'full' \|\| sev === 'high'/false/
 a harness failure becomes a finding|a harness failure lands in its own list|s/a\.kind === 'harness'/false/
 an unreadable control run passes as base:no|no readable control run is unsettled|s/if \(verdict !== 'harness' && /if (false && /
-a group with no answer vanishes|a group with no readable answer line is its own list|s/!seen\.includes\(g\.id\)/false/
-the judge's accepted rows stop filtering the fixer's mandate|the judge accepted nothing|s/\.filter\(g => ids\.includes\(g\.id\)\)/.filter(g => g)/
+a group with no answer vanishes|a group with no readable answer line is its own list|s/answered: !!a,/answered: true,/
+the judge's accepted rows stop filtering the fixer's mandate|the judge accepted nothing|s/ids\.includes\(g\.id\)/true/
 the ceiling never cuts a stage|lite seats two agents in a stage|s/const seats = Math\.min\(n, room\)/const seats = n/
 an unknown aspect name runs anyway|an unknown aspect stops the workflow|s/if \(p\.unknown\.length\) \{/if (false) {/
 a hint with an empty aspect field loses its tag|takes the aspect of the critic that wrote it|s/f\[0\] \|\| aspect \|\| ''/f[0] || ''/
 the status keeps the open rows to itself|the status sends the open rows to the user|s/put them to the user/keep them here/
 the status promises another round|the status states that the chain ran one round|s/One round only/Another round/
 the result drops the undetermined rows|the result carries the undetermined rows|s/undetermined: und\.map/undetermined: [].map/
-the result mixes the harness failures in|the result keeps the harness failures apart|s/harness: split\.harness\.map/harness: [].map/
+the result mixes the harness failures in|the result keeps the harness failures apart|s/harness: T\.harness\.map/harness: [].map/
 the result does not name the base version|names the base version of an on-base row|s/o\.base \|\| 'the base version'/'the base version'/
 a blocked stage drops every row it knows|a blocked stage still returns the open rows|s/if \(o\.blocked\) res\.blocked = blockedLine\(o\.blocked\)/if (o.blocked) return { blocked: blockedLine(o.blocked) }/
-two answers for one group stay two|two answer lines for one group give one answer|s/const cur = out\.filter\(x => x\.group === a\.group\)\[0\]/const cur = null/
+two answers for one group stay two|two answer lines for one group give one answer|s/const cur = out\.filter\(x => x\.id === a\.id\)\[0\]/const cur = null/
+one verdict settles every hint of its group|one verdict over a group of several hints settles no hint|s/hints\.length === 1 \? all\.filter\(x => x\.id === g\.id\)\[0\] : null/all.filter(x => x.id === g.id)[0]/
+the fixer gets every hint of a group one fact confirmed|only the confirmed hint of the group reaches the fixer|s/const hints = \(g\.hints \|\| \[\]\)\.filter\(h => ok\.includes\(h\.id\)\)/const hints = (g.hints || [])/
+the hints of a group share the group id|every hint of a group carries its own id|s/id: `\$\{id\}\.h\$\{j \+ 1\}`/id/
+the unsettled section of the file drops the open rows|the unsettled section holds one row per open row|s/const open = \(rows && rows\.open\) \|\| \[\]/const open = []/
+the return invents its open rows instead of the table|the return carries exactly the open rows of the table|s/const open = T\.unanswered/const open = []/
 two contradicting answers settle the group anyway|two settled answers that contradict each other settle nothing|s/cur\.verdict !== a\.verdict/false/
 an unknown aspect name plans a run anyway|an unknown aspect name stops the run before any critic starts|s/if \(!gate\.ok\) return \{ ok: false/if (false) return { ok: false/
 the ceiling never cuts the critic stage|the plan seats five critics, the ceiling of the stage|s/sets: all\.slice\(0, seats\.seats\)/sets: all.slice(0)/
@@ -452,7 +517,7 @@ PY
   check "a5 chain.js carries the aspects marker" grep -q '^// ---- aspects' "$WF"
   check "a5 chain.js stamp is in sync with its sources" bash "$BUILD" --check "$WF"
   # every decision comes from the shared block, so a test can execute it
-  for fn in chainPlan chainEvidenceRuns parseHints capHints groupHints maxSeverity chainForm parseEvidence splitFailures fixerInput parseAccepted judgedInput undeterminedOf unansweredOf chainStatus chainResult; do
+  for fn in chainPlan chainEvidenceRuns parseHints capHints groupHints maxSeverity chainForm parseEvidence splitFailures fixerInput parseAccepted judgedInput chainRows openRowsText chainStatus chainResult; do
     check "a5 chain.js decides through $fn() of the shared block" grep -q "$fn(" <<<"$code"
   done
   # the gate, the critic split and the two ceilings of A30 are executed in a3 over lib/block.js:
@@ -502,8 +567,20 @@ sys.exit(0 if code.index("splitFailures(") < code.index("fixerInput(") else 1)
   # the count of the fix stage is its own field: no return calls it the confirmed facts
   check "a5 chain.js never reports the fixer's count as the confirmed facts" bash -c '! grep -Fq "confirmed: TOFIX.length" <<<"$1"' _ "$code"
   check "a5 chain.js hands the fixer's count to the result builder" grep -Fq 'fixing: TOFIX.length' <<<"$code"
-  check "a5 chain.js puts the groups nobody answered into the triage prompt" grep -Fq 'NOANSWER.map(g => `${g.id} at ${g.place}`)' <<<"$code"
-  check "a5 the triage prompt demands an undetermined row for them" grep -Fq 'as an undetermined row saying what is missing' <<<"$code"
+  # the rows of the return and the rows of the result file are the same rows, rendered once
+  check "a5 chain.js builds the one table of the run through chainRows" grep -Fq 'chainRows(RUNGROUPS, answers)' <<<"$code"
+  check "a5 chain.js takes its open rows from that table" grep -Fq 'const NOANSWER = ROWS.unanswered' <<<"$code"
+  check "a5 the triage prompt carries the open rows rendered by the block" grep -Fq 'openRowsText(ROWS)' <<<"$code"
+  check "a5 the triage prompt has the judge copy them, not compose its own" grep -Fq 'exactly these and no others' <<<"$code"
+  check "a5 the triage prompt accepts a hint only on a confirmed row" grep -Fq 'Accept a hint only when its own row says' <<<"$code"
+  # the fixer's mandate is named hint by hint, never re-read wider out of the result file
+  check "a5 chain.js names the fixer's mandate hint by hint" grep -Fq 'const FIXTEXT = TOFIX.map' <<<"$code"
+  check "a5 the fix prompt holds the fixer to that list" grep -Fq 'is not yours to change' <<<"$code"
+  # the evidence stage answers per hint, and the control run covers a shape as well as a failure
+  check "a5 the evidence shape asks for one line per hint" grep -Fq 'EVIDENCE | <hint id' <<<"$code"
+  check "a5 the evidence shape refuses a group-wide verdict" grep -Fq 'one verdict written over a whole group settles no hint' <<<"$code"
+  check "a5 the evidence shape demands a fact before a confirmation" grep -Fq 'plausible is not confirmed' <<<"$code"
+  check "a5 the control run covers a shape, not only a failure" grep -Fq 'A hint that claims a shape' <<<"$code"
   check "a5 chain.js writes no status sentence of its own" bash -c '! grep -qE "^ *status: \`" <<<"$1"' _ "$code"
   check "a5 chain.js names no skill" bash -c '! grep -qE "session:(ask|base|process|codex)" <<<"$1"' _ "$code"
   check "a5 chain.js cites the verification page" grep -q 'lib/verification.md' <<<"$code"

@@ -476,7 +476,16 @@ function groupHints(hints) {
       groups.splice(groups.indexOf(other), 1)
     }
   }
-  return groups.map((g, i) => ({ ...g, aspects: g.aspects.slice().sort(), id: `g${i + 1}` }))
+  // every hint carries an id of its own inside its group (`g1.h2`). A group is one evidence run,
+  // but the answers are per hint: a group holding a confirmed hint and a refuted one must not
+  // carry the refuted one to the fixer under the group's verdict (A28).
+  return groups.map((g, i) => {
+    const id = `g${i + 1}`
+    return {
+      ...g, aspects: g.aspects.slice().sort(), id,
+      hints: (g.hints || []).map((h, j) => ({ ...h, id: `${id}.h${j + 1}` })),
+    }
+  })
 }
 
 // maxSeverity(groups): the severity of the whole critique, the second input of the form choice.
@@ -522,8 +531,10 @@ function parseEvidence(text) {
     const parts = line.split('|')
     if (parts[0].trim() !== 'EVIDENCE') continue
     const f = parts.slice(1).map(s => s.trim())
-    const group = f[0] || ''
-    if (!group) continue
+    // the id of an answer is a hint id (`g1.h2`); the group it belongs to is its head
+    const id = f[0] || ''
+    if (!id) continue
+    const group = id.split('.')[0]
     const v = (f[1] || '').toLowerCase()
     let verdict = EVIDENCE_VERDICTS.includes(v) ? v : 'undetermined'
     const base = (f[2] || '').trim()
@@ -532,6 +543,7 @@ function parseEvidence(text) {
     // same way an unreadable verdict does. A harness failure needs no control run.
     if (verdict !== 'harness' && !/^base:\s*(yes|no)$/i.test(base)) verdict = 'undetermined'
     answers.push({
+      id,
       group,
       verdict,
       kind: verdict === 'harness' ? 'harness' : 'object',
@@ -548,16 +560,16 @@ function parseEvidence(text) {
 // Only a settled answer can be closed by the control run: an `undetermined` row with `base:yes`
 // was settled by nobody, so it stays among the findings, reaches the undetermined list and the
 // user (A28), and is never closed as "no finding of this change".
-// dedupeAnswers(answers): one answer per hint group. A stage that wrote two lines for one group
-// would otherwise put that group in two lists at once — confirmed to the fixer and undetermined to
+// dedupeAnswers(answers): one answer per hint. A stage that wrote two lines for one hint would
+// otherwise put that hint in two lists at once — confirmed to the fixer and undetermined to
 // the user. The stronger evidence wins: a settled verdict beats an unsettled one and beats a
 // failure of our own harness; two settled verdicts that contradict each other (confirmed and
-// refuted) settle nothing, so the group goes to the user as undetermined.
+// refuted) settle nothing, so the hint goes to the user as undetermined.
 const ANSWER_RANK = ['harness', 'undetermined', 'refuted', 'confirmed']
 function dedupeAnswers(answers) {
   const out = []
   for (const a of answers || []) {
-    const cur = out.filter(x => x.group === a.group)[0]
+    const cur = out.filter(x => x.id === a.id)[0]
     if (!cur) { out.push({ ...a }); continue }
     const settled = v => v === 'confirmed' || v === 'refuted'
     const i = out.indexOf(cur)
@@ -580,38 +592,102 @@ function splitFailures(answers) {
   return { findings, harness, onBase }
 }
 
+// hintRows(groups, answers): every hint of every group that ran, bound to the answer that settled
+// it. The binding lives here and nowhere else, so the fixer's mandate, the review file and the
+// return read the same rows and can no longer tell two different stories (A28).
+// An answer names a hint id (`g1.h2`). A group of one hint is that hint, so an answer naming the
+// group settles it; a group of several hints is not — one verdict over several hints would carry
+// the refuted and the unsettled hints to the fixer under the confirmed one. A hint no answer
+// names is unanswered: nothing settled it, so it is undetermined, never confirmed.
+function hintRows(groups, answers) {
+  const all = dedupeAnswers(answers)
+  const kindOf = a => a.kind === 'harness'
+    ? 'harness'
+    : (a.onBase && a.verdict !== 'undetermined' ? 'onBase' : 'finding')
+  const rows = []
+  for (const g of groups || []) {
+    const hints = (g.hints || []).length ? g.hints : [{ id: g.id, place: g.place, what: '' }]
+    for (const h of hints) {
+      const byHint = all.filter(x => x.id === h.id)[0]
+      const byGroup = hints.length === 1 ? all.filter(x => x.id === g.id)[0] : null
+      const a = byHint || byGroup || null
+      rows.push({
+        id: h.id, group: g.id, place: h.place || g.place, what: h.what || '',
+        answered: !!a, verdict: a ? a.verdict : 'undetermined',
+        kind: a ? kindOf(a) : 'finding', pointer: a ? a.pointer : '',
+      })
+    }
+  }
+  return rows
+}
+
+// chainRows(groups, answers): the one table of a chain run. The result file the judge writes and
+// the return the caller reads are both this table — the open rows above all (A28), so a run can
+// no longer return `undetermined: []` while its review file holds unsettled rows.
+function chainRows(groups, answers) {
+  const rows = hintRows(groups, answers)
+  const findings = rows.filter(r => r.kind === 'finding')
+  const undetermined = findings.filter(r => r.answered && r.verdict === 'undetermined')
+  const unanswered = findings.filter(r => !r.answered)
+  return {
+    rows,
+    findings,
+    confirmed: findings.filter(r => r.verdict === 'confirmed'),
+    rejected: findings.filter(r => r.verdict === 'refuted'),
+    undetermined,
+    unanswered,
+    open: undetermined.concat(unanswered),
+    harness: rows.filter(r => r.kind === 'harness'),
+    onBase: rows.filter(r => r.kind === 'onBase'),
+  }
+}
+
+// openRowsText(rows): the unsettled section of the review file, rendered from the rows the return
+// carries. The judge copies this block instead of composing a list of its own.
+function openRowsText(rows) {
+  const open = (rows && rows.open) || []
+  if (!open.length) return '(none)'
+  return open.map(r => `| ${r.id} | ${r.place} | ${r.answered ? r.pointer || 'the facts settle nothing' : 'the evidence run came back with no readable answer for this hint'} |`).join('\n')
+}
+
 // fixerInput(groups, answers): what may reach the one who changes the object. A hint without
-// evidence changes nothing, so only a group a fact confirmed goes on; refuted, undetermined,
-// harness, base-version and unanswered groups all stay out (A28).
+// evidence changes nothing, so a group goes on with its confirmed hints only; refuted,
+// undetermined, harness, base-version and unanswered hints all stay out (A28).
 function fixerInput(groups, answers) {
-  const confirmed = confirmedOf(answers).map(a => a.group)
-  return (groups || []).filter(g => confirmed.includes(g.id))
+  const ok = chainRows(groups, answers).confirmed.map(r => r.id)
+  const out = []
+  for (const g of groups || []) {
+    const hints = (g.hints || []).filter(h => ok.includes(h.id))
+    if (hints.length) { out.push({ ...g, hints }); continue }
+    // a group that carries no hint list of its own is addressed by its group id
+    if (!(g.hints || []).length && ok.includes(g.id)) out.push(g)
+  }
+  return out
 }
 
-// confirmedOf(answers): the groups a fact confirmed. The `confirmed` count of the result and of
-// the status is this one, never the count that reached the fixer: a run whose triage or fix stage
-// blocked still confirmed what it confirmed, and a judge that rejected a confirmed group does not
-// unmake the fact (A28). What the fixer got is its own number.
-function confirmedOf(answers) {
-  return splitFailures(answers).findings.filter(a => a.verdict === 'confirmed')
+// confirmedOf(groups, answers): the hints a fact confirmed. The `confirmed` count of the result
+// and of the status is this one, never the count that reached the fixer: a run whose triage or fix
+// stage blocked still confirmed what it confirmed, and a judge that rejected a confirmed hint does
+// not unmake the fact (A28). What the fixer got is its own number.
+function confirmedOf(groups, answers) {
+  return chainRows(groups, answers).confirmed
 }
 
-// undeterminedOf(answers): the list that goes into the result file and into the status, for the
-// main session to put to the user (A28: a script has no place for the user).
-function undeterminedOf(answers) {
-  return splitFailures(answers).findings.filter(a => a.verdict === 'undetermined')
+// undeterminedOf(groups, answers): the list that goes into the result file and into the status,
+// for the main session to put to the user (A28: a script has no place for the user).
+function undeterminedOf(groups, answers) {
+  return chainRows(groups, answers).undetermined
 }
 
-// unansweredOf(groups, answers): a group that ran and came back with no readable answer line.
+// unansweredOf(groups, answers): a hint that ran and came back with no readable answer line.
 // Nothing settled it, so it is neither confirmed nor rejected: it goes to the user with the
-// undetermined ones (A28). Counting it out of existence would drop a whole hint group.
+// undetermined ones (A28). Counting it out of existence would drop a whole hint.
 function unansweredOf(groups, answers) {
-  const seen = (answers || []).map(a => a.group)
-  return (groups || []).filter(g => !seen.includes(g.id))
+  return chainRows(groups, answers).unanswered
 }
 
 // parseAccepted(text): the accepted rows of the judge's return. Format, one line per row:
-//   ACCEPTED | <group id> | <the change in one sentence>
+//   ACCEPTED | <hint id> | <the change in one sentence>
 // The whole decision stands in the judge's result file; these lines are the part a script without
 // file access can read, and they are the only mandate the fixer gets.
 function parseAccepted(text) {
@@ -621,18 +697,24 @@ function parseAccepted(text) {
     if (parts[0].trim() !== 'ACCEPTED') continue
     const f = parts.slice(1).map(s => s.trim())
     if (!f[0]) continue
-    rows.push({ group: f[0], change: f.slice(1).join(' | ') })
+    rows.push({ id: f[0], group: f[0].split('.')[0], change: f.slice(1).join(' | ') })
   }
   return rows
 }
 
 // judgedInput(groups, answers, rows): the fixer's mandate in the long form. The judge decides
-// which groups become changes, so a group it rejected or left unsettled never reaches the fixer;
+// which hints become changes, so a hint it rejected or left unsettled never reaches the fixer;
 // it cannot widen the mandate either, so a row no fact confirmed stays out (A28). No accepted
 // row, no fix stage.
 function judgedInput(groups, answers, rows) {
-  const ids = (rows || []).map(r => r.group)
-  return fixerInput(groups, answers).filter(g => ids.includes(g.id))
+  const ids = (rows || []).map(r => r.id)
+  const out = []
+  for (const g of fixerInput(groups, answers)) {
+    const hints = (g.hints || []).filter(h => ids.includes(h.id))
+    if (hints.length) { out.push({ ...g, hints }); continue }
+    if (!(g.hints || []).length && ids.includes(g.id)) out.push(g)
+  }
+  return out
 }
 
 // chainSeats(depth, wanted): the ceiling of A30 is a ceiling per stage — at most `agents` units
@@ -716,14 +798,14 @@ function chainResult(s) {
   const o = s || {}
   const groups = o.groups || []
   const answers = o.answers || []
-  const split = splitFailures(answers)
+  // one table for the whole run: the return and the review file are rendered from these same rows
+  const T = chainRows(o.ran || groups, answers)
   // the facts are counted from the answers themselves, so no caller can claim a confirmation the
   // evidence never gave, and a stage that blocked late still reports what was confirmed
-  const conf = confirmedOf(answers)
-  const und = undeterminedOf(answers)
-  const open = unansweredOf(o.ran || groups, answers)
+  const conf = T.confirmed
+  const und = T.undetermined
+  const open = T.unanswered
   const base = o.base || 'the base version'
-  const placeById = id => (groups.filter(g => g.id === id)[0] || {}).place || id
   const res = {
     out: o.out == null ? null : o.out,
     form: o.form,
@@ -733,10 +815,10 @@ function chainResult(s) {
     confirmed: conf.length,
     fixing: Number(o.fixing || 0),
     fixed: o.fixed || 'no accepted row: nothing was changed',
-    undetermined: und.map(a => `${a.group}: ${placeById(a.group)} — ${a.pointer}`),
-    unanswered: open.map(g => `${g.id} at ${g.place}: the stage ran and came back with no readable answer`),
-    harness: split.harness.map(a => `${a.group}: ${a.pointer}`),
-    onBase: split.onBase.map(a => `${a.group}: reproduces on ${base}, no finding of this change`),
+    undetermined: und.map(r => `${r.id}: ${r.place} — ${r.pointer}`),
+    unanswered: open.map(r => `${r.id} at ${r.place}: the stage ran and came back with no readable answer`),
+    harness: T.harness.map(r => `${r.id}: ${r.pointer}`),
+    onBase: T.onBase.map(r => `${r.id}: reproduces on ${base}, no finding of this change`),
     evidence: o.evidence || [],
     gap: o.gap || [],
     blockedStages: o.blockedStages || [],
@@ -758,6 +840,7 @@ if (typeof module !== 'undefined' && module.exports) {
     blockedLine, mustExist, outVerdict,
     HINT_CAP, SEVERITY_ORDER, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
+    hintRows, chainRows, openRowsText,
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
   }
@@ -772,11 +855,11 @@ const ROLE_TEXT = {
   "code-author": "Code author. The tests already state what the change must do. You change the code until they pass, and nothing else.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the inputs first, then change only the files the task names. Run the check the task names after every step; when the task names no check, say so in your return instead of inventing one. A test you cannot make pass is a finding: report it with the failing line verbatim, never weaken the test, never mark it skipped, never rewrite it to match the code.\n\nSmallest change that passes: no refactor the task did not ask for, no new abstraction for one caller, no new file where an edit was asked, no commit, no push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the decisive line of the last check run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "test-author": "Test author. You turn the scenario list into executable tests. The scenarios are the level above you: every scenario gets a test, and no test stands without a scenario.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the scenario file first. Write the tests in the harness the repository already uses, with the assertions the scenario states and the decisive value in the failure message. Name a test after what it proves, never after a scenario id or number. A scenario you cannot express as a test is reported, not silently dropped.\n\nWrite the tests so they fail before the change and pass after it: a test that passes against the unchanged code proves nothing. Run them, and report the failure you see now as evidence that they bite.\n\nNever change the code under test, never relax an assertion to make a run green.\n\nList every test file you wrote in `{out}`, one path per line, and write nothing else into it.\n\nReturn: the test paths, the test count, the scenarios you could not express, the decisive line of the run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "coverage-checker": "Coverage checker. You read two lists \u2014 the wanted scenarios and the tests that exist \u2014 and report where they do not meet. You judge no quality: a badly written test that covers its scenario is covered.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nMatch by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.\n\nWrite one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into \"the scenario list is missing it\" and \"the test proves nothing anybody asked for\"; and the pairs where the test covers only part of its scenario, with the part left out.\n\nNever write a test, never change a file under test.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "critic": "Critic. You read the object below in a clean context and point at the places where an error may hide. You give hints, never verdicts: what you suspect is settled later by facts, not by your confidence.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nTool-call budget: at most 12 calls, and no call that changes anything. Read the object, then stop reading and write. Spending the budget on a wide tour costs more than it finds; read what the task points at.\n\nAt most 5 hints, the strongest first. Every hint carries: the aspect it comes from; the place (file and line range, or document section); the error you suspect, in one sentence; the severity (high, medium, low); and the one piece of evidence that would settle it \u2014 a command to run, a file to read, a value to compare. A hint nobody could settle is not a hint, drop it.\n\nNo praise, no summary of what the object does, no style remark, no restatement of a rule the object already follows.\n\nWrite the hint list into `{out}` in that shape and change nothing else.\n\nReturn: the output path, the hint count by severity, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "evidence-researcher": "Evidence researcher. One group of hints, many cheap queries, one answer per hint: confirmed, refuted or undetermined. You decide nothing about what to change; you bring the facts that decide it.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nFor every hint of the group: run the check the hint names, read the code path around the place, and reproduce the failure when the hint claims one. A failure that also shows on the unchanged base version is not a finding of this change \u2014 say so, with both runs quoted.\n\nAnswer each hint with `confirmed`, `refuted` or `undetermined`, every answer carrying its pointer: file and line, command and its decisive output line, or commit hash. `undetermined` is a real answer and better than a guess; it says what you tried and what would settle it.\n\nKeep two kinds of failure apart: a failure of the object under review, and a failure of your own run (a tool, an access, a sandbox limit). The second one is never a finding about the object; report it in its own list.\n\nWrite the answers into `{out}` and change nothing under review. You have no Write tool: create `{out}` with a shell redirect, and write no other file.\n\nReturn: the output path, the counts (confirmed, refuted, undetermined, harness failures), then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "evidence": "Evidence agent, short form: you collect the facts for the hints below and decide each one yourself, in one pass.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer hint: run the check it names, read the place it points at, then say `confirmed` (the facts hold it up and it names a real change), `refuted` (the facts settle it against the hint) or `undetermined` (the facts do not settle it, so it goes to the user). Every line carries its pointer: file and line, command with its decisive output line, or commit hash. A claim with no pointer does not go in.\n\nA failure that also shows on the unchanged base version is not a finding. A failure of your own run \u2014 tool, access, sandbox \u2014 is `harness`, no finding about the object either; keep those in their own list.\n\nA confirmed hint states the change in one sentence: what to change and where. It never states how to write the code.\n\nYou have no Write tool: create `{out}` with a shell redirect, and write no other file. Write the same four words into `{out}`: confirmed with the change, refuted with the refuting fact, undetermined with what is missing, harness failures apart.\n\nReturn: the output path, the four counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "evidence-triage": "Triage. You are the judge of the review: you read the hints and the facts collected for them, and you decide which ones become changes. You run no query of your own \u2014 if a decision needs a fact nobody collected, that hint is unsettled, and unsettled goes to the user, never to the one who changes the object.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer hint: accept it only when a fact confirms it; reject it when a fact refutes it, or when nothing but the hint itself speaks for it; mark it unsettled when the facts are inconclusive. Severity is measured against the quality criteria named in the task, not against your taste.\n\nWrite `{out}`: the accepted list, each row with the place, the required change in one sentence and the fact it rests on; the rejected list with the refuting fact; the unsettled list with the question the user must answer. Two hints about one place that need one change are one row, keeping both aspect tags.\n\nNever change the object, never add a finding nobody hinted at, never accept a hint because it sounds reasonable.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "fixer": "Fixer. You change the object by an accepted list, and by nothing else. The list is the whole mandate: an improvement nobody accepted is scope you may not add.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer accepted row: make the smallest change that satisfies it, at the place it names. A row you disagree with is not dropped and not reinterpreted \u2014 make the change and say in your return why you think it is wrong, or, when the change would break something the row did not see, stop at that row and report it with the evidence.\n\nAfter the changes run the check the task names and quote its decisive line. When the check fails after your change, fix your change; when it already failed before it, say so with both runs.\n\nNever touch a place no row names, never commit, never push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the rows you could not apply, the decisive line of the check verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "critic": "Critic. You read the object below in a clean context and point at the places where an error may hide. You give hints, never verdicts: what you suspect is settled later by facts, not by your confidence.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nTool-call budget: at most 12 calls, and no call that changes anything. Read the object, then stop reading and write. Spending the budget on a wide tour costs more than it finds; read what the task points at.\n\nAt most 5 hints, the strongest first. Every hint carries: the aspect it comes from; the place (file and line range, or document section); the error you suspect, in one sentence; the severity (high, medium, low); and the one piece of evidence that would settle it \u2014 a command to run, a file to read, a value to compare. A hint nobody could settle is not a hint, drop it.\n\nNo praise, no summary of what the object does, no style remark, no restatement of a rule the object already follows. When the task names a version from before the change, a shape that already stands in it is no finding of this change: hint at what this change brought.\n\nWrite the hint list into `{out}` in that shape and change nothing else.\n\nReturn: the output path, the hint count by severity, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "evidence-researcher": "Evidence researcher. One group of hints, many cheap queries, one answer per hint: confirmed, refuted or undetermined. You decide nothing about what to change; you bring the facts that decide it.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nFor every hint of the group, one answer under that hint's own id: run the check the hint names, read the code path around the place, and reproduce the failure when the hint claims one. A failure, or a shape, that already stands in the unchanged base version is not a finding of this change \u2014 say so, with both runs or both places quoted.\n\nAnswer each hint with `confirmed`, `refuted` or `undetermined`, every answer carrying its pointer: file and line, command and its decisive output line, or commit hash. `confirmed` needs a fact of the object that holds this one hint up; a hint the files and the runs neither hold up nor settle is `undetermined`, never `confirmed`, and no hint is confirmed for sounding right. `undetermined` is a real answer and better than a guess; it says what you tried and what would settle it.\n\nA hint that calls something needless, duplicated or absent is refuted as soon as a fact stands against it: a caller, a test, or a rule of the object's own documents that needs exactly that thing. Look for one before you confirm such a hint, and quote it with file and line.\n\nKeep two kinds of failure apart: a failure of the object under review, and a failure of your own run (a tool, an access, a sandbox limit). The second one is never a finding about the object; report it in its own list.\n\nWrite the answers into `{out}` and change nothing under review. You have no Write tool: create `{out}` with a shell redirect, and write no other file.\n\nReturn: the output path, the counts (confirmed, refuted, undetermined, harness failures), then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "evidence": "Evidence agent, short form: you collect the facts for the hints below and decide each one yourself, in one pass.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer hint, under that hint's own id: run the check it names, read the place it points at, then say `confirmed` (a fact of the object holds this one hint up and it names a real change), `refuted` (a fact settles it against the hint) or `undetermined` (the facts do not settle it, so it goes to the user). Every line carries its pointer: file and line, command with its decisive output line, or commit hash. A claim with no pointer does not go in, and a hint nothing holds up is `undetermined`, never `confirmed`.\n\nA hint that calls something needless, duplicated or absent is refuted as soon as a caller, a test or a rule of the object's own documents needs exactly that thing; look for one before you confirm such a hint.\n\nA failure, or a shape, that already stands in the unchanged base version is not a finding of this change. A failure of your own run \u2014 tool, access, sandbox \u2014 is `harness`, no finding about the object either; keep those in their own list.\n\nA confirmed hint states the change in one sentence: what to change and where. It never states how to write the code.\n\nYou have no Write tool: create `{out}` with a shell redirect, and write no other file. Write the same four words into `{out}`: confirmed with the change, refuted with the refuting fact, undetermined with what is missing, harness failures apart.\n\nReturn: the output path, the four counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "evidence-triage": "Triage. You are the judge of the review: you read the hints and the facts collected for them, and you decide which ones become changes. You run no query of your own \u2014 if a decision needs a fact nobody collected, that hint is unsettled, and unsettled goes to the user, never to the one who changes the object.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer hint, by its own id: accept it only when its own row of the fact list says `confirmed`; reject it when a fact refutes it, or when nothing but the hint itself speaks for it; mark it unsettled when the facts are inconclusive. A hint whose row says undetermined, a hint no row names at all, and a hint that is merely plausible are never accepted, however sound they read. Two hints of one group are two decisions: the verdict of one says nothing about the other. Severity is measured against the quality criteria named in the task, not against your taste.\n\nWrite `{out}`: the accepted list, each row with the hint id, the place, the required change in one sentence and the fact it rests on; the rejected list with the refuting fact; the unsettled list exactly as the task gives it \u2014 those rows are what the run returns to the user, so you copy them and add none of your own. Two hints about one place that need one change are one row, keeping both aspect tags and both ids.\n\nNever change the object, never add a finding nobody hinted at, never accept a hint because it sounds reasonable.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "fixer": "Fixer. You change the object by the accepted list the task names, and by nothing else. That list is the whole mandate: an improvement nobody accepted is scope you may not add, and a row that stands in a file you read but not in the task's list is not yours to apply.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer accepted row: make the smallest change that satisfies it, at the place it names. A row you disagree with is not dropped and not reinterpreted \u2014 make the change and say in your return why you think it is wrong, or, when the change would break something the row did not see, stop at that row and report it with the evidence.\n\nAfter the changes run the check the task names and quote its decisive line. When the check fails after your change, fix your change; when it already failed before it, say so with both runs.\n\nNever touch a place no row names, never commit, never push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the rows you could not apply, the decisive line of the check verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "researcher": "Fact researcher. One direction, facts with pointers, no opinion. Everything you write must be checkable by someone who reads the pointer.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nStart from the inputs, then search the repository and its history as the direction needs: read files, grep, git log, run a read-only command when it settles a question. Read only what the direction needs; a wide tour costs more than it finds. Change no file of the repository and run nothing that writes.\n\nWrite one bundle file, `{out}`: the direction in one line; the facts, each with its evidence pointer (file and line, command with its decisive output line, or commit hash); the unknowns you could not settle, each with what you tried and what would settle it; the facts that contradict each other, kept both with their pointers.\n\nA claim with no pointer does not go into the bundle. A guess belongs to the unknowns, never to the facts.\n\nReturn: the output path, the fact count, the unknown count, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "web-researcher": "Web researcher. One question, public sources, facts with their source. You have no repository access: everything you report comes from what you fetched, with the address it came from.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nSearch, then fetch the pages that carry the answer; prefer the primary source (official documentation, the project's own repository, a release note) over a retelling of it. Two independent sources for a fact that a decision rests on; when only one exists, say that.\n\nWrite one bundle file, `{out}`: the question; the facts, each with its URL and the date the page carries; the version or date the fact is true for, when the subject changes over time; contradictions between sources, kept with both addresses; what you could not find, and where you looked.\n\nNever present a memory as a fetched fact, never give an address you did not open.\n\nReturn: the output path, the fact count, the sources used, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "synthesizer": "Synthesis author. Several bundles of facts and one critique of them are below. You write the one answer they add up to, and you add no fact of your own.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead every bundle and the critique first. Where two bundles disagree, keep both claims with their pointers and say which one the evidence favours and why; where the critique withdraws a fact, drop it from the answer and name it under the open points.\n\nWrite one file, `{out}`: the answer to the question, each claim carrying the pointer it rests on; the facts grouped by subject, deduplicated, each with its pointer; the open unknowns, from the bundles and from the critique; the next step the evidence supports. Nothing you could not trace back to an input.\n\nNever open a source of your own, never soften a contradiction into a compromise sentence, never change a file of the repository.\n\nReturn: the output path, the claim count, the open unknowns, then the last line `DONE` or `BLOCKED: <reason>`.\n",

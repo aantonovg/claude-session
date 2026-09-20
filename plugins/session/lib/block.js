@@ -456,7 +456,16 @@ function groupHints(hints) {
       groups.splice(groups.indexOf(other), 1)
     }
   }
-  return groups.map((g, i) => ({ ...g, aspects: g.aspects.slice().sort(), id: `g${i + 1}` }))
+  // every hint carries an id of its own inside its group (`g1.h2`). A group is one evidence run,
+  // but the answers are per hint: a group holding a confirmed hint and a refuted one must not
+  // carry the refuted one to the fixer under the group's verdict (A28).
+  return groups.map((g, i) => {
+    const id = `g${i + 1}`
+    return {
+      ...g, aspects: g.aspects.slice().sort(), id,
+      hints: (g.hints || []).map((h, j) => ({ ...h, id: `${id}.h${j + 1}` })),
+    }
+  })
 }
 
 // maxSeverity(groups): the severity of the whole critique, the second input of the form choice.
@@ -502,8 +511,10 @@ function parseEvidence(text) {
     const parts = line.split('|')
     if (parts[0].trim() !== 'EVIDENCE') continue
     const f = parts.slice(1).map(s => s.trim())
-    const group = f[0] || ''
-    if (!group) continue
+    // the id of an answer is a hint id (`g1.h2`); the group it belongs to is its head
+    const id = f[0] || ''
+    if (!id) continue
+    const group = id.split('.')[0]
     const v = (f[1] || '').toLowerCase()
     let verdict = EVIDENCE_VERDICTS.includes(v) ? v : 'undetermined'
     const base = (f[2] || '').trim()
@@ -512,6 +523,7 @@ function parseEvidence(text) {
     // same way an unreadable verdict does. A harness failure needs no control run.
     if (verdict !== 'harness' && !/^base:\s*(yes|no)$/i.test(base)) verdict = 'undetermined'
     answers.push({
+      id,
       group,
       verdict,
       kind: verdict === 'harness' ? 'harness' : 'object',
@@ -528,16 +540,16 @@ function parseEvidence(text) {
 // Only a settled answer can be closed by the control run: an `undetermined` row with `base:yes`
 // was settled by nobody, so it stays among the findings, reaches the undetermined list and the
 // user (A28), and is never closed as "no finding of this change".
-// dedupeAnswers(answers): one answer per hint group. A stage that wrote two lines for one group
-// would otherwise put that group in two lists at once — confirmed to the fixer and undetermined to
+// dedupeAnswers(answers): one answer per hint. A stage that wrote two lines for one hint would
+// otherwise put that hint in two lists at once — confirmed to the fixer and undetermined to
 // the user. The stronger evidence wins: a settled verdict beats an unsettled one and beats a
 // failure of our own harness; two settled verdicts that contradict each other (confirmed and
-// refuted) settle nothing, so the group goes to the user as undetermined.
+// refuted) settle nothing, so the hint goes to the user as undetermined.
 const ANSWER_RANK = ['harness', 'undetermined', 'refuted', 'confirmed']
 function dedupeAnswers(answers) {
   const out = []
   for (const a of answers || []) {
-    const cur = out.filter(x => x.group === a.group)[0]
+    const cur = out.filter(x => x.id === a.id)[0]
     if (!cur) { out.push({ ...a }); continue }
     const settled = v => v === 'confirmed' || v === 'refuted'
     const i = out.indexOf(cur)
@@ -560,38 +572,102 @@ function splitFailures(answers) {
   return { findings, harness, onBase }
 }
 
+// hintRows(groups, answers): every hint of every group that ran, bound to the answer that settled
+// it. The binding lives here and nowhere else, so the fixer's mandate, the review file and the
+// return read the same rows and can no longer tell two different stories (A28).
+// An answer names a hint id (`g1.h2`). A group of one hint is that hint, so an answer naming the
+// group settles it; a group of several hints is not — one verdict over several hints would carry
+// the refuted and the unsettled hints to the fixer under the confirmed one. A hint no answer
+// names is unanswered: nothing settled it, so it is undetermined, never confirmed.
+function hintRows(groups, answers) {
+  const all = dedupeAnswers(answers)
+  const kindOf = a => a.kind === 'harness'
+    ? 'harness'
+    : (a.onBase && a.verdict !== 'undetermined' ? 'onBase' : 'finding')
+  const rows = []
+  for (const g of groups || []) {
+    const hints = (g.hints || []).length ? g.hints : [{ id: g.id, place: g.place, what: '' }]
+    for (const h of hints) {
+      const byHint = all.filter(x => x.id === h.id)[0]
+      const byGroup = hints.length === 1 ? all.filter(x => x.id === g.id)[0] : null
+      const a = byHint || byGroup || null
+      rows.push({
+        id: h.id, group: g.id, place: h.place || g.place, what: h.what || '',
+        answered: !!a, verdict: a ? a.verdict : 'undetermined',
+        kind: a ? kindOf(a) : 'finding', pointer: a ? a.pointer : '',
+      })
+    }
+  }
+  return rows
+}
+
+// chainRows(groups, answers): the one table of a chain run. The result file the judge writes and
+// the return the caller reads are both this table — the open rows above all (A28), so a run can
+// no longer return `undetermined: []` while its review file holds unsettled rows.
+function chainRows(groups, answers) {
+  const rows = hintRows(groups, answers)
+  const findings = rows.filter(r => r.kind === 'finding')
+  const undetermined = findings.filter(r => r.answered && r.verdict === 'undetermined')
+  const unanswered = findings.filter(r => !r.answered)
+  return {
+    rows,
+    findings,
+    confirmed: findings.filter(r => r.verdict === 'confirmed'),
+    rejected: findings.filter(r => r.verdict === 'refuted'),
+    undetermined,
+    unanswered,
+    open: undetermined.concat(unanswered),
+    harness: rows.filter(r => r.kind === 'harness'),
+    onBase: rows.filter(r => r.kind === 'onBase'),
+  }
+}
+
+// openRowsText(rows): the unsettled section of the review file, rendered from the rows the return
+// carries. The judge copies this block instead of composing a list of its own.
+function openRowsText(rows) {
+  const open = (rows && rows.open) || []
+  if (!open.length) return '(none)'
+  return open.map(r => `| ${r.id} | ${r.place} | ${r.answered ? r.pointer || 'the facts settle nothing' : 'the evidence run came back with no readable answer for this hint'} |`).join('\n')
+}
+
 // fixerInput(groups, answers): what may reach the one who changes the object. A hint without
-// evidence changes nothing, so only a group a fact confirmed goes on; refuted, undetermined,
-// harness, base-version and unanswered groups all stay out (A28).
+// evidence changes nothing, so a group goes on with its confirmed hints only; refuted,
+// undetermined, harness, base-version and unanswered hints all stay out (A28).
 function fixerInput(groups, answers) {
-  const confirmed = confirmedOf(answers).map(a => a.group)
-  return (groups || []).filter(g => confirmed.includes(g.id))
+  const ok = chainRows(groups, answers).confirmed.map(r => r.id)
+  const out = []
+  for (const g of groups || []) {
+    const hints = (g.hints || []).filter(h => ok.includes(h.id))
+    if (hints.length) { out.push({ ...g, hints }); continue }
+    // a group that carries no hint list of its own is addressed by its group id
+    if (!(g.hints || []).length && ok.includes(g.id)) out.push(g)
+  }
+  return out
 }
 
-// confirmedOf(answers): the groups a fact confirmed. The `confirmed` count of the result and of
-// the status is this one, never the count that reached the fixer: a run whose triage or fix stage
-// blocked still confirmed what it confirmed, and a judge that rejected a confirmed group does not
-// unmake the fact (A28). What the fixer got is its own number.
-function confirmedOf(answers) {
-  return splitFailures(answers).findings.filter(a => a.verdict === 'confirmed')
+// confirmedOf(groups, answers): the hints a fact confirmed. The `confirmed` count of the result
+// and of the status is this one, never the count that reached the fixer: a run whose triage or fix
+// stage blocked still confirmed what it confirmed, and a judge that rejected a confirmed hint does
+// not unmake the fact (A28). What the fixer got is its own number.
+function confirmedOf(groups, answers) {
+  return chainRows(groups, answers).confirmed
 }
 
-// undeterminedOf(answers): the list that goes into the result file and into the status, for the
-// main session to put to the user (A28: a script has no place for the user).
-function undeterminedOf(answers) {
-  return splitFailures(answers).findings.filter(a => a.verdict === 'undetermined')
+// undeterminedOf(groups, answers): the list that goes into the result file and into the status,
+// for the main session to put to the user (A28: a script has no place for the user).
+function undeterminedOf(groups, answers) {
+  return chainRows(groups, answers).undetermined
 }
 
-// unansweredOf(groups, answers): a group that ran and came back with no readable answer line.
+// unansweredOf(groups, answers): a hint that ran and came back with no readable answer line.
 // Nothing settled it, so it is neither confirmed nor rejected: it goes to the user with the
-// undetermined ones (A28). Counting it out of existence would drop a whole hint group.
+// undetermined ones (A28). Counting it out of existence would drop a whole hint.
 function unansweredOf(groups, answers) {
-  const seen = (answers || []).map(a => a.group)
-  return (groups || []).filter(g => !seen.includes(g.id))
+  return chainRows(groups, answers).unanswered
 }
 
 // parseAccepted(text): the accepted rows of the judge's return. Format, one line per row:
-//   ACCEPTED | <group id> | <the change in one sentence>
+//   ACCEPTED | <hint id> | <the change in one sentence>
 // The whole decision stands in the judge's result file; these lines are the part a script without
 // file access can read, and they are the only mandate the fixer gets.
 function parseAccepted(text) {
@@ -601,18 +677,24 @@ function parseAccepted(text) {
     if (parts[0].trim() !== 'ACCEPTED') continue
     const f = parts.slice(1).map(s => s.trim())
     if (!f[0]) continue
-    rows.push({ group: f[0], change: f.slice(1).join(' | ') })
+    rows.push({ id: f[0], group: f[0].split('.')[0], change: f.slice(1).join(' | ') })
   }
   return rows
 }
 
 // judgedInput(groups, answers, rows): the fixer's mandate in the long form. The judge decides
-// which groups become changes, so a group it rejected or left unsettled never reaches the fixer;
+// which hints become changes, so a hint it rejected or left unsettled never reaches the fixer;
 // it cannot widen the mandate either, so a row no fact confirmed stays out (A28). No accepted
 // row, no fix stage.
 function judgedInput(groups, answers, rows) {
-  const ids = (rows || []).map(r => r.group)
-  return fixerInput(groups, answers).filter(g => ids.includes(g.id))
+  const ids = (rows || []).map(r => r.id)
+  const out = []
+  for (const g of fixerInput(groups, answers)) {
+    const hints = (g.hints || []).filter(h => ids.includes(h.id))
+    if (hints.length) { out.push({ ...g, hints }); continue }
+    if (!(g.hints || []).length && ids.includes(g.id)) out.push(g)
+  }
+  return out
 }
 
 // chainSeats(depth, wanted): the ceiling of A30 is a ceiling per stage — at most `agents` units
@@ -696,14 +778,14 @@ function chainResult(s) {
   const o = s || {}
   const groups = o.groups || []
   const answers = o.answers || []
-  const split = splitFailures(answers)
+  // one table for the whole run: the return and the review file are rendered from these same rows
+  const T = chainRows(o.ran || groups, answers)
   // the facts are counted from the answers themselves, so no caller can claim a confirmation the
   // evidence never gave, and a stage that blocked late still reports what was confirmed
-  const conf = confirmedOf(answers)
-  const und = undeterminedOf(answers)
-  const open = unansweredOf(o.ran || groups, answers)
+  const conf = T.confirmed
+  const und = T.undetermined
+  const open = T.unanswered
   const base = o.base || 'the base version'
-  const placeById = id => (groups.filter(g => g.id === id)[0] || {}).place || id
   const res = {
     out: o.out == null ? null : o.out,
     form: o.form,
@@ -713,10 +795,10 @@ function chainResult(s) {
     confirmed: conf.length,
     fixing: Number(o.fixing || 0),
     fixed: o.fixed || 'no accepted row: nothing was changed',
-    undetermined: und.map(a => `${a.group}: ${placeById(a.group)} — ${a.pointer}`),
-    unanswered: open.map(g => `${g.id} at ${g.place}: the stage ran and came back with no readable answer`),
-    harness: split.harness.map(a => `${a.group}: ${a.pointer}`),
-    onBase: split.onBase.map(a => `${a.group}: reproduces on ${base}, no finding of this change`),
+    undetermined: und.map(r => `${r.id}: ${r.place} — ${r.pointer}`),
+    unanswered: open.map(r => `${r.id} at ${r.place}: the stage ran and came back with no readable answer`),
+    harness: T.harness.map(r => `${r.id}: ${r.pointer}`),
+    onBase: T.onBase.map(r => `${r.id}: reproduces on ${base}, no finding of this change`),
     evidence: o.evidence || [],
     gap: o.gap || [],
     blockedStages: o.blockedStages || [],
@@ -738,6 +820,7 @@ if (typeof module !== 'undefined' && module.exports) {
     blockedLine, mustExist, outVerdict,
     HINT_CAP, SEVERITY_ORDER, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
+    hintRows, chainRows, openRowsText,
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,
     aspectsOrStop, chainPlan, chainEvidenceRuns, chainStatus, chainResult,
   }

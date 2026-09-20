@@ -2,4 +2,4 @@ Aspect: simplicity. Read the object for what costs more than it buys: an abstrac
 
 Typical shapes: a flag that switches behavior at one call site; a name that hides what the code does; a rule stated in three places and true in one; a configuration key with a single value; code kept because deleting it looked risky.
 
-Out of scope: naming style, formatting, line length, taste, the choice of language idiom, and anything the object's own stated constraints demand. A shape you would have written differently is not a hint; a shape that carries cost nobody pays for is.
+Out of scope: naming style, formatting, line length, taste, the choice of language idiom, anything the object's own stated constraints demand, and a shape a caller, a test or the object's own rules need. A shape you would have written differently is not a hint; a shape that carries cost nobody pays for is.
