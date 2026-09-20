@@ -14,10 +14,10 @@ rests on. Read `core.md` and `SKILL.md` first.
 | `scenarios` — what evidence would settle each unknown | `scenarios.md` | every decision-changing unknown has one | one-liners | yes | yes, with the refuting evidence named too |
 | `verification-plan` — where that evidence can come from | `verification-plan.md` | every unknown has a source row, `existing`, `missing` or `no possible` | folded into `intent.md` | yes | yes |
 | `checks` — the reads, the queries and the runs that produce facts | `tests.md` | every planned source was reached or reported unavailable | – | yes | yes, plus one run that would refute the leading answer |
-| `result` — the evidence bundles and the answer they add up to | `evidence`, `report.md` | every claim of the answer carries a pointer; a claim with none is marked open | yes | yes | yes |
+| `result` — the evidence bundles the answer will rest on | `evidence` | every fact carries a pointer; an unsettled unknown is written as one, never as an answer | yes | yes | yes |
 | `review` — the answer itself, which no run can judge | `reviews` | evidence chain over the approved aspects; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |
 | `coverage` — unknowns without evidence, evidence without an unknown | `coverage.md` | both lists written out, empty ones said so | – | yes | yes |
-| `closure` — the answer, its confidence and what stays open | `report.md` | open unknowns, hit ceilings and unverified areas named | short in chat | yes | yes |
+| `closure` — the answer the bundles add up to, its confidence and what stays open | `report.md` | every claim of the answer carries a pointer, a claim with none is marked open; open unknowns, hit ceilings and unverified areas named | short in chat | yes | yes |
 
 ## What this process insists on
 

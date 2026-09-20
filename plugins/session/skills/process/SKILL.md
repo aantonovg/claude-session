@@ -37,11 +37,11 @@ launches.
 
 | stage | task file | gate | lite | std | full |
 |---|---|---|---|---|---|
-| `intent` — the problem and the quality criteria | `intent.md` | the user confirms the text and the criteria | written by the main session, no gate | user gate | user gate |
+| `intent` — the problem, the quality criteria, the open decisions | `intent.md`, `decisions.md` | the user confirms the text and the criteria; every open decision names what it rests on | written by the main session, no gate | user gate | user gate |
 | `subtasks` — the goal cut into parts | `subtasks.md` | every part of the goal has a subtask, no subtask outside the goal | folded into `intent.md` | yes | yes |
 | `specification` — requirements, invariants, constraints | `specification.md` | traceability to the subtasks, every non-functional requirement measurable | folded into `intent.md` | yes | yes |
 | `scenarios` — the scenarios as text, ladder level d | `scenarios.md` | every requirement and invariant has a scenario, negatives included | one-liners | yes | yes, with negatives |
-| `verification-plan` — the oracle of every invariant | `verification-plan.md` | every invariant has an oracle row: `existing`, `missing` or `no possible` | folded into `intent.md` | yes | yes |
+| `verification-plan` — the oracle of every invariant, and the plan of the work | `verification-plan.md`, `implementation-plan.md` | every invariant has an oracle row: `existing`, `missing` or `no possible`; the plan names the steps and their order | folded into `intent.md` | yes | yes |
 | `checks` — tests or control calls, ladder level c | `tests.md` | coverage read from the two lists; no scenario id in a test name | – | yes | yes, plus the negative control |
 | `result` — the code, the document, the state, ladder levels a and b | `changes`, `runs` | the oracle is run and the run reports PASS | yes | yes | yes |
 | `review` — only where no oracle is possible, ladder level e | `reviews` | evidence chain over the approved aspects; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |
@@ -84,7 +84,9 @@ right now; they arrive at session start and again after a compact.
 | wait for something outside this session | a waiting carrier, started by the main session |
 
 Rules that hold whatever the contracts offer: one launch does one job; the launch prompt carries
-the task, the input paths and the output path, never a copy of the carrier's own text; the class
+the task, the input paths and the output path and stays under 100 words all together — the return
+shape, the output style and the working rules are the carrier's own text and are never repeated in
+the launch, and neither is a stage row of this page; the class
 and its submodes are passed on every launch; the label of every launch goes into the ledger before
 the launch starts. When no contract fits a need, say so in one line and pick the closest one; when
 a tool the stage needs is missing, the harness gate of `core.md` decides.

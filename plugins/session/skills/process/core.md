@@ -45,13 +45,16 @@ interruption and into a new session.
 Every launch is one line in `<task dir>/ledger.jsonl`, appended **before** the launch starts:
 
 ```
-{"ts","stage","step","role","kind","class","submodes","depth","slot","label"}
+{"ts","stage","step","role","kind","class","submodes","depth","slot","label","agent_id"}
 ```
 
 `label` is the launch label, whose prefix carries the resolved cell of the class table, so the
-ledger proves after the fact which cell each stage ran on. The stop row of a finished agent is
-appended by the plugin hook that watches for it; rows with no stop row end at the next row of the
-same kind. The ledger is also the count the ceilings are read against, and the loop guard reads it
+ledger proves after the fact which cell each stage ran on. `agent_id` is the one field that cannot
+be known before the launch: it is filled in from the launch result in the same turn the launch
+returns, and a row left without one is a defect fixed in that turn, because the plugin hook that
+appends the stop row finds the launch row by that id and writes nothing when it finds none. A
+launch whose result carries no id keeps the field null; rows with no stop row end at the next row
+of the same kind. The ledger is also the count the ceilings are read against, and the loop guard reads it
 to see the same check fixed twice.
 
 ## Cost rules
@@ -86,7 +89,11 @@ The sources and the checks a task needs are a hard requirement, not a nice-to-ha
    <list>` after the pong.
 4. A project may take a capability away from this session on purpose. Then the gate names it in
    one chat line and the stage picks another way to the same fact out of the contracts present;
-   the missing capability stays in the block and in the report.
+   the missing capability stays in the block and in the report. A carrier that comes back blocked
+   because a capability it needed is denied ends that launch, never the stage: the missing
+   capability goes into one chat line and the same need is launched once more on a carrier that
+   does not need it. A stage reports blocked only when no carrier of the contracts can reach the
+   fact.
 5. "Continue without <name>" from the user overrides the gate, and the unavailable list stays in
    the report.
 

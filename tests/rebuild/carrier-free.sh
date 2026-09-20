@@ -158,31 +158,38 @@ fi
 cat > "$T/table.py" <<'PY'
 import json, re, subprocess, sys
 block, skill = sys.argv[1], sys.argv[2]
-paths = json.loads(subprocess.run(
-    ['node', '-e', 'process.stdout.write(JSON.stringify(Object.values(require(process.argv[1]).LAYOUT.files).map(e => e.path)))', block],
+entries = json.loads(subprocess.run(
+    ['node', '-e', 'process.stdout.write(JSON.stringify(Object.values(require(process.argv[1]).LAYOUT.files)))', block],
     capture_output=True, text=True, check=True).stdout)
+paths = [e['path'] for e in entries]
+# every document of lib/task-layout.md is written by some stage of the master table: a file the
+# layout declares and the mkdir of core.md creates, with no stage that writes it, is a gap the
+# per-row check above cannot see (a row naming one other layout path already satisfies it)
+docs = [e['path'] for e in entries if e.get('kind') == 'file']
 HEAD = ['stage', 'task file', 'gate', 'lite', 'std', 'full']
 def cells(line):
     return [c.strip() for c in line.strip().strip('|').split('|')]
 def table(path):
-    rows, head, on = [], None, False
+    # every six-column stage header of the file is one table: a second one is reported, never
+    # silently dropped, or the rows of the first table would go unchecked
+    tables, rows, on = [], None, False
     for line in open(path, encoding='utf-8').read().split('\n'):
         if not line.strip().startswith('|'):
             on = False
             continue
         c = cells(line)
-        if head is None or not on:
+        if not on:
             low = [x.lower().strip('`*_ ') for x in c]
             if low[:1] == ['stage'] and len(low) == 6:
-                head, on = low, True
-                rows = []
-                continue
-            on = False
+                rows, on = [], True
+                tables.append((low, rows))
             continue
         if set(''.join(c)) <= set('-: '):
             continue
         rows.append(c)
-    return head, rows
+    if len(tables) > 1:
+        bad.append('%s: %d stage tables with the six columns, want one' % (path, len(tables)))
+    return tables[0] if tables else (None, [])
 def key(cell):
     m = re.search(r'`([a-z][a-z0-9-]*)`', cell)
     return m.group(1) if m else None
@@ -216,6 +223,10 @@ def read(path, want=None):
     return keys
 master = read(skill)
 if master is not None:
+    written = '\n'.join(r[1] for r in table(skill)[1])
+    for p in docs:
+        if p not in written:
+            bad.append('%s: no stage writes %s, a document of lib/task-layout.md' % (skill, p))
     if len(master) < 8:
         bad.append('%s: the master table has %d stages, want the full ladder' % (skill, len(master)))
     for path in sys.argv[3:]:
@@ -249,6 +260,14 @@ PY
   grep -v '^| `closure`' "${PFILES[0]}" > "$T/t1/short.md"
   check "g3 a process file that drops a stage of the master table is caught" \
     bash -c '! python3 "$1" "$2" "$3" "$4" > /dev/null' _ "$T/table.py" "$BLOCK" "$S/SKILL.md" "$T/t1/short.md"
+  # a document of lib/task-layout.md that no stage row names is a gap the per-row check cannot see
+  sed 's/, `decisions.md`//' "$S/SKILL.md" > "$T/t1/nodec.md"
+  check "g3 a layout document no stage writes is caught" \
+    bash -c '! python3 "$1" "$2" "$3" > /dev/null' _ "$T/table.py" "$BLOCK" "$T/t1/nodec.md"
+  # two stage tables in one file: the rows of the first one may never be dropped in silence
+  cat "$S/SKILL.md" "$S/SKILL.md" > "$T/t1/twice.md"
+  check "g3 a second stage table in one file is caught" \
+    bash -c '! python3 "$1" "$2" "$3" > /dev/null' _ "$T/table.py" "$BLOCK" "$T/t1/twice.md"
 else
   fail "g3 at least one process file"
 fi
@@ -260,6 +279,17 @@ if [ -f "$C" ]; then
     grep -Fq 'tasks/<date>-<slug>' "$C"
   check "g4 core.md names the pointer to the current task" grep -Fq 'tasks/current' "$C"
   check "g4 core.md names the ledger file" grep -Fq 'ledger.jsonl' "$C"
+  # hooks/ledger-stop.sh selects the launch row by `.agent_id`: a schema without that field gets no
+  # stop row at all, and the hook exits 0 in silence
+  check "g4 the ledger row schema of core.md carries every field the stop hook selects by" \
+    bash -c 'row=$(grep -m1 "^{\"ts\"" "$1") || true
+      [ -n "$row" ] || { echo "core.md carries no ledger row schema"; exit 1; }
+      for f in $(grep -o "select(\.[a-z_]* ==" "$2" | sed "s/select(\.//;s/ ==//" | sort -u); do
+        case $row in *"\"$f\""*) ;; *) echo "the ledger schema names no $f"; exit 1 ;; esac
+      done' \
+    _ "$C" "$P/hooks/ledger-stop.sh"
+  check "g4 core.md says agent_id is filled in after the launch returns" \
+    grep -qi 'agent_id.*after the launch\|filled in from the launch result' "$C"
   check "g4 core.md carries the cost rules" grep -qi 'cost rules' "$C"
   check "g4 core.md carries the harness gate" grep -qi 'harness gate' "$C"
   check "g4 core.md carries the Sources block" grep -Fq 'Sources' "$C"
