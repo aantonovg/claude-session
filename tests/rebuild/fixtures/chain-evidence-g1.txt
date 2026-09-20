@@ -1,0 +1,19 @@
+# Real evidence text of hint group g1, scenario base:chain-seeded, run 20260920-174213 on commit
+# 44a2b954de606e1e35e674959e54cd93a706c25e, stage label son-lo-evidence-g1. The size line and the
+# counts line are that run's return verbatim; the seven answer lines are the ones that agent really
+# wrote, unchanged except that the long pointers are shortened. In that run the answer lines stood
+# in the file only and never in the return, which is why all seven hints came back unanswered.
+# Note g1.h5: that agent left the control-run field out, so its answer settles nothing.
+/tmp/project-chain-seeded/out/chain-evidence-g1.md 2049 bytes
+confirmed: 3, refuted: 4, undetermined: 0, harness failures: 0
+
+# Evidence g1
+
+EVIDENCE | g1.h1 | confirmed | base:no | slug.js:4 `node -e "console.log(require('./slug.js').slug('ab cd',3))"` -> "ab-" (trailing dash); base/slug.js has no max param, cannot repro
+EVIDENCE | g1.h2 | confirmed | base:no | slug.js:4 slug('abcd efg',5) -> "abcd-" ends with dash, violates RULES.md:3; base output "abcd-efg" has no trailing dash
+EVIDENCE | g1.h3 | confirmed | base:no | slug.js:3-4 [s('hello',0),s('hello',-1),s('hello',NaN)] -> ["","hell",""] all succeed with no error; base/slug.js takes no max arg at all
+EVIDENCE | g1.h4 | refuted | base:no | check.js:2 `const v = slug(`Hello World, friends`, 12)` is a caller that passes the second argument, so the max parameter is reached and used by the project's own check
+EVIDENCE | g1.h5 | refuted | slug.js:1,3 `const LIMIT = 40` and `const m = max == null ? LIMIT : max` reference the same LIMIT constant, not a second literal 40
+EVIDENCE | g1.h6 | refuted | base:yes | slug(undefined) -> "undefined" on both versions; check.js has no absent-input assertion in either, so this is unchanged pre-existing behavior
+EVIDENCE | g1.h7 | refuted | base:yes | the regex replace at slug.js:4 turns the whole surrogate pair into one dash before any slicing, same output on base/slug.js
+DONE

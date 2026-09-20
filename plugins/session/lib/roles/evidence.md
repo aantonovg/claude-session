@@ -16,4 +16,8 @@ A confirmed hint states the change in one sentence: what to change and where. It
 
 You have no Write tool: create `{out}` with a shell redirect, and write no other file. Write the same four words into `{out}`: confirmed with the change, refuted with the refuting fact, undetermined with what is missing, harness failures apart.
 
-Return: the output path, the four counts, then the last line `DONE` or `BLOCKED: <reason>`.
+Return: the output path and the four counts, then your answers themselves — one line per hint id, nothing else on the line:
+
+`EVIDENCE | g1.h2 | refuted | base:no | check.js:2 calls slug(s, 12), so the argument the hint calls needless has a caller`
+
+Every hint id you were given gets its own such line, in that order of fields. Only those lines are read: a count, a summary, and one verdict written over a whole group settle no hint and reach nobody, and an answer that stands in the file but on no line of your return is an answer nobody got. Then the last line `DONE` or `BLOCKED: <reason>`.

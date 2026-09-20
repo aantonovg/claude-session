@@ -12,4 +12,8 @@ Write `{out}`: the accepted list, each row with the hint id, the place, the requ
 
 Never change the object, never add a finding nobody hinted at, never accept a hint because it sounds reasonable.
 
-Return: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.
+Return: the output path and the three counts, then the accepted rows themselves — one line per accepted hint id, nothing else on the line:
+
+`ACCEPTED | g1.h2 | cut the trailing dash after the slice, at slug.js:4`
+
+Only those lines open the change stage: a row that stands in `{out}` but on no line of your return is a row nobody got, and a count is no row. Accept nothing you did not accept there. When you accepted nothing, write no such line. Then the last line `DONE` or `BLOCKED: <reason>`.

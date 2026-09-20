@@ -1,0 +1,9 @@
+# Real return text of hint group g3, scenario base:chain-seeded, run 20260920-174213, stage label
+# son-lo-evidence-g3, verbatim except for the shortened output path. This is the one evidence stage
+# of that run whose return carried its answer line, and it is the one hint the run settled.
+/tmp/project-chain-seeded/out/chain-evidence-g3.md 758 bytes
+confirmed: 0, refuted: 1, undetermined: 0, harness failures: 0
+
+EVIDENCE | g3.h1 | refuted | base:no | check.js:1-4 has no length-vs-limit() test (checked with `bash check.sh` decisive line "FAIL trailing dash: hello-world-" for slug.js, "PASS hello-world-friends" for base/slug.js, unrelated to LIMIT); slug.js:1,3 LIMIT is const read at call time, RULES.md:5 states LIMIT is single source of truth, no caller copies it (grep found none), so claimed divergence cannot occur
+
+DONE

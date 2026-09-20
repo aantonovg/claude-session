@@ -16,4 +16,8 @@ Keep two kinds of failure apart: a failure of the object under review, and a fai
 
 Write the answers into `{out}` and change nothing under review. You have no Write tool: create `{out}` with a shell redirect, and write no other file.
 
-Return: the output path, the counts (confirmed, refuted, undetermined, harness failures), then the last line `DONE` or `BLOCKED: <reason>`.
+Return: the output path and the counts (confirmed, refuted, undetermined, harness failures), then your answers themselves — one line per hint id, nothing else on the line:
+
+`EVIDENCE | g1.h2 | refuted | base:no | check.js:2 calls slug(s, 12), so the argument the hint calls needless has a caller`
+
+Every hint id of your group gets its own such line, in that order of fields. Only those lines are read: a count, a summary, and one verdict written over a whole group settle no hint and reach nobody, and an answer that stands in `{out}` but on no line of your return is an answer nobody got. Then the last line `DONE` or `BLOCKED: <reason>`.
