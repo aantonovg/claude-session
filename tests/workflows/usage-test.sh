@@ -272,30 +272,41 @@ check "k4 plain real lists session:translate-ru" grep -q '^- session:translate-r
 
 # k5, k6: plugin.json
 PJ=$P/.claude-plugin/plugin.json
-git -C "$REPO" show HEAD:plugins/session/.claude-plugin/plugin.json > "$T/pj-head.json" 2>/dev/null
 check "k5 plugin.json valid JSON" python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$PJ"
-check "k5 other hook events and session-modes group equal HEAD" python3 -c '
-import json, sys
-a = json.load(open(sys.argv[1]))["hooks"]; b = json.load(open(sys.argv[2]))["hooks"]
-for ev in ("SubagentStop", "UserPromptSubmit", "PostToolUse", "PreCompact"):
-    assert a[ev] == b[ev], ev
-def modes(h): return [g for g in h["SessionStart"] if any("session-modes.sh" in k.get("command", "") for k in g["hooks"])]
-assert modes(a) == modes(b), modes(a)
-# Every SessionStart group of HEAD is still present, in order. A group HEAD does not have is
-# allowed only as one contract entry of a workflow file that exists: P2-P4 of the 0.16 rebuild add
-# one per new workflow, and contracts.sh owns their shape. Anything else fails here.
-kept = [g for g in a["SessionStart"] if g in b["SessionStart"]]
-assert kept == b["SessionStart"], "a SessionStart group of HEAD is gone or moved"
-import os
-plugin = os.path.dirname(os.path.dirname(sys.argv[1]))
-for g in a["SessionStart"]:
-    if g in b["SessionStart"]:
-        continue
-    cmds = [h.get("command", "") for h in g["hooks"]]
-    assert len(cmds) == 1 and "workflow-usage.sh --hook --file" in cmds[0], "new SessionStart group is no contract entry: %s" % cmds
-    path = cmds[0].split("--file", 1)[1].split()[0].replace("${CLAUDE_PLUGIN_ROOT}", plugin)
-    assert os.path.exists(path), "new contract entry names a missing file: %s" % path
-' "$PJ" "$T/pj-head.json"
+# P5 of the 0.16 rebuild moved all five hook events to the two new scripts, so this check reads the
+# wiring itself instead of comparing it with HEAD: four events plus the first SessionStart entry,
+# every command path on disk, and the contract entries only counted (contracts.sh owns their shape).
+check "k5 hook wiring: five events at the two new scripts, every command path on disk" python3 -c '
+import json, os, re, sys
+pj = sys.argv[1]
+plugin = os.path.dirname(os.path.dirname(pj))
+hooks = json.load(open(pj, encoding="utf-8"))["hooks"]
+
+def only(groups, want, what):
+    cmds = [h.get("command", "") for g in groups for h in g["hooks"]]
+    assert len(cmds) == 1, "%s: expected one hook, got %d" % (what, len(cmds))
+    assert cmds[0].endswith(want), "%s: %s" % (what, cmds[0])
+
+only(hooks["SubagentStop"], "/hooks/ledger-stop.sh", "SubagentStop")
+only(hooks["UserPromptSubmit"], "/hooks/modes.sh", "UserPromptSubmit")
+only(hooks["PreCompact"], "/hooks/modes.sh", "PreCompact")
+only([g for g in hooks["PostToolUse"] if g.get("matcher") == "Skill"], "/hooks/modes.sh", "PostToolUse(Skill)")
+only([hooks["SessionStart"][0]], "/hooks/modes.sh", "the first SessionStart entry")
+
+missing = []
+for event, groups in hooks.items():
+    for g in groups:
+        for h in g["hooks"]:
+            for m in re.finditer(r"\$\{CLAUDE_PLUGIN_ROOT\}(/[A-Za-z0-9._/-]+)", h.get("command", "")):
+                p = plugin + m.group(1)
+                if not os.path.exists(p): missing.append("%s: %s" % (event, p))
+assert not missing, "hook command path missing on disk: %s" % "; ".join(missing)
+
+# the contract entries are only counted here: one per workflow file plus @user and @project
+entries = [h.get("command", "") for g in hooks["SessionStart"] for h in g["hooks"] if "workflow-usage.sh" in h.get("command", "")]
+wf = [f for f in os.listdir(os.path.join(plugin, "workflows")) if f.endswith(".js")]
+assert len(entries) == len(wf) + 2, "contract entries %d, workflow files %d" % (len(entries), len(wf))
+' "$PJ"
 cat > "$T/k6.py" <<'PY'
 import json, os, sys, glob
 pj, wfdir = sys.argv[1], sys.argv[2]
@@ -403,7 +414,7 @@ pre=$(awk '/^## Version log/{exit} {print}' "$RD")
 check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
 
 # k13: changed paths, no version bump (suite pass itself is the rest of k13)
-bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE '\.claude-plugin/marketplace.json|plugins/session/lib/.*|plugins/session/bin/build\.sh|plugins/session/agents/tools-[a-z-]+\.md|tests/rebuild/.*|plugins/session/bin/workflow-usage.sh|plugins/session/\.claude-plugin/plugin.json|plugins/session/workflows/(build|chain|dev|make|probe|research|review-fix|role|translate-ru)\.js|tests/measure/rebuild-scenarios-0\.16\.txt|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|plugins/session/agents/(translator|size-estimator)\.md|plugins/session/base/BASE.md|plugins/session/base/split.sh|plugins/session/skills/base/SKILL.md|plugins/session/README.md|plugins/session/monitors/.*|plugins/session/skills/start-ping/.*|tests/monitors/.*|tests/workflows/usage-test.sh' | tr '\n' ' ')
+bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE '\.claude-plugin/marketplace.json|plugins/session/lib/.*|plugins/session/hooks/(modes|ledger-stop)\.sh|plugins/session/bin/build\.sh|plugins/session/agents/tools-[a-z-]+\.md|tests/rebuild/.*|plugins/session/bin/workflow-usage.sh|plugins/session/\.claude-plugin/plugin.json|plugins/session/workflows/(build|chain|dev|make|probe|research|review-fix|role|translate-ru)\.js|tests/measure/rebuild-scenarios-0\.16\.txt|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|plugins/session/agents/(translator|size-estimator)\.md|plugins/session/base/BASE.md|plugins/session/base/split.sh|plugins/session/skills/base/SKILL.md|plugins/session/README.md|plugins/session/monitors/.*|plugins/session/skills/start-ping/.*|tests/monitors/.*|tests/workflows/usage-test.sh' | tr '\n' ' ')
 check "k13 changed paths within allowed list (extra: $bad)" test -z "$bad"
 check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
 
