@@ -345,8 +345,8 @@ const CARRIER_AGENTS = ['artifact-designer', 'artifact-publisher', 'code-reviewe
 // "waiter"), so they count in a carrier shape only — a path of the tree, or the word beside a
 // carrier noun. "copy the tree and make your own workflows" names nothing.
 const CARRIER_AGENT_WORDS = ['simplifier', 'translator', 'waiter']
-const CARRIER_SKILLS = ['ask', 'base', 'codex', 'pipeline', 'reset-counter', 'resume-ping',
-  'review', 'start-ping', 'stop-ping']
+const CARRIER_SKILLS = ['ask', 'base', 'codex', 'pipeline', 'process', 'reset-counter',
+  'resume-ping', 'review', 'start-ping', 'stop-ping']
 const CARRIER_WORKFLOWS = ['role', 'chain', 'make', 'probe', 'build', 'dev', 'research', 'review-fix', 'translate-ru']
 const CARRIER_HOOKS = ['ledger-stop', 'modes', 'pipeline-subagent-stop', 'session-modes']
 const CARRIER_MONITORS = ['monitors', 'ping', 'resume-ping', 'session-pid', 'stop-ping']
@@ -381,6 +381,68 @@ function carrierTokens(line) {
   const hits = []
   let m
   while ((m = re.exec(s)) !== null) hits.push(m[0])
+  return hits
+}
+
+// carrierFreeTokens(line, opts): the tokens of one line that name a CARRIER of this plugin — a
+// launch name under its prefix, one of its agents, one of its workflows in a carrier shape, or a
+// built-in tool of the fixed list below. Idea decision 19: a process skill fixes the stages, the
+// task files and the points where the user is needed, and names no workflow, no agent and no tool,
+// so the main model matches each stage to the contracts the session holds at that moment and a
+// newly enabled plugin widens the process with no skill edit. tests/rebuild/carrier-free.sh
+// executes this function over skills/process/** and over the non-generated part of base/BASE.md
+// instead of carrying a pattern list of its own.
+// Two options, because the two texts are guarded by different halves of the rule:
+//   opts.allow  launch names that stay allowed — the base text names `session:ask`, which is where
+//               the carrier of a user decision lives (the plan's P8 oracle row).
+//   opts.tools  false drops the tool rule for that file. The base text is the page that states the
+//               main session's own tool calls (its hard rule 1 counts Read, Edit, Write, Grep and
+//               Bash), so a tool name there is the subject of the page, while a process skill names
+//               none at all.
+// A tool name is often an ordinary English word ("read the file", "the task", "one agent"), so only
+// two shapes count, and both are case-sensitive: a name that is no English word at all
+// (`AskUserQuestion`, `WebFetch`, an MCP tool), and a plain name in a tool shape — inside backticks
+// or beside the word `tool`. A sentence that starts with "Read the ledger" names no tool.
+const TOOL_PLAIN = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'Task', 'Agent', 'Workflow',
+  'Skill', 'Monitor', 'Artifact']
+const TOOL_CAMEL = ['WebFetch', 'WebSearch', 'AskUserQuestion', 'TodoWrite', 'NotebookEdit',
+  'SlashCommand', 'BashOutput', 'KillShell', 'ExitPlanMode', 'ListAgents', 'ToolSearch',
+  'ReadNotifications', 'DesignSync']
+const TOOL_NOUNS = ['tool', 'tools']
+function carrierFreeTokens(line, opts) {
+  const o = opts || {}
+  const s = String(line == null ? '' : line)
+  const allow = (o.allow || []).map(a => String(a).toLowerCase())
+  const dirs = CARRIER_DIRS.map(rxEsc).join('|')
+  const flows = CARRIER_WORKFLOWS.map(rxEsc).join('|')
+  const words = CARRIER_WORKFLOWS.concat(CARRIER_AGENT_WORDS).map(rxEsc).join('|')
+  const nouns = CARRIER_NOUNS.map(rxEsc).join('|')
+  const parts = [
+    `\\b${rxEsc(CARRIER_PREFIX)}:[a-z][a-z0-9-]*`, // a launch name under this plugin's prefix
+    `\\b(?:${CARRIER_AGENTS.map(rxEsc).join('|')})\\b`, // an agent file name, bare
+    `\\b(?:${dirs})/(?:${flows})(?:\\.[A-Za-z0-9]+)*\\b`, // a workflow of the tree, by path
+    `\\b(?:${words})\\b[\`*_ -]+(?:${nouns})\\b`, // "the chain workflow", "the waiter agent"
+    `\\b(?:${nouns})[\`*_ -]+(?:${words})\\b`, // "workflow make", "agent: waiter"
+  ]
+  const re = new RegExp(parts.join('|'), 'gi')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) {
+    if (allow.indexOf(m[0].toLowerCase()) !== -1) continue
+    hits.push(m[0])
+  }
+  if (o.tools === false) return hits
+  const plain = TOOL_PLAIN.map(rxEsc).join('|')
+  const tnouns = TOOL_NOUNS.map(rxEsc).join('|')
+  const tparts = [
+    `\\b(?:${TOOL_CAMEL.map(rxEsc).join('|')})\\b`, // a name that is no English word
+    '\\bmcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+\\b', // a tool of an MCP server
+    '`(?:' + plain + ')`', // a plain name written as an identifier
+    `\\b(?:${plain})\\b[\`*_ -]+(?:${tnouns})\\b`, // "the Read tool"
+    `\\b(?:${tnouns})\\b[\`*_ :,-]+(?:${plain})\\b`, // "tools: Read", "tool Bash"
+  ]
+  const tre = new RegExp(tparts.join('|'), 'g') // case-sensitive: "read the ledger" is prose
+  while ((m = tre.exec(s)) !== null) hits.push(m[0])
   return hits
 }
 
@@ -1736,7 +1798,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
-    carrierTokens, agentTypesOf,
+    carrierTokens, TOOL_PLAIN, TOOL_CAMEL, carrierFreeTokens, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
