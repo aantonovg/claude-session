@@ -125,6 +125,29 @@ PY
 check "b3 a target declaring block with no marker fails" bash -c '! bash "$1" > "$2" 2>&1' _ "$T/plugin/bin/build.sh" "$T/check4.out"
 check "b3 the message names the missing marker" grep -q 'carries no shared-block marker' "$T/check4.out"
 
+# ---- b3b: a fromBase target whose source is gone is said out loud, never skipped ----
+# A full run (no file named) used to skip such a target, so a deleted base/BASE.md left the
+# generated skills/base/SKILL.md on disk and --check still printed clean over the stale copy.
+mkdir -p "$T/plugin2" "$T/fx2"
+cp -R "$LIB" "$P/bin" "$T/plugin2/"
+cat > "$T/plugin2/lib/build-manifest.json" <<'JSON'
+{ "targets": [
+  { "path": "../fx2/src.md" },
+  { "path": "../fx2/gen.md", "fromBase": "../fx2/src.md", "frontmatter": ["name: demo"] }
+] }
+JSON
+B2=$T/plugin2/bin/build.sh
+printf 'the body of the source\n' > "$T/fx2/src.md"
+check "b3b a full run generates the fromBase target" bash -c 'bash "$1" > /dev/null 2>&1 && [ -f "$2" ]' _ "$B2" "$T/fx2/gen.md"
+check "b3b --check clean right after that run" bash "$B2" --check
+rm -f "$T/fx2/src.md"
+check "b3b a full run with the source gone fails" bash -c '! bash "$1" > "$2" 2>&1' _ "$B2" "$T/b3b.out"
+check "b3b the message names the missing source" grep -q 'missing source' "$T/b3b.out"
+check "b3b --check with the source gone never reads clean" bash -c '! bash "$1" --check > "$2" 2>&1' _ "$B2" "$T/b3b-check.out"
+check "b3b the stale target is left on disk, not silently rebuilt" test -f "$T/fx2/gen.md"
+rm -f "$T/fx2/gen.md"
+check "b3b source and target both absent is still the skip of a later part" bash "$B2" --check
+
 # ---- b4: all 35 cells resolve identically in node and in lib/classes.json ----
 cat > "$T/cells.js" <<'JS'
 const b = require(process.argv[2])

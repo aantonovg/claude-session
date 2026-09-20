@@ -3,8 +3,9 @@
 # Globs: plugins/session/hooks/*.sh, plugins/session/.claude-plugin/plugin.json,
 #        plugins/session/lib/task-layout.md (the literals the hooks share with the layout).
 # Proves: hooks/modes.sh records the mode of every session skill of the new set and only of that
-# set, in both slash-command payload shapes, seeds once from the transcript head, and wipes at the
-# events that end a context; hooks/ledger-stop.sh appends one stop row per agent against the task
+# set, in both slash-command payload shapes, seeds once from the transcript head, wipes at the
+# events that end a context, and injects at SessionStart one context line naming the absolute path
+# of lib/verification.md (P6 review: the base may not resolve that path itself); hooks/ledger-stop.sh appends one stop row per agent against the task
 # directory named by tasks/current, carrying the class, depth, slot and label of that agent's own
 # launch row, and writes nothing at all in an ordinary session; the state file keeps its JSON shape
 # (one flat object, one key per skill); every `command` path of plugin.json exists on disk and the
@@ -143,6 +144,27 @@ reset; run "$(payload '/session:base')"; run "$(event PreCompact '')"; run "$(ev
 state "SessionStart startup wipes" ''
 marker "SessionStart startup removes the marker" no
 reset; run "$(event SessionStart wat)"; marker "SessionStart unknown source marks" yes
+
+# the one context line of SessionStart: the absolute path of lib/verification.md, so the base rule
+# "read the verification page before planning a task" is one Read of a known path instead of a
+# resolve pipeline plus a Read in the main session.
+emit() { printf '%s' "$1" | bash "$MODES" 2>/dev/null; }
+reset; VOUT=$(emit "$(event SessionStart startup)")
+check "h1 SessionStart prints one SessionStart hook JSON" bash -c \
+  'printf "%s" "$1" | jq -e ".hookSpecificOutput.hookEventName == \"SessionStart\"" >/dev/null' _ "$VOUT"
+check "h1 the injected line names the plugin's own verification page" bash -c \
+  'p=$(printf "%s" "$1" | jq -r ".hookSpecificOutput.additionalContext" | grep -oE "/[^ ]*/lib/verification\.md"); [ "$p" = "$2" ] && [ -f "$p" ]' _ "$VOUT" "$P/lib/verification.md"
+check "h1 the injected line carries the wording the base quotes" bash -c \
+  'printf "%s" "$1" | jq -r ".hookSpecificOutput.additionalContext" | grep -Fq "Verification page (read before planning a task): "' _ "$VOUT"
+check "h1 a resume SessionStart injects the line too" bash -c \
+  'printf "%s" "$1" | jq -e ".hookSpecificOutput.additionalContext" >/dev/null' _ "$(emit "$(event SessionStart resume)")"
+check "h1 a prompt event prints nothing" test -z "$(emit "$(payload '/session:base')")"
+check "h1 a PreCompact prints nothing" test -z "$(emit "$(event PreCompact '')")"
+# a copy of the hook without the page beside it stays silent: a path that reads clean but points at
+# nothing would cost the session the very Read the line saves
+COPY=$HOME/fakeplugin/hooks; mkdir -p "$COPY"; cp "$MODES" "$COPY/modes.sh"
+check "h1 no page beside the hook, no line" test -z "$(printf '%s' "$(event SessionStart startup)" | bash "$COPY/modes.sh" 2>/dev/null)"
+reset
 
 # the seed: one pass over the head of the transcript, merge with what real events recorded
 TR=$HOME/transcript.jsonl

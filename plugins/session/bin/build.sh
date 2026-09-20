@@ -19,7 +19,9 @@
 # A file with none of these markers is skipped and stays byte-identical. A manifest target that
 # does not exist yet is skipped, with one exception: a "fromBase" target is generated whole out of
 # its source, so its absence is drift, not a skip, and the skip of a later part is keyed on its
-# source instead. A file named on the command line must exist and must be a target of
+# source instead; a "fromBase" target that stands on disk while its source is gone is an error, so
+# a deleted source can never leave a stale copy that --check calls clean. A file named on the
+# command line must exist and must be a target of
 # lib/build-manifest.json; a named file that is the source of a "fromBase" target drags that target
 # into the same run, and a named "fromBase" target drags its source in the same way, so --check over
 # a file this build step does not own, and --check over either side of a stale pair, can never print
@@ -267,8 +269,11 @@ for path, spec in targets:
     if not os.path.exists(src):
         # the skip rule of a later part, keyed on the source: a fromBase target is generated whole,
         # so its own absence is drift and never a skip, but a source nobody has written yet is the
-        # target of a later part. A file named on the command line is never skipped.
-        if files:
+        # target of a later part. A file named on the command line is never skipped, and a target
+        # that already stands on disk is never skipped either: a deleted source with the generated
+        # file left behind is a stale copy nobody can rebuild, so it is said out loud instead of
+        # letting --check print clean over it.
+        if files or os.path.exists(path):
             print('build.sh: %s names the missing source %s' % (path, src)); sys.exit(2)
         continue
     body = rendered.get(norm(src))

@@ -21,7 +21,11 @@
 # only as a generated region, it names no carrier but the session:ask skill, the cut sections of
 # P6 are gone, and it points at lib/verification.md instead of repeating it. P6 also reads the two
 # composite workflows for that pointer (workflows/chain.js, workflows/make.js), a fixed extension
-# of the glob list of the plan's scope rule, because no other static test owns that citation.
+# of the glob list of the plan's scope rule. The no-roster rule is checked twice: against the agent
+# forms (agentType, subagent_type, tools-*) and against the role catalog names of lib/classes.json
+# in roster shapes only - a list or table entry that starts with a role name, or a role name beside
+# a slot word - so a role word used as a plain English word stays clean. The two workflow files are
+# read here because no other static test owns that citation.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -161,6 +165,54 @@ for b in bad[:10]: print(b)
 sys.exit(1 if bad else 0)
 ' "$B" "$S"
     check "t3 no agent roster prose in the base" bash -c '! grep -Eq "agentType|subagent_type: *.(session:|tools-)|\btools-(read|write|edit|web)[a-z-]*" "$1"' _ "$B"
+    # the same rule over the role catalog of lib/classes.json, which the grep above never sees: a
+    # roster of bare role names is still a roster. Only roster SHAPES count - a list or numbered
+    # entry that starts with a role name, a table row whose first cell is one, and a role name
+    # standing beside a slot word - so "a critic may raise the class" stays plain English. Executed
+    # over the base and over three mutants that must turn it red.
+    cat > "$T/roster.py" <<'PY'
+import json, re, sys
+roles = sorted(json.load(open(sys.argv[1], encoding='utf-8'))['roles'], key=len, reverse=True)
+alt = '|'.join(re.escape(r) for r in roles)
+name = r'[`*_]*(?:session:)?(%s)[`*_]*' % alt
+shapes = [
+    ('list entry', re.compile(r'^\s*(?:[-*+]|\d+\.)\s+%s\s*(?:[-–—:(,]|$)' % name)),
+    ('table row', re.compile(r'^\s*\|\s*%s\s*\|' % name)),
+    ('name beside a slot', re.compile(
+        r'\b(%s)\b[^.|]{0,40}\b(?:main|opus|sonnet)(?:-model)?\s+slot'
+        r'|\b(?:main|opus|sonnet)(?:-model)?\s+slot[^.|]{0,40}\b(%s)\b' % (alt, alt))),
+]
+hits = []
+for p in sys.argv[2:]:
+    for n, line in enumerate(open(p, encoding='utf-8').read().split('\n'), 1):
+        for what, rx in shapes:
+            m = rx.search(line)
+            if m:
+                hits.append('%s:%d roster %s: %s' % (p, n, what, next(g for g in m.groups() if g)))
+for h in hits[:10]:
+    print(h)
+sys.exit(1 if hits else 0)
+PY
+    check "t3 no roster of role catalog names in the base" \
+      python3 "$T/roster.py" "$P/lib/classes.json" "$B" "$S"
+    ROLE1=$(python3 -c '
+import json, sys
+print(sorted(json.load(open(sys.argv[1], encoding="utf-8"))["roles"])[0])' "$P/lib/classes.json")
+    { cat "$B"; printf -- '- `%s` — the author of the plan, opus slot\n' "$ROLE1"; } > "$T/roster-list.md"
+    { cat "$B"; printf '| %s | opus slot |\n' "$ROLE1"; } > "$T/roster-table.md"
+    { cat "$B"; printf 'The %s runs on the opus slot of the class.\n' "$ROLE1"; } > "$T/roster-slot.md"
+    for m in list table slot; do
+      check "t3 the roster check catches a $m of role names" \
+        bash -c '! python3 "$1" "$2" "$3" > /dev/null' _ "$T/roster.py" "$P/lib/classes.json" "$T/roster-$m.md"
+    done
+    # a role word used as a plain English word in a sentence about process stays clean
+    printf 'A critic may raise the class for the stages that follow, never lower it.\nThe fixer of a finding reads what the executor left.\n' > "$T/roster-prose.md"
+    check "t3 a role word in plain prose is no roster" \
+      python3 "$T/roster.py" "$P/lib/classes.json" "$T/roster-prose.md"
+    check "t3 the base takes the verification page path from the session-start line" \
+      grep -Fq 'session-start context line' "$B"
+    check "t3 the base resolves no path of its own for the verification page" bash -c \
+      '! grep -F "verification.md" "$1" | grep -Eq "ls -d|sort -V|tail -1"' _ "$B"
     check "t3 the section Stages and quality loops is gone" bash -c '! grep -q "^## Stages and quality loops" "$1"' _ "$B"
     check "t3 no mandatory review of a diff over 100 lines" bash -c '! grep -qi "over 100 lines" "$1"' _ "$B"
     check "t3 no mandatory closure review" bash -c '! grep -qi "closure review" "$1"' _ "$B"
