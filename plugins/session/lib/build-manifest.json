@@ -1,5 +1,5 @@
 {
-  "comment": "Targets of bin/build.sh. A target that does not exist yet is skipped, so a part lands before its workflow exists. block: the file carries the shared-block markers. table: the file carries the class-table markers. roles/aspects: the subset of lib/roles/*.md and lib/aspects/*.md stamped into that file (A23), by role name without the .md suffix. A key set to true whose marker pair is missing from an existing target fails the build, so a deleted marker is never a silent skip.",
+  "comment": "Targets of bin/build.sh. A target that does not exist yet is skipped, so a part lands before its workflow exists. block: the file carries the shared-block markers. table: the file carries the class-table markers. roles/aspects: the subset of lib/roles/*.md and lib/aspects/*.md stamped into that file (A23), by role name without the .md suffix. A key set to true whose marker pair is missing from an existing target fails the build, so a deleted marker is never a silent skip. fromBase: the target is the named source file, as this run stamped it, under the frontmatter lines of this entry; it carries no markers and is never hand-edited.",
   "targets": [
     {
       "path": "workflows/role.js",
@@ -27,8 +27,18 @@
     },
     {
       "path": "base/BASE.md",
-      "comment": "P6 rewrites this file with the class-table marker pair and flips table to true; the old base text carries no marker, and a true here would fail the build today",
-      "table": false
+      "comment": "the class table of the base text is the generated region between the class-table markers; every other line of the base is hand-written",
+      "table": true
+    },
+    {
+      "path": "skills/base/SKILL.md",
+      "comment": "generated from base/BASE.md (P6: the successor of base/split.sh); the frontmatter below is the whole difference between the two files",
+      "fromBase": "base/BASE.md",
+      "frontmatter": [
+        "name: base",
+        "description: \"Session base: launch forms, classes, verification first. Invoke first in every session and again after /compact.\"",
+        "disable-model-invocation: true"
+      ]
     }
   ]
 }

@@ -391,15 +391,24 @@ for f in "$BASE" "$SKILL"; do
   check "k10 $b no Named workflows heading" bash -c '! grep -q "^## Named workflows" "$1"' _ "$f"
   check "k10 $b keeps meta.description label sentence" grep -Fq 'Its `meta.description` is a 1-4 word label' "$f"
 done
-check "k10 split.sh no allowed-tools" bash -c '! grep -Fq "allowed-tools" "$1"' _ "$P/base/split.sh"
-check "k10 BASE.md SessionStart contract sentence" grep -Fq 'Named workflow contracts arrive as SessionStart context, one per workflow; never read the script body.' "$BASE"
+check "k10 $(basename "$SKILL") no allowed-tools" bash -c '! grep -Fq "allowed-tools" "$1"' _ "$SKILL"
+# P6 of the 0.16 rebuild rewrote the base, so the contract sentence is the new one: the injected
+# contract is the only thing a launch by name needs.
+check "k10 BASE.md SessionStart contract sentence" grep -Fq 'A named workflow arrives as one SessionStart contract line; launch it by `name` and never read the script body.' "$BASE"
 
-# k11: split.sh regenerates SKILL.md (copy holds base/ and skills/base/)
+# k11: bin/build.sh regenerates SKILL.md from BASE.md (P6 replaced base/split.sh as the generator;
+# the copy holds lib/, bin/, base/ and skills/base/, so the build runs against a tree of its own)
 mkdir -p "$T/g/plugin/skills/base"
 cp -R "$P/base" "$T/g/plugin/base"
-cp "$SKILL" "$T/g/plugin/skills/base/SKILL.md.orig"
-sh "$T/g/plugin/base/split.sh" > /dev/null 2>&1
-check "k11 split.sh regenerates identical SKILL.md" cmp -s "$T/g/plugin/skills/base/SKILL.md" "$SKILL"
+cp -R "$P/lib" "$T/g/plugin/lib"
+cp -R "$P/bin" "$T/g/plugin/bin"
+cp "$SKILL" "$T/g/plugin/skills/base/SKILL.md"
+printf '\nhand edit\n' >> "$T/g/plugin/skills/base/SKILL.md"
+check "k11 build.sh --check fails on a hand edit of the generated skill" bash -c '! bash "$1" --check > "$2" 2>&1' _ "$T/g/plugin/bin/build.sh" "$T/g/check.out"
+check "k11 --check names skills/base/SKILL.md" grep -q 'skills/base/SKILL.md' "$T/g/check.out"
+bash "$T/g/plugin/bin/build.sh" > /dev/null 2>&1
+check "k11 build.sh regenerates identical SKILL.md" cmp -s "$T/g/plugin/skills/base/SKILL.md" "$SKILL"
+check "k11 build.sh --check clean on the real plugin" bash "$P/bin/build.sh" --check
 
 # k12: README
 RD=$P/README.md

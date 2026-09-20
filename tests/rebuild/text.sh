@@ -15,6 +15,11 @@
 # because the class table itself is rendered there by bin/build.sh.
 # Also: lib/verification.md carries the pieces P1 owes (oracle classes, a route per ladder level,
 # the fork-author exception, the ops control-call form).
+# From P6 on, under --with-base: the base text is one of those globs, it carries the class table
+# only as a generated region, it names no carrier but the session:ask skill, the cut sections of
+# P6 are gone, and it points at lib/verification.md instead of repeating it. P6 also reads the two
+# composite workflows for that pointer (workflows/chain.js, workflows/make.js), a fixed extension
+# of the glob list of the plan's scope rule, because no other static test owns that citation.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -109,6 +114,60 @@ if [ -f "$V" ]; then
 else
   fail "t2 lib/verification.md missing"
 fi
+
+# t3: the base text (P6). Under --with-base only: the old base names models and an agent roster
+# until P6 rewrites it, so this group starts to run in the part that owns the rewrite.
+if [ "$WITH_BASE" = 1 ]; then
+  B=$P/base/BASE.md
+  S=$P/skills/base/SKILL.md
+  if [ -f "$B" ] && [ -f "$S" ]; then
+    check "t3 BASE.md opens the class-table region" grep -q '<!-- class table' "$B"
+    check "t3 BASE.md closes the class-table region" grep -q '<!-- end class table' "$B"
+    check "t3 the class table is generated, bin/build.sh --check clean" bash "$P/bin/build.sh" --check
+    check "t3 skills/base/SKILL.md is BASE.md under a frontmatter" python3 -c '
+import sys
+base = open(sys.argv[1], encoding="utf-8").read().strip("\n") + "\n"
+skill = open(sys.argv[2], encoding="utf-8").read()
+if not skill.startswith("---\n"): sys.exit(1)
+body = skill.split("\n---\n", 1)[1].lstrip("\n") if "\n---\n" in skill else ""
+sys.exit(0 if body == base else 1)
+' "$B" "$S"
+    check "t3 session:ask is the only session: name in the base" python3 -c '
+import re, sys
+bad = []
+for p in sys.argv[1:]:
+    for n, line in enumerate(open(p, encoding="utf-8").read().split("\n"), 1):
+        for m in re.finditer(r"session:[a-z][a-z0-9-]*", line):
+            if m.group(0) != "session:ask": bad.append("%s:%d %s" % (p, n, m.group(0)))
+for b in bad[:10]: print(b)
+sys.exit(1 if bad else 0)
+' "$B" "$S"
+    check "t3 no agent roster prose in the base" bash -c '! grep -Eq "agentType|subagent_type: *.(session:|tools-)|\btools-(read|write|edit|web)[a-z-]*" "$1"' _ "$B"
+    check "t3 the section Stages and quality loops is gone" bash -c '! grep -q "^## Stages and quality loops" "$1"' _ "$B"
+    check "t3 no mandatory review of a diff over 100 lines" bash -c '! grep -qi "over 100 lines" "$1"' _ "$B"
+    check "t3 no mandatory closure review" bash -c '! grep -qi "closure review" "$1"' _ "$B"
+    check "t3 no author pairs with a reviewer by default" bash -c '! grep -qi "pairs with an independent review" "$1"' _ "$B"
+    check "t3 the base cites lib/verification.md" grep -Fq 'lib/verification.md' "$B"
+    check "t3 the base states review only where no oracle is possible" grep -Fq 'gets no review' "$B"
+    check "t3 the base states launch by name" grep -Fq 'Launch by name; an ad hoc script is the exception' "$B"
+    check "t3 the base carries the fork-author exception" grep -Fq 'clean-context checker' "$B"
+    check "t3 the base carries the critic class raise" grep -Fq 'raise the class for the stages that follow' "$B"
+    check "t3 the base feeds the size argument" grep -Fq 'the `size` argument' "$B"
+    for v in small medium large; do
+      check "t3 the volume table has the row $v" grep -Eq "^\| $v \|" "$B"
+    done
+    check "t3 one line sends a codex job to the codex skill" grep -Eq '^Codex job: ' "$B"
+  else
+    fail "t3 base/BASE.md or skills/base/SKILL.md missing"
+  fi
+fi
+
+# t4: the composite workflows cite the verification page instead of repeating it (P6).
+for w in chain make; do
+  f=$P/workflows/$w.js
+  [ -f "$f" ] || continue
+  check "t4 workflows/$w.js cites lib/verification.md" grep -Fq 'lib/verification.md' "$f"
+done
 
 if [ "$FAILS" -eq 0 ]; then echo "text: PASS $N"; exit 0; fi
 echo "text: FAIL $FAILS failures, $N checks passed"
