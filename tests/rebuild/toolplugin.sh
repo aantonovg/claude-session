@@ -81,34 +81,57 @@ for root in "$TPL" "$STUB"; do
 done
 
 # ---- t4: A8, neither root names anything of the base plugin ----
-cat > "$T/forbidden.txt" <<'PAT'
-plugins/session
-workflow-usage.sh
-lib/block.js
-lib/classes.json
-build-manifest.json
-hooks/modes.sh
-ledger-stop.sh
-skills/process
-skills/pipeline
-skills/review
-tools-read-write
-tools-read-bash
-tools-edit
-tools-web
-session-modes
-PAT
-# the whole documentation tree, not only the template inside it: the README explains the pattern
+# What counts as naming a carrier is no pattern list of this file: it is carrierTokens() of the
+# shared block, executed over every file of the two roots and re-run over a mutant of that function
+# which must turn the same scan red. A workflow name of the base plugin is an ordinary English word
+# ("make", "role"), which a literal grep either misses or reports everywhere; the function reads the
+# carrier shapes instead — a path, a launch name, the word `workflow` beside the name.
+# The whole documentation tree, not only the template inside it: the README explains the pattern
 # without naming a carrier of the base plugin either, or the first plugin copied from it inherits
 # the dependency the pattern forbids.
-for root in "$DOC" "$STUB"; do
-  b=$(basename "$root")
-  hits=$(grep -rlF -f "$T/forbidden.txt" "$root" 2>/dev/null | tr '\n' ' ')
-  check "t4 $b names no path, agent, workflow, skill or hook of the base plugin (hits: $hits)" test -z "$hits"
-  # the launch name of a carrier, qualified form only: "the session:" of ordinary prose is no name
-  qual=$(grep -rlE 'session:[a-z]' "$root" 2>/dev/null | tr '\n' ' ')
-  check "t4 $b names no workflow or agent of the base plugin by its launch name (hits: $qual)" test -z "$qual"
-done
+BLOCKJS=$REPO/plugins/session/lib/block.js
+cat > "$T/carrier.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const hits = []
+for (const path of process.argv.slice(3)) {
+  let lines
+  try { lines = fs.readFileSync(path, 'utf8').split('\n') } catch (e) {
+    hits.push(`${path}:0 unreadable: ${e.message}`)
+    continue
+  }
+  lines.forEach((line, i) => {
+    for (const t of b.carrierTokens(line)) hits.push(`${path}:${i + 1} names a carrier: ${t}`)
+  })
+}
+hits.slice(0, 20).forEach(h => console.log(h))
+process.exit(hits.length ? 1 : 0)
+JS
+check "t4 lib/block.js exists: the carrier rule is executed, never grepped" test -f "$BLOCKJS"
+shopt -s nullglob
+FILES4=()
+while IFS= read -r f; do FILES4+=("$f"); done < <(find "$DOC" "$STUB" -type f | sort)
+if [ "${#FILES4[@]}" -eq 0 ]; then
+  fail "t4 at least one file under the two roots"
+else
+  pass
+  check "t4 no file of the template, the README or the stub names a path, an agent, a workflow or a launch name of the base plugin" \
+    node "$T/carrier.js" "$BLOCKJS" "${FILES4[@]}"
+fi
+# executed, not read: the two carrier shapes must be seen, a sentence using the same words as plain
+# English must stay clean, and a mutant that forgets the workflow names must stop seeing the first.
+printf 'The common role workflow of the base plugin never carries a tool-server role\n' > "$T/carrier-wf.md"
+printf 'launch session:make over it\n' > "$T/carrier-name.md"
+printf 'copy the tree and make your own workflows, one file per job\n' > "$T/carrier-prose.md"
+check "t4 the scan sees a workflow of the base plugin named in prose" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/carrier.js" "$BLOCKJS" "$T/carrier-wf.md"
+check "t4 the scan sees a launch name of the base plugin" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/carrier.js" "$BLOCKJS" "$T/carrier-name.md"
+check "t4 the same words as plain English name no carrier" node "$T/carrier.js" "$BLOCKJS" "$T/carrier-prose.md"
+perl -pe "s/const CARRIER_WORKFLOWS = \[[^\]]*\]/const CARRIER_WORKFLOWS = ['zzz']/" "$BLOCKJS" > "$T/mutant-carrier.js"
+check "t4 the mutant of carrierTokens is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$BLOCKJS" "$T/mutant-carrier.js"
+check "t4 the mutant that drops the workflow names is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/carrier.js" "$T/mutant-carrier.js" "$T/carrier-wf.md"
 
 # ---- t5: the stub's SessionStart hook command prints one contract line, no session needed ----
 STUB_PJ=$STUB/.claude-plugin/plugin.json
@@ -141,10 +164,13 @@ check "t6 the stub carries a metrics store" test -s "$STORE"
 if [ -s "$STORE" ]; then
   KEY=$(awk 'NR==1{print $1}' "$STORE")
   check "t6 the stub's agent reads the store through a shell" bash -c 'grep -Eq "^tools: .*Bash" "$1"' _ "$(ls "$STUB"/agents/tools-*.md | head -1)"
+  # the whole worktree, the store itself apart: "exists nowhere else" is a claim about the tree a
+  # behavior run reads, so a duplicate of the number in docs/, in another test or in .claude/ would
+  # break it exactly the way one in the base plugin does
   while read -r k v; do
     [ -n "$k" ] || continue
-    n=$(grep -rlF -- "$v" "$REPO/plugins/session" "$REPO/tests/measure" 2>/dev/null | wc -l | tr -d ' ')
-    check "t6 the value of $k exists nowhere in the base plugin or the scenario text (files: $n)" test "$n" -eq 0
+    hits=$(grep -rlF --exclude-dir=.git -- "$v" "$REPO" 2>/dev/null | grep -vF "$STORE" | tr '\n' ' ')
+    check "t6 the value of $k exists nowhere else in the worktree (hits: $hits)" test -z "$hits"
   done < "$STORE"
   check "t6 the store holds a key the scenario can ask for" test -n "$KEY"
 fi
@@ -194,9 +220,13 @@ sys.exit(1 if d.get("permissions", {}).get("deny") else 0)' "$D/.claude/settings
       check "t7 [$tag] the copy exists" test -f "$copy/.claude-plugin/plugin.json"
       for w in $OLD_WF; do
         check "t7 [$tag] no contract entry for the old $w" bash -c '! grep -qF "workflows/$1.js" "$2"' _ "$w" "$copy/.claude-plugin/plugin.json"
+        # a workflows/ directory is auto-loaded: a file left in the copy stays launchable and listed
+        # however the contract entries read, so the gate would not measure the new set alone
+        check "t7 [$tag] the copy holds no old workflow file $w.js" test ! -e "$copy/workflows/$w.js"
       done
       for w in role chain make probe; do
         check "t7 [$tag] the copy keeps the contract entry of $w" grep -qF "workflows/$w.js" "$copy/.claude-plugin/plugin.json"
+        check "t7 [$tag] the copy keeps the workflow file $w.js" test -f "$copy/workflows/$w.js"
       done
       for s in $OLD_SKILLS; do
         check "t7 [$tag] the copy holds no old process skill $s" test ! -e "$copy/skills/$s"
@@ -218,6 +248,7 @@ for gv in gate gate-stub-on gate-stub-off-deny; do
   check "t7 [$gv] records its own variant name" grep -qxF "$gv" "$D/variant"
   check "t7 [$gv] hides the old set" test -f "$D/plugin/.claude-plugin/plugin.json"
   check "t7 [$gv] no old contract entry" bash -c '! grep -qF "workflows/dev.js" "$1"' _ "$D/plugin/.claude-plugin/plugin.json"
+  check "t7 [$gv] no old workflow file in the copy" test ! -e "$D/plugin/workflows/dev.js"
 done
 
 # ---- t8: refusals ----
@@ -247,6 +278,53 @@ open(sys.argv[2], "w", encoding="utf-8").write("async function __wf(args, agent,
     node --check "$T/$b-$s.wrapped.js" 2> "$T/$b-$s.parse.err"
     check "t9 $b workflows/$s.js parses ($(head -2 "$T/$b-$s.parse.err" | tr '\n' ' '))" test ! -s "$T/$b-$s.parse.err"
   done
+done
+
+# ---- t10: the block check of each workflow reads the last line and nothing above it ----
+# Executed, not grepped: each script runs over a fake harness whose agent return quotes the blocked
+# word mid-text — the prompt of the script asks for that word on the last line, so its own rule text
+# echoed back would turn a finished lookup into a blocked one under a whole-return check. The same
+# run against a mutant with the whole-return form must go the other way.
+cat > "$T/run-wf.js" <<'JS'
+const fs = require('fs')
+const src = fs.readFileSync(process.argv[2], 'utf8').replace('export const meta', 'const meta')
+const args = JSON.parse(process.argv[3])
+const ret = fs.readFileSync(process.argv[4], 'utf8')
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+const wf = new AsyncFunction('args', 'agent', 'log', 'phase', 'parallel', 'workflow', 'budget', src)
+wf(args, async () => ret, () => {}, () => {}, async () => [], () => {}, () => {}).then(
+  r => console.log(JSON.stringify(r)),
+  e => { console.log(JSON.stringify({ error: String(e && e.message || e) })); process.exitCode = 1 },
+)
+JS
+printf 'Looked the key up. The rule says to return BLOCKED: <the denied action> on a denial; nothing was denied.\n%s %s\n' \
+  "$(awk 'NR==1{print $1}' "$STORE")" "$(awk 'NR==1{print $2}' "$STORE")" > "$T/ret-stub-ok.txt"
+printf 'Ran the lookup.\nBLOCKED: Bash\n' > "$T/ret-stub-blocked.txt"
+printf '/tmp/example-out.md 42 bytes\nThe rule says to return BLOCKED: <the denied action> on a denial.\nthe answer\n' > "$T/ret-tpl-ok.txt"
+printf '/tmp/example-out.md 42 bytes\nBLOCKED: Write\n' > "$T/ret-tpl-blocked.txt"
+STUB_ARGS=$(python3 -c '
+import json, sys
+print(json.dumps({"key": sys.argv[1], "store": sys.argv[2]}))' "$(awk 'NR==1{print $1}' "$STORE")" "$STORE")
+TPL_ARGS='{"object":"an object","ask":"read it","out":"/tmp/example-out.md"}'
+blocked_key() { python3 -c '
+import json, sys
+d = json.loads(open(sys.argv[1], encoding="utf-8").read() or "{}")
+sys.exit(0 if d.get("blocked") else 1)' "$1"; }
+i=0
+for pair in "$STUB/workflows/metrics.js|$STUB_ARGS" "$TPL/workflows/example.js|$TPL_ARGS"; do
+  i=$((i + 1))
+  f=${pair%%|*}; a=${pair#*|}
+  b=$(basename "$f")
+  tag=$([ "$i" = 1 ] && echo stub || echo tpl)
+  node "$T/run-wf.js" "$f" "$a" "$T/ret-$tag-ok.txt" > "$T/$tag-ok.json" 2> "$T/$tag-ok.err"
+  check "t10 $b runs over the fake harness ($(head -1 "$T/$tag-ok.err"))" test -s "$T/$tag-ok.json"
+  if blocked_key "$T/$tag-ok.json"; then fail "t10 $b blocks on the word quoted mid-text ($(cat "$T/$tag-ok.json"))"; else pass; fi
+  node "$T/run-wf.js" "$f" "$a" "$T/ret-$tag-blocked.txt" > "$T/$tag-bad.json" 2>/dev/null
+  if blocked_key "$T/$tag-bad.json"; then pass; else fail "t10 $b blocks on the word on the last line ($(cat "$T/$tag-bad.json"))"; fi
+  perl -pe 's{/\^BLOCKED:/\.test\(LINE\)}{/BLOCKED:/.test(String(r))}' "$f" > "$T/$tag-mutant.js"
+  check "t10 $b mutant with the whole-return check is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$f" "$T/$tag-mutant.js"
+  node "$T/run-wf.js" "$T/$tag-mutant.js" "$a" "$T/ret-$tag-ok.txt" > "$T/$tag-mut.json" 2>/dev/null
+  if blocked_key "$T/$tag-mut.json"; then pass; else fail "t10 $b the whole-return mutant is caught"; fi
 done
 
 if [ "$FAILS" -eq 0 ]; then echo "toolplugin: PASS $N"; exit 0; fi

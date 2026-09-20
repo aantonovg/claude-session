@@ -111,8 +111,13 @@ pj, plugin = sys.argv[1], sys.argv[2]
 bad = []
 for g in json.load(open(pj))["hooks"]["SessionStart"]:
     for h in g["hooks"]:
-        for tok in h.get("command", "").split():
+        for raw in h.get("command", "").split():
+            tok = raw.strip(chr(34) + chr(39))
             if not tok.startswith("${CLAUDE_PLUGIN_ROOT}"):
+                # a token that carries the root somewhere else is quoted, concatenated or built:
+                # this check can not resolve it, so it is reported instead of passed over
+                if "${CLAUDE_PLUGIN_ROOT}" in tok:
+                    bad.append("%s (no plain path token)" % raw)
                 continue
             path = tok.replace("${CLAUDE_PLUGIN_ROOT}", plugin)
             if not os.path.exists(path):

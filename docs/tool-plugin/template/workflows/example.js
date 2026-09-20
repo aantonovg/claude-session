@@ -81,7 +81,9 @@ the directory that path names. Start your return with one line \`${OUT} <n> byte
 answer. On a permission denial stop at once and return BLOCKED: <the denied action>.`, O)
 
 const LINE = lastLine(r)
-if (!LINE || /BLOCKED:/.test(String(r))) return result({ object: OBJ, out: OUT, blocked: LINE || 'the agent returned nothing' })
+// the word counts on the last line alone: the prompt above asks the agent to write it there, so a
+// return that quotes it higher up (a finding, a path, the rule itself) is a finished lookup
+if (!LINE || /^BLOCKED:/.test(LINE)) return result({ object: OBJ, out: OUT, blocked: LINE || 'the agent returned nothing' })
 if (!new RegExp(`${OUT}\\s+\\d+\\s+bytes`).test(String(r))) {
   return result({ object: OBJ, out: OUT, blocked: `the return names no size for ${OUT}` })
 }

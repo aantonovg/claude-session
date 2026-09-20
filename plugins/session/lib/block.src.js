@@ -96,6 +96,41 @@ function cellTokens(line) {
   return hits
 }
 
+// carrierTokens(line): the tokens of one line of prose that name a carrier of THIS plugin — a path
+// of it, one of its tool-set agents, a launch name under its prefix, or one of its workflows. The
+// A8 rule of the tool plugin pattern is that nothing inside a tool plugin names a carrier a project
+// can deny or disable, so tests/rebuild/toolplugin.sh executes this function over docs/tool-plugin
+// and over the stub fixture instead of carrying a pattern list of its own. A workflow name of this
+// plugin is an ordinary English word ("make", "role", "chain"), so it counts in a carrier shape
+// only: a path (`workflows/role.js`), a launch name (`session:role`), or the word `workflow` beside
+// it — "one file per job, copy and make your own" names nothing.
+const CARRIER_PATHS = ['plugins/session', 'lib/block.js', 'lib/classes.json', 'build-manifest.json',
+  'workflow-usage.sh', 'hooks/modes.sh', 'ledger-stop.sh', 'skills/process', 'skills/pipeline',
+  'skills/review', 'lib/verification.md', 'lib/task-layout.md']
+const CARRIER_AGENTS = ['tools-read-write-bash', 'tools-read-write', 'tools-read-bash', 'tools-edit',
+  'tools-web', 'session-modes']
+const CARRIER_WORKFLOWS = ['role', 'chain', 'make', 'probe']
+const CARRIER_PREFIX = 'session'
+const RX_META = /[.*+?^${}()|[\]\\]/g
+const rxEsc = s => String(s).replace(RX_META, '\\$&')
+function carrierTokens(line) {
+  const s = String(line == null ? '' : line)
+  const wf = CARRIER_WORKFLOWS.map(rxEsc).join('|')
+  const parts = [
+    CARRIER_PATHS.map(rxEsc).join('|'), // a path of this plugin, wherever it stands
+    `\\b(?:${CARRIER_AGENTS.map(rxEsc).join('|')})\\b`, // one of its agents by name
+    `\\b${rxEsc(CARRIER_PREFIX)}:[a-z][a-z0-9-]*`, // a launch name under its prefix
+    `\\bworkflows?/(?:${wf})\\.js\\b`, // a workflow file of it
+    `\\b(?:${wf})\\b[\`*_ -]+workflows?\\b`, // "the role workflow", "\`make\` workflow"
+    `\\bworkflows?[\`*_ -]+(?:${wf})\\b`, // "workflow chain", "workflows: probe"
+  ]
+  const re = new RegExp(parts.join('|'), 'gi')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) hits.push(m[0])
+  return hits
+}
+
 // bindClass(class, submodes): the class of one run; every stage asks it for its agent options.
 function bindClass(cls, subs) {
   const s = submodes(subs)
@@ -1215,6 +1250,7 @@ function probeResult(s) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
+    CARRIER_PATHS, CARRIER_AGENTS, CARRIER_WORKFLOWS, carrierTokens,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,

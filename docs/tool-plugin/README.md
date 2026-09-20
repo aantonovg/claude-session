@@ -10,7 +10,7 @@ only link between the two: the main model reads the contracts it has and picks a
 |---|---|
 | `.mcp.json` | the server: command, args, env. One server per plugin, or one tool group |
 | `agents/tools-<server>*.md` | one agent per tool group, its `tools:` line naming that server's tools (`mcp__<server>__<tool>`) plus the built-ins the job needs. No model and no reasoning level in the file: the call site passes both from the class the launch names |
-| `workflows/*.js` | the jobs that need those tools, one file per job, each with a `/* usage: */` block that fits the contract cap. The common role workflow of the base plugin never carries a tool-server role |
+| `workflows/*.js` | the jobs that need those tools, one file per job, each with a `/* usage: */` block that fits the contract cap. No plugin outside this one carries a job of this server |
 | `.claude-plugin/plugin.json` | name, version, description, and one `SessionStart` hook entry per workflow, each printing that workflow's contract line |
 | `bin/contract.sh` | the plugin's own contract printer: it reads the `/* usage: */` block of one workflow file, replaces every `{ROOT}` with the absolute plugin root, and prints one line of SessionStart JSON. Each plugin carries its own copy, so no plugin depends on another one's script |
 | `skills/` (optional) | a skill that explains the tool itself, when the tool needs explaining |

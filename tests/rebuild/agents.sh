@@ -27,9 +27,13 @@ ALLOWED="Bash Edit Read Write WebFetch WebSearch"
 if [ -n "$FOREIGN" ]; then
   WANT=
   WORKFLOWS=$(for f in "$P"/workflows/*.js; do [ -f "$f" ] && basename "$f" .js; done)
+  # the launch prefix of this root is its plugin name: an agentType of any other prefix names an
+  # agent of another plugin, which no agent file of this root can answer for
+  PREFIX=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$P/.claude-plugin/plugin.json" 2>/dev/null)
 else
   WANT="tools-read-write tools-read-bash tools-read-write-bash tools-edit tools-web"
   WORKFLOWS="role chain make probe"
+  PREFIX=session
 fi
 
 for w in $WANT; do
@@ -72,12 +76,24 @@ for f in "${FILES[@]}"; do
 done
 
 # a3: every agentType a workflow of this root launches resolves to an agent file of the same root.
+# The prefix is read, never stripped: `${t##*:}` would let `other:tools-edit` in a workflow of this
+# root, or a base-plugin name in a tool plugin, resolve to a file of the root that is being checked
+# and pass as its own agent. A qualified name must carry this root's prefix; a bare name is the
+# same root by definition.
+check "a3 the launch prefix of this root is known" test -n "$PREFIX"
 for w in $WORKFLOWS; do
   f=$P/workflows/$w.js
   [ -f "$f" ] || continue
   types=$(grep -oE "agentType: *['\"][^'\"]+['\"]" "$f" | sed -E "s/agentType: *['\"]//; s/['\"]$//" | sort -u)
   for t in $types; do
-    name=${t##*:}
+    case $t in
+      "$PREFIX":*) name=${t#"$PREFIX":} ;;
+      *:*) name= ;;
+      *) name=$t ;;
+    esac
+    check "a3 $w.js agentType $t is a name of this root (prefix $PREFIX)" test -n "$name"
+    [ -n "$name" ] || continue
+    check "a3 $w.js agentType $t carries no second prefix" bash -c 'case "$1" in *:*) exit 1 ;; esac' _ "$name"
     check "a3 $w.js agentType $t has an agent file" test -f "$A/$name.md"
   done
 done
