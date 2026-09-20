@@ -373,6 +373,11 @@ else
 fi
 if [ -f "$ROLEJS" ]; then
   check "r8 role.js resolves a task directory through roleOutPath()" grep -q 'roleOutPath(' <<<"$code"
+  # a layout directory is one level below the task directory and a shell redirect makes no
+  # directory: the tail carries the mkdir, built by writeHint() of the shared block
+  check "r8 role.js tells a shell-only role to make its directory" grep -Fq 'writeHint(' <<<"$code"
+  # the one role whose output is its return writes no file, so no path is demanded of it
+  check "r8 role.js checks the closure role on its return, not on a file" grep -Fq 'closureReport(' <<<"$code"
   check "r8 the contract of role names the task-directory form of out" \
     grep -qiE "^out \(.*(task|layout)" <<<"$(awk 'f==0&&/^\/\* usage:/{f=1} f{print} f&&/\*\//{exit}' "$ROLEJS")"
 fi
@@ -401,6 +406,7 @@ PY
   done
   check "r8 chain.js names no key outside the layout (extra:$bad)" test -z "$bad"
   check "r8 chain.js spells no stage path by hand" bash -c '! grep -qE "\\$\{DIR\}/[a-z]" <<<"$1"' _ "$ccode"
+  check "r8 chain.js tells a shell-only stage to make its directory" grep -Fq 'writeHint(' <<<"$ccode"
 fi
 
 if [ "$FAILS" -eq 0 ]; then echo "roles: PASS $N"; exit 0; fi

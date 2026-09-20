@@ -452,6 +452,25 @@ ck(lostOne.gap.filter(g => /direction 2/.test(g)).length === 1,
 ck(/direction/.test(String(lostOne.status)), 'the status of that answer counts it too')
 ck(b.probeResult({ ...PB, blockedStages: [] }).ok === true, 'no blocked direction, a whole research stage')
 ck(typeof b.probeResult(PB).status === 'string', 'every probe result carries a status sentence')
+
+// ---- the stage prompt makes the directory a shell redirect can not make ----
+// The `dir` rows of the layout put a stage file one level below the task directory, and the roles
+// on a shell-only tool set create their output with `> path`: no stage, script or role text of
+// this flow runs mkdir, so this hint is the only thing that keeps `> DIR/runs/run.md` from dying
+// with "No such file or directory".
+const hint = b.writeHint('/t/task/runs/run.md', true)
+ck(/mkdir -p \/t\/task\/runs\b/.test(hint), `a file one level down carries its mkdir (${hint})`)
+ck(hint[0] === ' ', 'the hint joins the sentence before it')
+ck(/mkdir -p \/t\/task\/evidence\b/.test(b.writeHint('/t/task/evidence/g1.md', true)),
+  'the evidence directory too')
+ck(/mkdir -p \/t\/task\b/.test(b.writeHint('/t/task/specification.md', true)),
+  'a file of the task directory names that directory, never the file')
+ck(b.writeHint('/report.md', true) === '', 'a file at the root has no directory to make')
+ck(b.writeHint('/t/task/runs/run.md', false) === '',
+  'a role with a Write tool gets no hint: the tool makes the directory itself')
+let hthrew = false
+try { b.writeHint('task/runs/run.md', true) } catch (e) { hthrew = true }
+ck(hthrew, 'a relative output path is an error, never a silent empty hint')
 console.log(out.join('\n'))
 JS
 
@@ -505,6 +524,7 @@ the directions the ceiling cut leave the probe answer whole|s/ && cut\.length ==
 a run that returned no closing report is finished anyway|s/const reportOk = report !== ''/const reportOk = true/
 a file named as out is taken for the directory of the stage files|s/if \(s\.slice\(cut \+ 1\)\.indexOf\('\.'\) === -1\) return s/return s/
 a closure return carrying nothing but its shape line passes for a report|s/while \(lines\.length && \/\^DONE\[\.!\]\?\$\/i\.test\(lines\[lines\.length - 1\]\.trim\(\)\)\) lines\.pop\(\)//
+a shell-only role is sent to write into a directory nobody made|s/  if \(!hasShell\) return ''/  if (true) return ''/
 MUT
 
 # ---- s3: the wiring of workflows/make.js ----
@@ -878,6 +898,9 @@ for w in make probe; do
   done
   check "s7 $w.js names no key outside the layout (extra:$bad)" test -z "$bad"
   check "s7 $w.js spells no stage path by hand" bash -c '! grep -qE "\\$\{DIR\}/[a-z]" <<<"$1"' _ "$code"
+  # a layout directory is one level below the task directory and a shell redirect makes no
+  # directory: the stage tail carries the mkdir, built by writeHint() of the shared block
+  check "s7 $w.js tells a shell-only stage to make its directory" grep -Fq 'writeHint(' <<<"$code"
 done
 
 if [ "$FAILS" -eq 0 ]; then echo "stages: PASS $N"; exit 0; fi

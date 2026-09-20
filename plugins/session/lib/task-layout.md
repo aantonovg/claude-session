@@ -49,7 +49,7 @@ the row stays as it is.
 | implementation-plan | implementation-plan.md | file | the planning stage (`plan-author`) | the code author, the fixer, closure | task.md |
 | tests | tests.md | file | the test stage (`test-author`): the test files it wrote, one path per line | the coverage check, the executor, closure | - |
 | coverage | coverage.md | file | the coverage stage (`coverage-checker`): scenarios without tests, tests without scenarios | closure, the user | - |
-| report | report.md | file | the closure stage: what ran, what the checks said, what stands open | the user, the next task | task.md |
+| report | report.md | file | the synthesis stage (`synthesizer`): the answer its inputs add up to. The closure stage writes no file: this harness lets no subagent write a report, so its report travels back as the text of its return | the user, the next task | task.md |
 | ledger | ledger.jsonl | state | one row per launch by the stage that launches (class, depth, slot, label), one stop row per agent by the SubagentStop hook | closure, the cost reading, the loop guard | ledger.jsonl |
 | evidence | evidence | dir | the research and evidence stages (`researcher`, `web-researcher`, `evidence-researcher`, `evidence`), one bundle per run | triage, the synthesis stage, closure | evidence |
 | reviews | reviews | dir | the review chain: hint lists per critic, the accepted list of triage, the result of a key-document check | the fixer, closure, the user | reviews |
@@ -69,6 +69,10 @@ A role launched with the task directory as its `out` writes the file of this tab
 launched with a file path writes that path. A role with no row here always needs a path: its
 output is not a file of the task group.
 
+`closure-author` has no row and writes no file at all: it reads `out` as the directory the run
+filled and returns its report as text, because a subagent of this harness cannot hand a report
+file to anybody. The stage that launches it checks the return, never a path.
+
 <!-- role output table (read by bin/build.sh; every row becomes an entry of LAYOUT.roleOut) -->
 
 | role | key | stem |
@@ -80,7 +84,6 @@ output is not a file of the task group.
 | code-author | changes | code |
 | fixer | changes | fix |
 | coverage-checker | coverage | |
-| closure-author | report | |
 | critic | reviews | hints |
 | evidence-triage | reviews | accepted |
 | evidence-researcher | evidence | answers |
