@@ -15,8 +15,10 @@
 #                   under, so the variant of a verdict line says which set was measured
 # --hide-old: the plugin argument points at a copy of the worktree plugin made inside <dir>, with
 #   the contract entries of the five old workflows taken out of the copy's plugin.json and the old
-#   process skills left out of the copy, so the gate measures the new set only. The files
-#   themselves are deleted in P9; this flag only hides them from one session.
+#   workflow files and process skills left out of the copy itself, so the gate measures the new set
+#   only: a workflows/ directory is auto-loaded, so a file left in the copy would stay launchable
+#   and listed however the contract entries read. The files themselves are deleted in P9 in the
+#   worktree; this flag only hides them from one session.
 #
 # The mechanism is the one the U7 answer line froze (plan/control-calls.md):
 #   real HOME, a scratch project directory whose .claude/settings.json sets
@@ -89,14 +91,30 @@ LOADED=$PLUG
 if [ "$HIDE_OLD" = 1 ]; then
   LOADED=$DIR/plugin
   mkdir -p "$LOADED" || exit 1
-  # copied entry by entry, skills apart: the old process skills are left out of the copy instead
-  # of being copied and then removed, so this script deletes nothing anywhere
+  # copied entry by entry, skills and workflows apart: the old process skills and the old workflow
+  # files are left out of the copy instead of being copied and then removed, so this script deletes
+  # nothing anywhere. A plugin auto-loads every file of its workflows/ directory, so taking the old
+  # contract entries out of plugin.json alone would leave the old set launchable and listed, and the
+  # gate would not measure the new set.
   [ -e "$PLUG/.claude-plugin" ] && { cp -R "$PLUG/.claude-plugin" "$LOADED/" || exit 1; }
   for e in "$PLUG"/*; do
     [ -e "$e" ] || continue
-    [ "$(basename "$e")" = skills ] && continue
+    b=$(basename "$e")
+    [ "$b" = skills ] && continue
+    [ "$b" = workflows ] && continue
     cp -R "$e" "$LOADED/" || exit 1
   done
+  if [ -d "$PLUG/workflows" ]; then
+    mkdir -p "$LOADED/workflows" || exit 1
+    for w in "$PLUG"/workflows/*; do
+      [ -e "$w" ] || continue
+      b=$(basename "$w")
+      skip=0
+      for o in $OLD_WF; do [ "$b" = "$o.js" ] && skip=1; done
+      [ "$skip" = 1 ] && continue
+      cp -R "$w" "$LOADED/workflows/$b" || exit 1
+    done
+  fi
   if [ -d "$PLUG/skills" ]; then
     mkdir -p "$LOADED/skills" || exit 1
     for s in "$PLUG"/skills/*; do

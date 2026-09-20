@@ -89,7 +89,9 @@ Return the value on the last line, alone, in the form \`${KEY} <value>\`. On a p
 phase('Metrics')
 const r = await agent(PROMPT, O)
 const LINE = lastLine(r)
-if (!LINE || /BLOCKED:/.test(String(r))) {
+// the word counts on the last line alone: this script's own prompt asks the agent to write it
+// there, so a return quoting it anywhere above (a finding, a path, the rule itself) is no block
+if (!LINE || /^BLOCKED:/.test(LINE)) {
   return result({ key: KEY, store: STORE, blocked: LINE || 'the metrics agent returned nothing' })
 }
 if (!LINE.startsWith(`${KEY} `)) {
