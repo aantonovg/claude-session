@@ -343,9 +343,19 @@ for (const r of b.roleNames()) {
   if (!d) continue
   covered++
   ck(b.taskKeys().includes(d.key), `${r} defaults into the layout key ${d.key}`)
-  const p = b.roleOutPath('/t/task', r)
+  const p = b.roleOutPath('/t/task', r, 'r1')
   ck(typeof p === 'string' && p.startsWith('/t/task/'), `${r} builds a path under the task directory (got ${p})`)
   ck(doc.includes(p.slice('/t/task/'.length).split('/')[0]), `the layout document names the file of ${r}`)
+  // a `dir` row is one file per run: its path carries the run key, so a second launch of the same
+  // role into the same task directory writes a second file instead of over the first one
+  if (b.taskEntry(d.key).kind === 'dir') {
+    ck(p !== b.roleOutPath('/t/task', r, 'r2'), `${r} writes one file per run, not one file (got ${p})`)
+    let missing = false
+    try { b.roleOutPath('/t/task', r) } catch (e) { missing = /run key/.test(String(e.message)) }
+    ck(missing, `${r} without a run key is an error, never a silent overwrite`)
+  } else {
+    ck(p === b.roleOutPath('/t/task', r, 'r2'), `${r} writes one document of the task, run key or not`)
+  }
 }
 ck(covered >= 10, `most roles carry a default output (got ${covered})`)
 // the authors of the artifact chain write the file of their own level
@@ -353,9 +363,14 @@ const want = { 'spec-author': 'specification.md', 'scenario-author': 'scenarios.
 for (const [role, file] of Object.entries(want)) {
   ck(b.roleOutPath('/t/task', role) === `/t/task/${file}`, `${role} writes ${file} (got ${b.roleOutPath('/t/task', role)})`)
 }
+// the roles of the run directories, named: the run key stands in the file name itself
+const perRun = { 'code-author': 'changes/code-r1.md', fixer: 'changes/fix-r1.md', critic: 'reviews/hints-r1.md', executor: 'runs/run-r1.md' }
+for (const [role, file] of Object.entries(perRun)) {
+  ck(b.roleOutPath('/t/task', role, 'r1') === `/t/task/${file}`, `${role} writes ${file} (got ${b.roleOutPath('/t/task', role, 'r1')})`)
+}
 // a role with no row keeps `out` required: the script may not invent a file for it
 ck(b.roleOut('translator') === null, 'a role with no layout row has no default')
-ck(b.roleOutPath('/t/task', 'translator') === null, 'and builds no path')
+ck(b.roleOutPath('/t/task', 'translator', 'r1') === null, 'and builds no path')
 console.log(out.join('\n'))
 JS
 node "$T/roleout.js" "$LIB/block.js" "$LAYOUT" > "$T/roleout.out" 2>&1
@@ -380,6 +395,10 @@ if [ -f "$ROLEJS" ]; then
   # whole decision is textResult() of the shared block, executed by r9 below
   check "r8 role.js checks the closure role on its return, not on a file" grep -Fq 'textResult(' <<<"$code"
   check "r8 role.js reads a text-mode out through taskDirOf()" grep -Fq 'taskDirOf(' <<<"$code"
+  # the one rule all four scripts read `out` by: a task directory handed over without a trailing
+  # slash is still the task directory, never a file whose output lands one level up in tasks/
+  check "r8 role.js decides the form of out through outForm()" grep -Fq 'outForm(OUT)' <<<"$code"
+  check "r8 role.js hands the run key of the launch to roleOutPath()" grep -Fq 'roleOutPath(form.dir, ROLE, RUNKEY)' <<<"$code"
   check "r8 the contract of role names the task-directory form of out" \
     grep -qiE "^out \(.*(task|layout)" <<<"$(awk 'f==0&&/^\/\* usage:/{f=1} f{print} f&&/\*\//{exit}' "$ROLEJS")"
 fi
@@ -408,6 +427,9 @@ PY
   done
   check "r8 chain.js names no key outside the layout (extra:$bad)" test -z "$bad"
   check "r8 chain.js spells no stage path by hand" bash -c '! grep -qE "\\$\{DIR\}/[a-z]" <<<"$1"' _ "$ccode"
+  check "r8 chain.js takes its task directory from outForm" grep -Fq 'outForm(OUT)' <<<"$ccode"
+  check "r8 chain.js builds the files of a run directory with the run key" grep -Fq 'runStem(stem, RUNKEY)' <<<"$ccode"
+  check "r8 chain.js demands that run key" grep -Fq 'if (!RUNKEY) return fail(' <<<"$ccode"
   check "r8 chain.js tells a shell-only stage to make its directory" grep -Fq 'writeHint(' <<<"$ccode"
 fi
 
@@ -444,6 +466,30 @@ ck(threw, 'a document path is no task directory')
 threw = false
 try { b.taskDirOf('rel/dir') } catch (e) { threw = true }
 ck(threw, 'a relative path is refused')
+// outForm: the one rule all four scripts read `out` by. A trailing slash decides nothing, because
+// a launcher is free to drop it: the last segment decides, and only a document suffix makes a file
+ck(b.outForm('/p/tasks/t/').file === null, 'a task directory with a trailing slash is a directory')
+ck(b.outForm('/p/tasks/t').file === null, 'a task directory without one is the same directory')
+ck(b.outForm('/p/tasks/t').dir === '/p/tasks/t', 'and the directory is itself, not its parent')
+ck(b.outForm('/p/tasks/2026-09-20-v0.16').dir === '/p/tasks/2026-09-20-v0.16', 'a dotted slug is a directory too')
+const ff = b.outForm('/p/tasks/t/reviews/accepted.md')
+ck(ff.file === '/p/tasks/t/reviews/accepted.md', 'a document is the file it names')
+ck(ff.dir === '/p/tasks/t/reviews', 'and its directory is the one it sits in')
+threw = false
+try { b.outForm('rel/out.md') } catch (e) { threw = true }
+ck(threw, 'a relative out is refused')
+threw = false
+try { b.outForm('/out.md') } catch (e) { threw = true }
+ck(threw, 'a file at the root sits in no task directory')
+// runStem: a `dir` row of the layout is one file per run, and the key comes from the launcher
+ck(b.runStem('fix', 'r2') === 'fix-r2', 'the run key stands in the file name')
+ck(b.runStem('fix', 'r2') !== b.runStem('fix', 'r3'), 'two runs write two files')
+threw = false
+try { b.runStem('fix', '') } catch (e) { threw = true }
+ck(threw, 'a missing run key is an error, never a silent overwrite')
+threw = false
+try { b.roleOutPath('/t/task', 'code-author') } catch (e) { threw = true }
+ck(threw, 'and a role of a run directory launched without one writes nothing')
 console.log(out.join('\n'))
 JS
 node "$T/textres.js" "$LIB/block.js" > "$T/textres.out" 2>&1
@@ -471,6 +517,8 @@ done <<'MUT'
 a text stage hands back a path to a file nobody wrote|s/out: null \}/out: 'x' }/
 a gap of the closing report passes as a finished stage|s/if \(!c\.ok\) return \{ \.\.\.h/if (false) return { ...h/
 a task directory with a document suffix is taken as one|s/\.\(md\|jsonl/.(mdx|jsonl/
+a task directory is read as a file and its stage files land one level up|s/\{ dir: taskDirOf\(p\), file: null \}/{ dir: p.slice(0, cut), file: p }/
+a file of one run overwrites the file of the run before it|s/if \(!k\) throw new Error/if (false) throw new Error/
 MUT
 
 if [ "$FAILS" -eq 0 ]; then echo "roles: PASS $N"; exit 0; fi

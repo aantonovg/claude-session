@@ -19,8 +19,12 @@
 # are handled. Model-invoked skills do produce a Skill tool call, hence the
 # PostToolUse branch.
 #
-# State: ~/.claude/session-state/<session_id>.json, one key per skill, last wins.
-# Marker: ~/.claude/session-state/<session_id>.seeded means the one-time seed for
+# State: ~/.claude/session-modes/<session_id>.json, one key per skill, last wins.
+# The directory is the one the statusline outside this plugin reads (control call
+# U9); the full plan names no other one, so the names inside the file change with
+# this rebuild and the path does not - a renamed path would leave the statusline
+# reading a directory nothing writes until a second break repaired it.
+# Marker: ~/.claude/session-modes/<session_id>.seeded means the one-time seed for
 # this session is done, or deliberately suppressed. A prompt with no marker reads
 # the head of the transcript once and replays the session commands it finds, so a
 # session whose opening commands were missed still shows its modes. Every event
@@ -35,7 +39,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 
-STATE_DIR="$HOME/.claude/session-state"
+STATE_DIR="$HOME/.claude/session-modes"
 [ -z "$SESSION_ID" ] && exit 0
 # The id goes straight into a path, so anything but [A-Za-z0-9._-] is refused:
 # a "/" or ".." would write outside the state dir and the prune would follow it.

@@ -47,7 +47,7 @@ fi
 
 # ---- h1: hooks/modes.sh, the mode state of the loaded session skills ----
 SID=test-session
-STATE_DIR=$HOME/.claude/session-state
+STATE_DIR=$HOME/.claude/session-modes
 STATE=$STATE_DIR/$SID.json
 MARKER=$STATE_DIR/$SID.seeded
 
@@ -100,7 +100,11 @@ for old in pipeline review; do
   state "bare old skill $old changes nothing" '{"base":"base"}'
 done
 check "h1 modes.sh names no old process skill" bash -c '! grep -Eq "(^|[^a-z-])(pipeline|review)([^a-z-]|$)" "$1"' _ "$MODES"
-check "h1 modes.sh names no old state directory" bash -c '! grep -Fq "session-modes" "$1"' _ "$MODES"
+# the state directory of the U9 answer: the statusline outside this plugin reads
+# ~/.claude/session-modes/<session_id>.json, and the full plan names no other directory, so the
+# names inside the file are the only thing this rebuild changes about that file
+check "h1 modes.sh writes the state directory the statusline reads" grep -Fq '$HOME/.claude/session-modes' "$MODES"
+check "h1 modes.sh writes no second state directory" bash -c '! grep -Fq "session-state" "$1"' _ "$MODES"
 # the old depths were fast|standard|full; `full` is a depth of the new set too, so only the two
 # retired words may not stand in the hook. The alternation this check used to hold was escaped,
 # so it matched the literal string `fast|standard|full` and passed over any word at all.
@@ -170,12 +174,18 @@ run "$(tpayload "$TR" hello)"; state "a recorded key is not clobbered by the see
 
 # a session id is a path segment: anything else is refused outright
 reset; printf '%s' "$(jq -nc '{hook_event_name:"UserPromptSubmit",session_id:"../evil",prompt:"/session:base"}')" | bash "$MODES" >/dev/null 2>&1
-check "h1 a session id with a path separator writes nothing" bash -c '[ ! -e "$1/.claude/evil.json" ] && [ ! -d "$1/.claude/session-state" ]' _ "$HOME"
+check "h1 a session id with a path separator writes nothing" bash -c '[ ! -e "$1/.claude/evil.json" ] && [ ! -d "$1/.claude/session-modes" ]' _ "$HOME"
 reset
 
 # ---- h2: hooks/ledger-stop.sh, one stop row per agent against tasks/current ----
+# This suite proves the reader of the pointer and nothing about its writer: no file of P5 writes or
+# removes tasks/current. The writer is the process skill of P8 (plan section P8, `core.md`: the
+# task dir and the ledger), and the executed cases below are the two states the hook must survive —
+# a pointer that stands and no pointer at all.
 POINTER_REL=$(grep -oE '[A-Za-z0-9./<>_-]*tasks/current' "$LAYOUT" | head -1)
 check "h2 lib/task-layout.md names the tasks/current pointer" test -n "$POINTER_REL"
+check "h2 lib/task-layout.md names the stage that writes it" grep -Fq 'written by the process skill' "$LAYOUT"
+check "h2 lib/task-layout.md names the stage that removes it" grep -Fq 'removed by the process skill' "$LAYOUT"
 check "h2 ledger-stop.sh reads that pointer" grep -Fq 'tasks/current' "$LEDGER_HOOK"
 LEDGER_NAME=$(grep -oE 'ledger\.jsonl' "$LAYOUT" | head -1)
 check "h2 lib/task-layout.md names the ledger file" test "$LEDGER_NAME" = ledger.jsonl

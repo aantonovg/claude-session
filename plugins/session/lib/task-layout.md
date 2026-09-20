@@ -20,9 +20,11 @@ The pointer to the task a session is working on:
 ~/.claude/projects/<encoded-cwd>/tasks/current
 ```
 
-One line: the absolute path of the task directory. It is written when the task directory is
-created and removed when the task is closed. The stop hook reads it and nothing else: with no
-pointer an ordinary session writes no ledger row at all.
+One line: the absolute path of the task directory. The pointer is
+written by the process skill when the task directory is created and
+removed by the process skill when the task is closed; no hook and no workflow writes it.
+`hooks/ledger-stop.sh` reads it and nothing else: with no pointer an ordinary session writes no
+ledger row at all.
 
 A file of the layout is written by one stage and read by later ones. Nobody rewrites a file of a
 level above their own: a stage that disagrees with the level above says so in its own file, and

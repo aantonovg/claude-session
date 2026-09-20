@@ -199,13 +199,30 @@ function outDir(out) {
 // `2026-09-20-v0.16` stays itself where outDir()'s dot rule would drop it and put every file of
 // the task one level up, in `tasks/`. A last segment carrying a document suffix is a file, never
 // a task directory: it stops the launch instead of becoming a directory of that name.
+const TASK_FILE_SUFFIX = /\.(md|jsonl?|txt|js|sh|ya?ml)$/i
 function taskDirOf(out) {
   const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
   if (!s || s[0] !== '/' || s.length < 2) throw new Error(`taskDirOf needs an absolute task directory, got ${out}`)
-  if (/\.(md|jsonl?|txt|js|sh|ya?ml)$/i.test(s.slice(s.lastIndexOf('/') + 1))) {
+  if (TASK_FILE_SUFFIX.test(s.slice(s.lastIndexOf('/') + 1))) {
     throw new Error(`taskDirOf needs a task directory, got the file ${out}`)
   }
   return s
+}
+
+// outForm(out) -> { dir, file }: the one rule every workflow reads its `out` argument by. The
+// contract of all four scripts says the same thing — an absolute task directory, or one file
+// inside a task directory — so the form may never hang on a trailing slash a launcher is free to
+// drop: a task directory handed over without one would fall to the file branch, and the hints, the
+// bundles and the change lists of that run would land in `tasks/` beside the task instead of in
+// it. The rule is the rule of taskDirOf(): a last segment carrying a document suffix is a file,
+// anything else is the task directory itself, whatever its slug reads like.
+function outForm(out) {
+  const p = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!p || p[0] !== '/' || p.length < 2) throw new Error(`out must be an absolute task directory or a file inside one, got ${out}`)
+  const cut = p.lastIndexOf('/')
+  if (!TASK_FILE_SUFFIX.test(p.slice(cut + 1))) return { dir: taskDirOf(p), file: null }
+  if (cut < 1) throw new Error(`out must name a file inside a task directory, got ${out}`)
+  return { dir: taskDirOf(p.slice(0, cut)), file: p }
 }
 
 // ---- the task file group of idea 8.8 ----
@@ -244,6 +261,17 @@ function taskPath(dir, key, stem) {
   return `${d}/${e.path}/${s}.md`
 }
 
+// runStem(stem, run): the stem of one file of a `dir` row. A `dir` row of lib/task-layout.md is
+// one file per run of its stage, and a script has no clock, no random and no file access: the key
+// that tells two runs apart comes from the launcher (`args.run`). Without it the second launch of
+// the same role into the same task directory would write over the file of the first one and hand
+// its launcher a success-shaped result, so a missing key is an error here, never a silent overwrite.
+function runStem(stem, run) {
+  const k = String(run == null ? '' : run).trim()
+  if (!k) throw new Error(`a file of one run needs a run key (args.run): ${stem || '(no stem)'} would write over the file of the run before it`)
+  return stem ? `${stem}-${k}` : k
+}
+
 // writeHint(out, hasShell): the sentence a stage needs before it can write `out`. A `dir` row of
 // the layout puts its file one level below the task directory, and the roles on a shell-only tool
 // set create their output with a redirect: `> <dir>/runs/run.md` dies with "No such file or
@@ -274,9 +302,13 @@ function roleOut(role) {
   const r = LAYOUT.roleOut[role]
   return r ? { key: r.key, stem: r.stem || '' } : null
 }
-function roleOutPath(dir, role) {
+// roleOutPath(dir, role, run): that file under the task directory. A `dir` row is one file per
+// run, so it takes the run key of the launch and throws without one (runStem); a `file` row is one
+// document of the task and takes no key.
+function roleOutPath(dir, role, run) {
   const r = roleOut(role)
-  return r ? taskPath(dir, r.key, r.stem) : null
+  if (!r) return null
+  return taskPath(dir, r.key, taskEntry(r.key).kind === 'dir' ? runStem(r.stem, run) : r.stem)
 }
 
 // closureReport(ret): the closing report of a run, read out of the return of its closure stage.
@@ -1147,7 +1179,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
-    LAYOUT, taskDirOf, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
+    LAYOUT, taskDirOf, outForm, taskEntry, taskKeys, taskPath, runStem, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
