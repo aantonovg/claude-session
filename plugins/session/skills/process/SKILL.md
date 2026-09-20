@@ -1,6 +1,6 @@
 ---
 name: process
-description: The task process: stages, gates, task files and user points for a code change, an MR review, an investigation, a document or an infrastructure change; invoke at session start with a task type and a depth.
+description: The task process: stages, gates, task files and user points for a task of any type the list under "Start" names; invoke at session start with a task type and a depth.
 disable-model-invocation: true
 ---
 
@@ -17,9 +17,17 @@ stage can do, with no edit of this page.
 0. Read `core.md` next to this file first: task directory, ledger, cost rules, harness gate,
    `Sources` and `Oracles` blocks, the ladder, the artifact chain, how a review is read as an
    evidence chain, the status shape, the loop guard. Its rules are part of this process.
-1. Arguments, any order, each at most once: a task type `code`, `mr`, `look`, `doc` or `ops`, and
-   a depth `lite`, `std` or `full`. The type picks the process file read next to this one
-   (`code.md`, `mr.md`, `look.md`, `doc.md`, `ops.md`); the depth picks the column of every table.
+1. Arguments, any order, each at most once: a task type and a depth `lite`, `std` or `full`. The
+   depth picks the column of every table. The task types are this one list, each with the process
+   file it picks, read next to this one; nothing else in this skill enumerates them:
+
+   | task type | process file | the work |
+   |---|---|---|
+   | `code` | `code.md` | a code change |
+   | `mr` | `mr.md` | an MR review |
+   | `look` | `look.md` | an investigation |
+   | `doc` | `doc.md` | a document |
+   | `ops` | `ops.md` | an infrastructure change |
 2. Class and depth are two axes, neither derived from the other. The class comes from the base
    reply line, `c3` when the user named none; `full` at `c2` and `lite` at `c5` are both valid.
    The depth is the argument; with no argument the default is `full`, and only the user lowers it.
@@ -39,13 +47,16 @@ gate, and only then does the next stage start. The main session writes the one-l
 gate, the ledger rows and the final report in chat; the files are written by the carriers it
 launches.
 
+The task file of a row is the file of that level; which files a depth collapses into one file, and
+which it drops, stands in `core.md`, "Task directory", and nowhere else.
+
 | stage | task file | gate | lite | std | full |
 |---|---|---|---|---|---|
 | `intent` — the problem, the quality criteria, the open decisions | `intent.md`, `decisions.md` | the user confirms the text and the criteria; every open decision names what it rests on | written by the main session, no gate | written by the main session, user gate | written by the main session, user gate |
-| `subtasks` — the goal cut into parts | `subtasks.md` | every part of the goal has a subtask, no subtask outside the goal | folded into `intent.md` | yes | yes |
-| `specification` — requirements, invariants, constraints | `specification.md` | traceability to the subtasks, every non-functional requirement measurable | folded into `intent.md` | yes | yes |
+| `subtasks` — the goal cut into parts | `subtasks.md` | every part of the goal has a subtask, no subtask outside the goal | folded into the intent level | yes | yes |
+| `specification` — requirements, invariants, constraints | `specification.md` | traceability to the subtasks, every non-functional requirement measurable | folded into the intent level | yes | yes |
 | `scenarios` — the scenarios as text, ladder level d | `scenarios.md` | every requirement and invariant has a scenario, negatives included | one-liners | yes | yes, with negatives |
-| `verification-plan` — the oracle of every invariant, and the plan of the work | `verification-plan.md`, `implementation-plan.md` | every invariant has an oracle row: `existing`, `missing` or `no possible`; the plan names the steps and their order | folded into `intent.md` | yes | yes |
+| `verification-plan` — the oracle of every invariant, and the plan of the work | `verification-plan.md`, `implementation-plan.md` | every invariant has an oracle row: `existing`, `missing` or `no possible`; the plan names the steps and their order | folded into the intent level | yes | yes |
 | `checks` — tests or control calls, ladder level c | `tests.md` | coverage read from the two lists; no scenario id in a test name | – | yes | yes, plus the negative control |
 | `result` — the code, the document, the state, ladder levels a and b | `changes`, `runs` | the oracle is run and the run reports PASS | yes | yes | yes |
 | `review` — only where no oracle is possible, ladder level e | `reviews`, `evidence` | evidence chain over the approved aspects, its facts written into `evidence`; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |
@@ -71,7 +82,7 @@ ledger.
 
 | depth | agents per stage | fix cycles per result | task files | user gates |
 |---|---|---|---|---|
-| `lite` | 2 | 1 | one `task.md`, sections instead of files | none: the work starts at once |
+| `lite` | 2 | 1 | the file group, collapsed as `core.md` says | none: the work starts at once |
 | `std` | 5 | 2 | the file group | intent with criteria, open decisions, closure |
 | `full` | 10 | 3 | the file group | the same three, plus the aspect list of the review |
 
