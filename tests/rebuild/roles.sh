@@ -99,8 +99,12 @@ for l in lines:
         skip = True
         continue
     code.append(l)
+text = '\n'.join(code)
+# a key of the task layout inside side('<key>', ...) is a file of the task group, never a role
+# launch: the two name spaces overlap (`evidence`), so the key is cut before the scan
+text = re.sub(r"side\(\s*'[a-z-]+'", 'side(', text)
 hits = set()
-for m in re.finditer(r"""['"]([a-z][a-z-]*)['"]""", '\n'.join(code)):
+for m in re.finditer(r"""['"]([a-z][a-z-]*)['"]""", text):
     if m.group(1) in catalog: hits.add(m.group(1))
 print(' '.join(sorted(hits)))
 PY
@@ -321,6 +325,83 @@ done <<'MUT'
 an empty output passes|s/if \(!\(n > 0\)\)/if (false)/
 the last matching line decides instead of the first|s/RE\.test\(l\)\)\[0\]/RE.test(l)).pop()/
 MUT
+
+# ---- r8 (P5): the `out` default of every role is a path of lib/task-layout.md ----
+# A role launched with a task directory instead of a file name writes the file the task layout
+# gives that role, so the process skill reads what the role wrote without a second agreement
+# (idea 8.8). Executed over lib/block.js; the two scripts are only grepped.
+LAYOUT=$LIB/task-layout.md
+check "r8 lib/task-layout.md exists" test -f "$LAYOUT"
+cat > "$T/roleout.js" <<'JS'
+const b = require(process.argv[2])
+const out = []
+const ck = (cond, what) => out.push(`${cond ? 'ok' : 'bad'} ${what}`)
+const doc = require('fs').readFileSync(process.argv[3], 'utf8')
+let covered = 0
+for (const r of b.roleNames()) {
+  const d = b.roleOut(r)
+  if (!d) continue
+  covered++
+  ck(b.taskKeys().includes(d.key), `${r} defaults into the layout key ${d.key}`)
+  const p = b.roleOutPath('/t/task', r)
+  ck(typeof p === 'string' && p.startsWith('/t/task/'), `${r} builds a path under the task directory (got ${p})`)
+  ck(doc.includes(p.slice('/t/task/'.length).split('/')[0]), `the layout document names the file of ${r}`)
+}
+ck(covered >= 10, `most roles carry a default output (got ${covered})`)
+// the authors of the artifact chain write the file of their own level
+const want = { 'spec-author': 'specification.md', 'scenario-author': 'scenarios.md', 'coverage-checker': 'coverage.md', 'plan-author': 'implementation-plan.md' }
+for (const [role, file] of Object.entries(want)) {
+  ck(b.roleOutPath('/t/task', role) === `/t/task/${file}`, `${role} writes ${file} (got ${b.roleOutPath('/t/task', role)})`)
+}
+// a role with no row keeps `out` required: the script may not invent a file for it
+ck(b.roleOut('translator') === null, 'a role with no layout row has no default')
+ck(b.roleOutPath('/t/task', 'translator') === null, 'and builds no path')
+console.log(out.join('\n'))
+JS
+node "$T/roleout.js" "$LIB/block.js" "$LAYOUT" > "$T/roleout.out" 2>&1
+if [ ! -s "$T/roleout.out" ]; then
+  fail "r8 the role-output suite produced no line (node failed)"
+  sed 's/^/  /' "$T/roleout.out" 2>/dev/null
+else
+  while IFS= read -r line; do
+    case $line in
+      "ok "*) pass ;;
+      "bad "*) fail "r8 ${line#bad }" ;;
+      *) fail "r8 unexpected output: $line" ;;
+    esac
+  done < "$T/roleout.out"
+fi
+if [ -f "$ROLEJS" ]; then
+  check "r8 role.js resolves a task directory through roleOutPath()" grep -q 'roleOutPath(' <<<"$code"
+  check "r8 the contract of role names the task-directory form of out" \
+    grep -qiE "^out \(.*(task|layout)" <<<"$(awk 'f==0&&/^\/\* usage:/{f=1} f{print} f&&/\*\//{exit}' "$ROLEJS")"
+fi
+CHAINJS=$WF/chain.js
+if [ -f "$CHAINJS" ]; then
+  ccode=$(python3 - "$CHAINJS" <<'PY'
+import sys
+lines = open(sys.argv[1], encoding='utf-8').read().split('\n')
+skip, out = False, []
+for l in lines:
+    s = l.strip()
+    if skip:
+        if s.startswith(('// ---- end shared block', '// ---- end roles', '// ---- end aspects')): skip = False
+        continue
+    if s.startswith(('// ---- shared block', '// ---- roles', '// ---- aspects')):
+        skip = True
+        continue
+    out.append(l)
+print('\n'.join(out))
+PY
+)
+  check "r8 chain.js builds its stage paths through taskPath()" grep -q 'taskPath(' <<<"$ccode"
+  bad=
+  for k in $(grep -oE "side\('[a-z-]+'" <<<"$ccode" | sed "s/side('//; s/'//" | sort -u); do
+    node -e 'require(process.argv[1]).taskEntry(process.argv[2])' "$LIB/block.js" "$k" 2>/dev/null || bad="$bad $k"
+  done
+  check "r8 chain.js names no key outside the layout (extra:$bad)" test -z "$bad"
+  check "r8 chain.js spells no stage path by hand" bash -c '! grep -qE "\\$\{DIR\}/[a-z]" <<<"$1"' _ "$ccode"
+fi
 
 if [ "$FAILS" -eq 0 ]; then echo "roles: PASS $N"; exit 0; fi
 echo "roles: FAIL $FAILS failures, $N checks passed"

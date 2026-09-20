@@ -7,6 +7,7 @@
 #
 # What it renders:
 #   lib/block.js   = lib/block.src.js with the table of lib/classes.json at the class-table marker
+#                    and the two tables of lib/task-layout.md at the task-layout marker
 #   a target file  = its generated regions replaced, by marker pair:
 #     "// ---- shared block" ... "// ---- end shared block"   the text of lib/block.js
 #     "<!-- class table"     ... "<!-- end class table"       the class table as a markdown table
@@ -79,12 +80,67 @@ def render_table():
     return out
 
 
+def rows(text, begin, end, path):
+    """The rows of one markdown table between a marker pair, header and separator dropped."""
+    r = region(text, begin, end, path)
+    if r is None:
+        print('build.sh: %s has no %s marker' % (path, begin)); sys.exit(2)
+    before, after = r
+    body = text.split('\n')[len(before):len(text.split('\n')) - len(after)]
+    out = []
+    for l in body:
+        s = l.strip()
+        if not s.startswith('|'):
+            continue
+        cells = [c.strip() for c in s.strip('|').split('|')]
+        if not cells or set(''.join(cells)) <= set('-: '):
+            continue
+        out.append(cells)
+    if len(out) < 2:
+        print('build.sh: %s carries no rows under %s' % (path, begin)); sys.exit(2)
+    return out[1:]  # the first row is the header
+
+
+def render_layout():
+    """The two tables of lib/task-layout.md as the LAYOUT object of the shared block."""
+    path = os.path.join(lib, 'task-layout.md')
+    if not os.path.exists(path):
+        print('build.sh: %s is missing' % path); sys.exit(2)
+    text = open(path, encoding='utf-8').read()
+    files = {}
+    for cells in rows(text, '<!-- layout table', '<!-- end layout table', path):
+        if len(cells) < 6:
+            print('build.sh: %s: layout row with %d cells' % (path, len(cells))); sys.exit(2)
+        key, rel, kind, lite = cells[0], cells[1], cells[2], cells[5]
+        if kind not in ('file', 'dir', 'state'):
+            print('build.sh: %s: unknown kind %s of %s' % (path, kind, key)); sys.exit(2)
+        files[key] = {'path': rel, 'kind': kind, 'lite': lite}
+    role_out = {}
+    for cells in rows(text, '<!-- role output table', '<!-- end role output table', path):
+        if len(cells) < 2:
+            print('build.sh: %s: role row with %d cells' % (path, len(cells))); sys.exit(2)
+        role, key = cells[0], cells[1]
+        stem = cells[2] if len(cells) > 2 else ''
+        if key not in files:
+            print('build.sh: %s: role %s names the unknown key %s' % (path, role, key)); sys.exit(2)
+        if files[key]['kind'] == 'dir' and not stem:
+            print('build.sh: %s: role %s writes into the directory %s without a stem' % (path, role, key)); sys.exit(2)
+        if files[key]['kind'] != 'dir' and stem:
+            print('build.sh: %s: role %s names a stem for the file %s' % (path, role, key)); sys.exit(2)
+        role_out[role] = {'key': key, 'stem': stem}
+    return {'files': files, 'roleOut': role_out}
+
+
 def render_block():
     src = open(src_path, encoding='utf-8').read()
     body = ['const CLASSES = ' + json.dumps(classes, indent=2, ensure_ascii=False)]
     text, found = put(src, '// ---- class table', '// ---- end class table', body, src_path)
     if not found:
         print('build.sh: %s has no class-table marker' % src_path); sys.exit(2)
+    lay = ['const LAYOUT = ' + json.dumps(render_layout(), indent=2, ensure_ascii=False)]
+    text, found = put(text, '// ---- task layout', '// ---- end task layout', lay, src_path)
+    if not found:
+        print('build.sh: %s has no task-layout marker' % src_path); sys.exit(2)
     return text
 
 

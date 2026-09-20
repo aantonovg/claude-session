@@ -415,6 +415,208 @@ function outDir(out) {
   return cut < 1 ? '/' : s.slice(0, cut)
 }
 
+// ---- the task file group of idea 8.8 ----
+// One layout for every process and every depth, source lib/task-layout.md: bin/build.sh renders
+// its two tables here, so the file a stage writes and the file the process skill reads are one
+// name. Every path a workflow hands to a stage is built by taskPath(), never spelled in a script.
+
+// ---- task layout ----
+const LAYOUT = {
+  "files": {
+    "intent": {
+      "path": "intent.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "subtasks": {
+      "path": "subtasks.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "decisions": {
+      "path": "decisions.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "specification": {
+      "path": "specification.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "scenarios": {
+      "path": "scenarios.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "verification-plan": {
+      "path": "verification-plan.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "implementation-plan": {
+      "path": "implementation-plan.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "tests": {
+      "path": "tests.md",
+      "kind": "file",
+      "lite": "-"
+    },
+    "coverage": {
+      "path": "coverage.md",
+      "kind": "file",
+      "lite": "-"
+    },
+    "report": {
+      "path": "report.md",
+      "kind": "file",
+      "lite": "task.md"
+    },
+    "ledger": {
+      "path": "ledger.jsonl",
+      "kind": "state",
+      "lite": "ledger.jsonl"
+    },
+    "evidence": {
+      "path": "evidence",
+      "kind": "dir",
+      "lite": "evidence"
+    },
+    "reviews": {
+      "path": "reviews",
+      "kind": "dir",
+      "lite": "reviews"
+    },
+    "changes": {
+      "path": "changes",
+      "kind": "dir",
+      "lite": "changes"
+    },
+    "runs": {
+      "path": "runs",
+      "kind": "dir",
+      "lite": "runs"
+    }
+  },
+  "roleOut": {
+    "plan-author": {
+      "key": "implementation-plan",
+      "stem": ""
+    },
+    "spec-author": {
+      "key": "specification",
+      "stem": ""
+    },
+    "scenario-author": {
+      "key": "scenarios",
+      "stem": ""
+    },
+    "test-author": {
+      "key": "tests",
+      "stem": ""
+    },
+    "code-author": {
+      "key": "changes",
+      "stem": "code"
+    },
+    "fixer": {
+      "key": "changes",
+      "stem": "fix"
+    },
+    "coverage-checker": {
+      "key": "coverage",
+      "stem": ""
+    },
+    "closure-author": {
+      "key": "report",
+      "stem": ""
+    },
+    "critic": {
+      "key": "reviews",
+      "stem": "hints"
+    },
+    "evidence-triage": {
+      "key": "reviews",
+      "stem": "accepted"
+    },
+    "evidence-researcher": {
+      "key": "evidence",
+      "stem": "answers"
+    },
+    "evidence": {
+      "key": "evidence",
+      "stem": "answers"
+    },
+    "researcher": {
+      "key": "evidence",
+      "stem": "bundle"
+    },
+    "web-researcher": {
+      "key": "evidence",
+      "stem": "web"
+    },
+    "synthesizer": {
+      "key": "report",
+      "stem": ""
+    },
+    "executor": {
+      "key": "runs",
+      "stem": "run"
+    },
+    "waiter": {
+      "key": "runs",
+      "stem": "wait"
+    }
+  }
+}
+// ---- end task layout ----
+
+// taskEntry(key) -> { path, kind, lite }: the row of the layout, or an error. An unknown key is a
+// defect of the caller, not a file to invent: a stage writing outside the layout is a stage
+// nobody reads.
+function taskEntry(key) {
+  const e = LAYOUT.files[key]
+  if (!e) throw new Error(`unknown task file ${key}`)
+  return e
+}
+function taskKeys() { return Object.keys(LAYOUT.files) }
+
+// taskPath(dir, key, stem): the absolute path of one file of the group under the task directory.
+// A `dir` row needs a stem (one file per run of that stage), a `file` row takes none. The stem is
+// sanitised, never trusted: it comes from a label, a group id or a cycle counter, so anything but
+// [A-Za-z0-9._-] becomes a dash and no stem can leave the task directory.
+function taskPath(dir, key, stem) {
+  const d = String(dir == null ? '' : dir).trim().replace(/\/+$/, '')
+  if (!d || d[0] !== '/') throw new Error(`taskPath needs an absolute task directory, got ${dir}`)
+  const e = taskEntry(key)
+  if (e.kind !== 'dir') {
+    if (stem != null && String(stem) !== '') throw new Error(`task file ${key} takes no stem, got ${stem}`)
+    return `${d}/${e.path}`
+  }
+  const s = String(stem == null ? '' : stem).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+/, '').replace(/[-.]+$/, '')
+  if (!s) throw new Error(`task directory ${key} needs a stem`)
+  return `${d}/${e.path}/${s}.md`
+}
+
+// liteTarget(key): what the depth `lite` does with that row — the collapsed file it becomes, its
+// own path when it stays, or null when the depth does not have that level at all (A5).
+function liteTarget(key) {
+  const v = taskEntry(key).lite
+  return !v || v === '-' ? null : v
+}
+
+// roleOut(role) -> { key, stem } or null: the file of the layout a role writes when it is launched
+// with the task directory instead of a path. A role with no row always needs a path of its own.
+function roleOut(role) {
+  const r = LAYOUT.roleOut[role]
+  return r ? { key: r.key, stem: r.stem || '' } : null
+}
+function roleOutPath(dir, role) {
+  const r = roleOut(role)
+  return r ? taskPath(dir, r.key, r.stem) : null
+}
+
 // closureReport(ret): the closing report of a run, read out of the return of its closure stage.
 // A subagent of this harness returns its findings as text and writes no report file, so the return
 // itself is the report and this is the only check over it: a return that came back empty, blocked,
@@ -1270,6 +1472,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
+    LAYOUT, taskEntry, taskKeys, taskPath, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
@@ -1373,7 +1576,10 @@ if (!PLAN.ok) return fail(PLAN.why, { aspects: PLAN.known })
 
 const RUN = bindClass(CLS, SUBS)
 const DIR = OUT.slice(0, OUT.lastIndexOf('/'))
-const side = stem => `${DIR}/chain-${stem}.md`
+// every stage file is a file of the task group: the key comes from lib/task-layout.md and the
+// path from taskPath() of the shared block, so this script spells no file name of its own and the
+// process skill reads what a stage wrote without a second agreement (idea 8.8).
+const side = (key, stem) => taskPath(DIR, key, stem)
 const INLIST = IN.join('\n')
 const ROOM = PLAN.room
 
@@ -1414,7 +1620,7 @@ Only those lines are read by the flow; a hint that is not on such a line reaches
 
 const critiques = await parallel(PLANRUN.map((set, i) => async () => {
   const label = set.join('-') || 'merged'
-  const out = side(`hints-${label}`)
+  const out = side('reviews', `hints-${label}`)
   const ASPECT_BLOCK = `\n\nRead the object through ${set.length === 1 ? 'this aspect only' : 'these aspects only'}, and give hints on nothing else:\n\n${set.map(n => ASPECT_TEXT[n]).join('\n')}`
   const s = await stage(CRITIC, CRITIC_SLOT, `critic-${label}`, 'Critique',
     { in: INLIST, ask: `${ASK}${ASPECT_BLOCK}`, out }, HINT_SHAPE)
@@ -1490,7 +1696,7 @@ const result = extra => chainResult({
 phase('Evidence')
 if (FORM === 'long') {
   const runs = await parallel(RUNGROUPS.map(g => async () => {
-    const out = side(`evidence-${g.id}`)
+    const out = side('evidence', `${g.id}`)
     const s = await stage(RESEARCH, roleSlot(RESEARCH, SIZE), `evidence-${g.id}`, 'Evidence', {
       in: [...IN, ...LIVE.map(c => c.out)].join('\n'),
       ask: `${ASK}\n\nHint group ${g.id}, at ${g.place}:\n${groupText([g])}\n\n${CONTROL}`,
@@ -1572,7 +1778,7 @@ if (TOFIX.length) {
   fixed = await stage(FIXER, roleSlot(FIXER, SIZE), 'fix', 'Fix', {
     in: [OUT, ...IN].join('\n'),
     ask: `${ASK}\n\nApply these accepted rows, and nothing else. They are the whole mandate: a row of ${OUT} that is not in this list, however it reads there, is not yours to change.\n${FIXTEXT}\n${TEST ? `After the change run \`${TEST}\` and quote its decisive line.` : 'No check command was given: say so instead of inventing one.'}`,
-    out: side('changed'),
+    out: side('changes', 'fix'),
   }, `the changed paths and the last line \`DONE\` or \`BLOCKED: <reason>\`.`)
 }
 

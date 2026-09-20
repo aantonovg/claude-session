@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pipeline-subagent-stop.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ledger-stop.sh",
             "timeout": 5
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-modes.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/modes.sh",
             "timeout": 5
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-modes.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/modes.sh",
             "timeout": 5
           }
         ]
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-modes.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/modes.sh",
             "timeout": 5
           }
         ]
@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-modes.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/modes.sh",
             "timeout": 5
           }
         ]

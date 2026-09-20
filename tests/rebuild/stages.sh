@@ -807,6 +807,79 @@ if bad: print("; ".join(bad))
 sys.exit(1 if bad else 0)
 ' "$LIB/build-manifest.json"
 
+# ---- s7 (P5): every `out` default of the composite flows is a path of lib/task-layout.md ----
+# The stage files of a run are the task file group, not names of this script: a workflow builds
+# every side path through taskPath() over a key of the layout, so a file the process skill reads
+# and a file a workflow writes can never drift apart (idea 8.8).
+LAYOUT=$LIB/task-layout.md
+check "s7 lib/task-layout.md exists" test -f "$LAYOUT"
+# the keys of lib/block.js are exactly the rows of the layout document, and every path it builds
+# stands in that document
+cat > "$T/layout.js" <<'JS'
+const b = require(process.argv[2])
+const out = []
+const ck = (cond, what) => out.push(`${cond ? 'ok' : 'bad'} ${what}`)
+const doc = require('fs').readFileSync(process.argv[3], 'utf8')
+const keys = b.taskKeys()
+ck(keys.length > 0, 'the layout carries at least one file')
+for (const k of keys) {
+  const e = b.taskEntry(k)
+  ck(doc.includes(e.path), `the layout document names ${k} as ${e.path}`)
+  const p = e.kind === 'dir' ? b.taskPath('/t/task', k, 'stem') : b.taskPath('/t/task', k)
+  ck(p.startsWith(`/t/task/${e.path}`), `${k} builds under the task directory (got ${p})`)
+}
+// the named files of the plan's layout row, each by its own key
+for (const k of ['intent', 'subtasks', 'ledger', 'evidence', 'decisions', 'specification',
+                 'scenarios', 'verification-plan', 'implementation-plan', 'reviews', 'coverage', 'report']) {
+  ck(keys.includes(k), `the layout carries the ${k} file`)
+}
+// a directory key needs a stem, a file key takes none, and no stem escapes the task directory
+ck(b.taskPath('/t/task', 'evidence', 'bundle-1') === '/t/task/evidence/bundle-1.md', 'a directory key takes its stem')
+let threw = false
+try { b.taskPath('/t/task', 'evidence') } catch (e) { threw = true }
+ck(threw, 'a directory key without a stem is an error')
+threw = false
+try { b.taskPath('/t/task', 'nosuch') } catch (e) { threw = true }
+ck(threw, 'an unknown key is an error')
+threw = false
+try { b.taskPath('relative/dir', 'report') } catch (e) { threw = true }
+ck(threw, 'a relative task directory is an error')
+ck(!b.taskPath('/t/task', 'evidence', '../../etc/passwd').includes('..'), 'a stem can not leave the task directory')
+// the lite column: the document files collapse into one file, the state does not
+ck(b.liteTarget('intent') === 'task.md', 'intent collapses at lite')
+ck(b.liteTarget('report') === 'task.md', 'the report collapses at lite')
+ck(b.liteTarget('ledger') === 'ledger.jsonl', 'the ledger is state and stays')
+console.log(out.join('\n'))
+JS
+node "$T/layout.js" "$LIB/block.js" "$LAYOUT" > "$T/layout.out" 2>&1
+if [ ! -s "$T/layout.out" ]; then
+  fail "s7 the layout suite produced no line (node failed)"
+  sed 's/^/  /' "$T/layout.out" 2>/dev/null
+else
+  while IFS= read -r line; do
+    case $line in
+      "ok "*) pass ;;
+      "bad "*) fail "s7 ${line#bad }" ;;
+      *) fail "s7 unexpected output: $line" ;;
+    esac
+  done < "$T/layout.out"
+fi
+# and in the two scripts: every side path is a layout key, and no stage path is spelled by hand
+for w in make probe; do
+  f=$WF/$w.js
+  [ -f "$f" ] || { fail "s7 workflows/$w.js exists"; continue; }
+  code=$(code_of "$f")
+  check "s7 $w.js builds its stage paths through taskPath()" grep -q 'taskPath(' <<<"$code"
+  keys=$(grep -oE "side\('[a-z-]+'" <<<"$code" | sed "s/side('//; s/'//" | sort -u)
+  check "s7 $w.js names at least one layout key (got $(tr '\n' ' ' <<<"$keys"))" test -n "$keys"
+  bad=
+  for k in $keys; do
+    node -e 'require(process.argv[1]).taskEntry(process.argv[2])' "$LIB/block.js" "$k" 2>/dev/null || bad="$bad $k"
+  done
+  check "s7 $w.js names no key outside the layout (extra:$bad)" test -z "$bad"
+  check "s7 $w.js spells no stage path by hand" bash -c '! grep -qE "\\$\{DIR\}/[a-z]" <<<"$1"' _ "$code"
+done
+
 if [ "$FAILS" -eq 0 ]; then echo "stages: PASS $N"; exit 0; fi
 echo "stages: FAIL $FAILS failures, $N checks passed"
 exit 1
