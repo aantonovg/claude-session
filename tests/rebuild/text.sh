@@ -9,10 +9,12 @@
 #   the kept skills skills/ask/**, skills/reset-counter/**, skills/*-ping/**,
 #   with --with-base also base/BASE.md and skills/base/SKILL.md (from P6 on: the old base text
 #   names models until P6 rewrites it).
-# Rule: no text of the new set names a model, a reasoning level or a tier. The only allowed forms
-# of a model word are the slot names ("opus slot", "sonnet slot") and the submode names
-# ("no-sonnet", "no-opus", "no-fable"); a generated region between build markers is skipped,
-# because the class table itself is rendered there by bin/build.sh.
+# Rule: no text of the new set names a model, a cell short code, a reasoning level or a tier. The
+# only allowed forms of a model word are the slot names ("opus slot", "sonnet slot") and the
+# submode names ("no-sonnet", "no-opus", "no-fable"); a generated region between build markers is
+# skipped, because the class table itself is rendered there by bin/build.sh. What counts as naming
+# a cell is cellTokens() of lib/block.js, executed here over every file of the globs and re-run
+# over a mutant of that function which must turn the same check red.
 # Also: lib/verification.md carries the pieces P1 owes (oracle classes, a route per ladder level,
 # the fork-author exception, the ops control-call form).
 # From P6 on, under --with-base: the base text is one of those globs, it carries the class table
@@ -59,43 +61,41 @@ if [ "${#FILES[@]}" -eq 0 ]; then
 fi
 pass
 
-cat > /tmp/.text-scan.$$ <<'PY'
-import re, sys
+# What counts as naming a cell is not a regex of this file: it is cellTokens() of the shared block,
+# executed over lib/block.js, so the model names, the short codes and the effort words all come
+# from lib/classes.json and the rule is tested by mutation below instead of read.
+T=$(mktemp -d) || exit 1
+trap 'rm -rf "$T"' EXIT
+cat > "$T/scan.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const BEGIN = ['// ---- shared block', '// ---- class table', '// ---- roles', '// ---- aspects', '<!-- class table']
+const END = ['// ---- end shared block', '// ---- end class table', '// ---- end roles', '// ---- end aspects', '<!-- end class table']
+const hits = []
+for (const path of process.argv.slice(3)) {
+  let lines
+  try { lines = fs.readFileSync(path, 'utf8').split('\n') } catch (e) { continue }
+  let skip = false
+  lines.forEach((line, i) => {
+    const s = line.trim()
+    if (skip) { if (END.some(e => s.startsWith(e))) skip = false; return }
+    if (BEGIN.some(x => s.startsWith(x))) { skip = true; return }
+    for (const t of b.cellTokens(line)) hits.push(`${path}:${i + 1} names a cell: ${t}`)
+  })
+}
+hits.slice(0, 20).forEach(h => console.log(h))
+process.exit(hits.length ? 1 : 0)
+JS
+if node "$T/scan.js" "$P/lib/block.js" "${FILES[@]}"; then pass
+else fail "t1 no model, cell short code, reasoning level or tier in the new text"; fi
 
-BEGIN = ('// ---- shared block', '// ---- class table', '// ---- roles', '// ---- aspects', '<!-- class table')
-END = ('// ---- end shared block', '// ---- end class table', '// ---- end roles', '// ---- end aspects', '<!-- end class table')
-MODEL = re.compile(r'(?i)(no-)?\b(opus|sonnet|fable|haiku)\b([- ]slot)?')
-WORDS = re.compile(r'(?i)\b(effort|tier)\b')
-KEY = re.compile(r'(?im)^(model|effort):')
-
-hits = []
-for path in sys.argv[1:]:
-    try:
-        lines = open(path, encoding='utf-8').read().split('\n')
-    except OSError:
-        continue
-    skip = False
-    for n, line in enumerate(lines, 1):
-        s = line.strip()
-        if skip:
-            if s.startswith(END): skip = False
-            continue
-        if s.startswith(BEGIN):
-            skip = True
-            continue
-        for m in MODEL.finditer(line):
-            if m.group(1) or m.group(3): continue
-            hits.append('%s:%d names a model: %s' % (path, n, m.group(0)))
-        for m in WORDS.finditer(line):
-            hits.append('%s:%d names a reasoning level or a tier: %s' % (path, n, m.group(0)))
-        if KEY.match(line):
-            hits.append('%s:%d pins it in frontmatter: %s' % (path, n, s))
-for h in hits[:20]:
-    print(h)
-sys.exit(1 if hits else 0)
-PY
-if python3 /tmp/.text-scan.$$ "${FILES[@]}"; then pass; else fail "t1 no model, reasoning level or tier in the new text"; fi
-rm -f /tmp/.text-scan.$$
+# t1 is executed, not read: a line naming a cell short code must be seen, and a mutant of the
+# shared block that looks at model names only must stop seeing it.
+printf 'a label `fab-me` in prose\n' > "$T/cell.md"
+check "t1 the scan sees a cell short code" bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$P/lib/block.js" "$T/cell.md"
+perl -pe "s/parts\.join\('\|'\)/parts[0]/" "$P/lib/block.js" > "$T/mutant.js"
+check "t1 the mutant of cellTokens is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$P/lib/block.js" "$T/mutant.js"
+check "t1 the mutant that drops the short code is caught" bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/mutant.js" "$T/cell.md"
 
 # t2: lib/verification.md, the page every process skill and composite workflow cites.
 V=$P/lib/verification.md
@@ -162,11 +162,18 @@ sys.exit(1 if bad else 0)
   fi
 fi
 
-# t4: the composite workflows cite the verification page instead of repeating it (P6).
+# t4: the composite workflows cite the verification page instead of repeating it (P6). Comment
+# lines are cut before the grep, the way k8 of usage-test.sh cuts them: a citation that stands only
+# in a note to a reader of the script reaches no agent of the flow. A missing workflow is a failure
+# here, never a skip, or the criterion would pass over a file nobody wrote.
 for w in chain make; do
   f=$P/workflows/$w.js
-  [ -f "$f" ] || continue
-  check "t4 workflows/$w.js cites lib/verification.md" grep -Fq 'lib/verification.md' "$f"
+  if [ -f "$f" ]; then
+    check "t4 workflows/$w.js cites lib/verification.md in a prompt" \
+      bash -c 'grep -v "^[[:space:]]*//" "$1" | grep -Fq "lib/verification.md"' _ "$f"
+  else
+    fail "t4 workflows/$w.js missing"
+  fi
 done
 
 if [ "$FAILS" -eq 0 ]; then echo "text: PASS $N"; exit 0; fi

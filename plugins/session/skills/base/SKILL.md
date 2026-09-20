@@ -11,7 +11,7 @@ disable-model-invocation: true
 1. A job of 2+ tool calls never runs in the main session: fork or workflow (every Read, Edit, Write, Grep, Bash, MCP call counts).
 2. Main session own calls per turn: at most 1. Exceptions: the Start turn, the commit, fork and workflow launches.
 3. A file over 20 lines: a fork or a cold agent writes it.
-4. Tests, builds, servers, browsers: never in a fork (a Bash or MCP call over 5 min in a fork is a cache miss on the main model). Noisy or long run: a cold agent on the cheapest slot the class allows. Short async command: main session with `run_in_background`.
+4. Tests, builds, servers, browsers: never in a fork (a Bash or MCP call over 5 min in a fork is a cache miss on the main model). Noisy or long run: a cold agent on the sonnet slot of the class. Short async command: main session with `run_in_background`.
 5. Input volume picks the slot; the volume table below names the value and the launch passes it as the `size` argument.
 6. In doubt: delegate; workflow over fork.
 7. Every reply caveman ultra (section Style); no narration before, between or after tool calls.
@@ -58,7 +58,7 @@ Boundaries: everything persisted outside chat is normal prose (code, comments, c
 
 ## Verification first
 
-One page decides who checks what: `plugins/session/lib/verification.md` of this plugin. Read `lib/verification.md` before planning any task; this section repeats nothing from it and adds nothing to it. Four of its rules hold in every session:
+One page decides who checks what: `lib/verification.md` of this plugin. At runtime the plugin lives in the cache, so resolve it like every plugin file (`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/lib/verification.md | sort -V | tail -1`) and read it before planning any task; this section repeats nothing from it and adds nothing to it. Four of its rules hold in every session:
 
 - Output with an oracle (tests, a validator, a build, a control-call file) gets no review. An executor runs the oracle and the run is the verdict.
 - Output with no possible oracle gets a stronger author, one class step up, not a second reader.
@@ -76,7 +76,7 @@ Waiting on the user:
 - Plan mode only when the user is present to approve.
 - The user is needed at three points of a task: the intent with its quality criteria, an open decision the work rests on, and the acceptance of what stayed unverified.
 
-Questions about Claude Code, the Agent SDK or the Anthropic API: the built-in `claude-code-guide` agent as a one-agent `Workflow` on the cheapest slot the class allows, label `<mod>-<eff>-guide`; never the `/claude-api` skill.
+Questions about Claude Code, the Agent SDK or the Anthropic API: the built-in `claude-code-guide` agent as a one-agent `Workflow` on the sonnet slot of the class, label `<mod>-<eff>-guide`; never the `/claude-api` skill.
 
 Codex job: read the `codex` skill first and launch it the way that skill states; the main session names no wrapper and no cell of its own for it.
 
@@ -113,7 +113,7 @@ Forks:
 - Plan mode: forks avoid Bash with `$var`, `$(…)` or loops (permission prompt).
 - A fork never checks its own output: rule 3 of the verification page sends it to a clean-context checker.
 
-Launch naming: a `Workflow` label is `<mod>-<eff>-<job>` (`fab-lo-cache-audit`, `son-lo-research`); a fork `name` is `fork-<mod>-<eff>-<job>` (`fork-fab-hi-cache-audit`), its `<mod>-<eff>` being the main session's own cell from the status line or the user's word, never guessed; the `description` of every `Agent` call starts with the same prefix, a space, the job. The two short codes of every cell come from the table below. Only a FORK sets `name` (a named plain subagent becomes a teammate).
+Launch naming: a `Workflow` label is `<mod>-<eff>-<job>`; a fork `name` is `fork-<mod>-<eff>-<job>`, its `<mod>-<eff>` being the main session's own cell from the status line or the user's word, never guessed; the `description` of every `Agent` call starts with the same prefix, a space, the job. The two short codes of every cell come from the table below. Only a FORK sets `name` (a named plain subagent becomes a teammate).
 
 ## Classes, slots and submodes
 
@@ -136,7 +136,7 @@ Heavy tools live in cold agents, never in the main session: web pages, diff read
 ## Every cold-agent call
 
 - Both values of the cell passed explicitly (class row, then submodes), never inherited.
-- Label prefix `<mod>-<eff>-` (`fab-hi-review-plan`, `ops-lo-fast-tests`); the prefix is the only place the cell is visible in chat.
+- Label prefix `<mod>-<eff>-`; the prefix is the only place the cell is visible in chat.
 - Skills reach a cold agent only as resolved absolute paths to read (`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/skills/<name>/SKILL.md | sort -V | tail -1`; user skill `~/.claude/skills/<name>/SKILL.md`), never as skill names; missing file → `BLOCKED: <path>`. Prompt ends with "Read these skill files with the Read tool before starting: <paths>." or "No skills needed for this step." User skills a main session names when the task touches their domain: `transcripts-jsonl`, `tmux-sessions`, `shell-gotchas`, `workflow-reliability`, `harness-cost`.
 - Independent agents in ONE workflow (`parallel`); a relay (research → critique → check) as `pipeline()` stages of the same workflow.
 - Check a saved script before launch: explicit cell per stage, labels, skill line, class and submodes in `meta.name`. After editing a saved script launch by `scriptPath`, not `name`. Load `workflow-authoring` before writing a script.

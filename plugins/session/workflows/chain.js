@@ -286,6 +286,35 @@ function slotForSize(slot, size) {
   return s === 'large' ? CLASSES.slotDown[slot] : slot
 }
 
+// cellTokens(line): the tokens of one line of prose that name a cell of the class table — a model
+// name, the short code of a cell (`fab-me`), a reasoning-level word, or a frontmatter pin. The
+// class table is the only source of what a launch runs on, so no text of this plugin names one of
+// them, and tests/rebuild/text.sh executes this function over every text file of the new set
+// instead of carrying a regex of its own. Two forms are no cell token: a slot name ("opus slot",
+// "sonnet-slot") names a column of the table, a submode name ("no-sonnet") names one of its rows.
+const OFF_TABLE_MODELS = ['haiku'] // a model the class table never picks, still banned in prose
+const LEVEL_WORDS = ['effort', 'tier']
+function cellTokens(line) {
+  const s = String(line == null ? '' : line)
+  const names = Object.values(MODEL_NAME).concat(OFF_TABLE_MODELS).join('|')
+  const mods = Object.keys(MODEL_NAME).join('|')
+  const effs = Object.keys(EFFORT_NAME).join('|')
+  const parts = [
+    `(no-)?\\b(?:${names})\\b([- ]slot)?`, // a model name, with its submode and slot forms
+    `\\b(?:${mods})-(?:${effs})\\b`, // the short code of a cell, the way a label carries it
+    `\\b(?:${LEVEL_WORDS.join('|')})\\b`, // a reasoning level or a tier
+  ]
+  const re = new RegExp(parts.join('|'), 'gi')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) {
+    if (m[1] || m[2]) continue // "no-sonnet" is a row, "opus slot" is a column: neither is a cell
+    hits.push(m[0])
+  }
+  if (/^(?:model|effort):/i.test(s)) hits.push(s.trim()) // a frontmatter pin of a whole file
+  return hits
+}
+
 // bindClass(class, submodes): the class of one run; every stage asks it for its agent options.
 function bindClass(cls, subs) {
   const s = submodes(subs)
@@ -1548,7 +1577,8 @@ function probeResult(s) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
+    CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
+    bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
     LAYOUT, taskDirOf, outForm, taskEntry, taskKeys, taskPath, runStem, writeHint, liteTarget, roleOut, roleOutPath,
@@ -1843,9 +1873,12 @@ if (FORM === 'long') {
   // the judge copies them instead of composing a list of its own, or the file and the return would
   // tell two different stories (A28)
   const openText = ROWS.open.length ? `\n\nUnsettled rows, exactly these and no others. Copy them into ${RESULT} under a heading \`Unsettled\`, one row each, as \`| hint id | place | what is missing |\`, and accept none of them:\n${openRowsText(ROWS)}` : `\n\nNothing is unsettled in this run: write an \`Unsettled\` section into ${RESULT} saying so, and add no row of your own to it.`
+  // rule 4 of the verification page reaches the judge as a rule of its own stage, not as a note
+  // to whoever reads this script: an unsettled row is the user's, and no verdict of this run ends it
+  const UNSETTLED_RULE = '\n\nAn unsettled row goes to the user as it stands: rule 4 of the verification page of this plugin, `lib/verification.md`, says what stays unverified is named to the user and accepted by the user, never reviewed away.'
   judged = await stage(TRIAGE, roleSlot(TRIAGE, SIZE), 'triage', 'Triage', {
     in: [...LIVE.map(c => c.out), ...decided.files].join('\n'),
-    ask: `${ASK}\n\nHint groups:\n${groupText(RUNGROUPS)}\n\nFacts about the object, one row per hint (the failures of our own runs and the failures that reproduce on the base version ${BASE} are already out and are no findings). Accept a hint only when its own row says \`confirmed\`: a hint that sounds reasonable, that its row leaves undetermined, or that no row names at all, is never accepted:\n${factText}${openText}${GAP.length ? `\n\nNo fact was collected for these groups, the depth ceiling of ${ROOM} agents ended the stage: ${GAP.map(g => `${g.id} at ${g.place}`).join(', ')}. They are unsettled, not rejected.` : ''}`,
+    ask: `${ASK}\n\nHint groups:\n${groupText(RUNGROUPS)}\n\nFacts about the object, one row per hint (the failures of our own runs and the failures that reproduce on the base version ${BASE} are already out and are no findings). Accept a hint only when its own row says \`confirmed\`: a hint that sounds reasonable, that its row leaves undetermined, or that no row names at all, is never accepted:\n${factText}${openText}${UNSETTLED_RULE}${GAP.length ? `\n\nNo fact was collected for these groups, the depth ceiling of ${ROOM} agents ended the stage: ${GAP.map(g => `${g.id} at ${g.place}`).join(', ')}. They are unsettled, not rejected.` : ''}`,
     out: RESULT,
   }, ACCEPT_SHAPE)
   if (!judged.ok) {

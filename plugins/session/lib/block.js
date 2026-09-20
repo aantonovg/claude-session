@@ -262,6 +262,35 @@ function slotForSize(slot, size) {
   return s === 'large' ? CLASSES.slotDown[slot] : slot
 }
 
+// cellTokens(line): the tokens of one line of prose that name a cell of the class table — a model
+// name, the short code of a cell (`fab-me`), a reasoning-level word, or a frontmatter pin. The
+// class table is the only source of what a launch runs on, so no text of this plugin names one of
+// them, and tests/rebuild/text.sh executes this function over every text file of the new set
+// instead of carrying a regex of its own. Two forms are no cell token: a slot name ("opus slot",
+// "sonnet-slot") names a column of the table, a submode name ("no-sonnet") names one of its rows.
+const OFF_TABLE_MODELS = ['haiku'] // a model the class table never picks, still banned in prose
+const LEVEL_WORDS = ['effort', 'tier']
+function cellTokens(line) {
+  const s = String(line == null ? '' : line)
+  const names = Object.values(MODEL_NAME).concat(OFF_TABLE_MODELS).join('|')
+  const mods = Object.keys(MODEL_NAME).join('|')
+  const effs = Object.keys(EFFORT_NAME).join('|')
+  const parts = [
+    `(no-)?\\b(?:${names})\\b([- ]slot)?`, // a model name, with its submode and slot forms
+    `\\b(?:${mods})-(?:${effs})\\b`, // the short code of a cell, the way a label carries it
+    `\\b(?:${LEVEL_WORDS.join('|')})\\b`, // a reasoning level or a tier
+  ]
+  const re = new RegExp(parts.join('|'), 'gi')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) {
+    if (m[1] || m[2]) continue // "no-sonnet" is a row, "opus slot" is a column: neither is a cell
+    hits.push(m[0])
+  }
+  if (/^(?:model|effort):/i.test(s)) hits.push(s.trim()) // a frontmatter pin of a whole file
+  return hits
+}
+
 // bindClass(class, submodes): the class of one run; every stage asks it for its agent options.
 function bindClass(cls, subs) {
   const s = submodes(subs)
@@ -1524,7 +1553,8 @@ function probeResult(s) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
+    CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
+    bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
     LAYOUT, taskDirOf, outForm, taskEntry, taskKeys, taskPath, runStem, writeHint, liteTarget, roleOut, roleOutPath,

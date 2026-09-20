@@ -2,8 +2,8 @@
 
 One user-invocable skill per mode. Start a session, pick the model and effort, run
 `/session:base [no-sonnet] [no-opus] [no-fable] [c1..c5]` first (and again after `/compact`),
-then optionally one mode skill on top. Source of the base is `base/BASE.md`; `base/split.sh`
-regenerates `skills/base/SKILL.md`.
+then optionally one mode skill on top. Source of the base is `base/BASE.md`; `bin/build.sh`
+regenerates `skills/base/SKILL.md` and every other target of `lib/build-manifest.json`.
 
 | skill | mode | spawns |
 |---|---|---|
