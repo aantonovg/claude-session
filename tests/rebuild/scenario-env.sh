@@ -13,12 +13,15 @@
 #   gate, gate-stub-on, gate-stub-off-deny
 #                   the same three with --hide-old built in: the names the behavior gate runs
 #                   under, so the variant of a verdict line says which set was measured
-# --hide-old: the plugin argument points at a copy of the worktree plugin made inside <dir>, with
-#   the contract entries of the five old workflows taken out of the copy's plugin.json and the old
-#   workflow files and process skills left out of the copy itself, so the gate measures the new set
-#   only: a workflows/ directory is auto-loaded, so a file left in the copy would stay launchable
-#   and listed however the contract entries read. The files themselves are deleted in P9 in the
-#   worktree; this flag only hides them from one session.
+# --hide-old: the plugin argument points at a copy of the worktree plugin, with the contract entries
+#   of the five old workflows taken out of the copy's plugin.json and the old workflow files and
+#   process skills left out of the copy itself, so the gate measures the new set only: a workflows/
+#   directory is auto-loaded, so a file left in the copy would stay launchable and listed however
+#   the contract entries read. The files themselves are deleted in P9 in the worktree; this flag
+#   only hides them from one session.
+#   The copy is made in the sibling directory <dir>-plugin, never inside <dir>: a copy inside the
+#   project would put the workflow scripts under the directory the measured session works in, where
+#   its own Glob, Grep and Read reach the script bodies the gate rules forbid it to read.
 #
 # The mechanism is the one the U7 answer line froze (plan/control-calls.md):
 #   real HOME, a scratch project directory whose .claude/settings.json sets
@@ -27,12 +30,12 @@
 # the project-level disable hides the installed plugin in that project only.
 #
 # Credential rule (section 6): nothing is read, listed or copied from ~/.claude, ~/.claude.json, a
-# keychain or any login state. This script writes inside <dir> and nowhere else. The user-level
-# skills of the real ~/.claude/skills stay visible to the session; that loss of isolation is
-# accepted and named under "what no oracle covers".
+# keychain or any login state. This script writes inside <dir> and, with --hide-old, inside
+# <dir>-plugin, and nowhere else. The user-level skills of the real ~/.claude/skills stay visible to
+# the session; that loss of isolation is accepted and named under "what no oracle covers".
 #
-# Writes into <dir>: .claude/settings.json, claude-args (the argument list for `claude`), variant,
-# and with --hide-old the plugin copy plugin/.
+# Writes into <dir>: .claude/settings.json, claude-args (the argument list for `claude`), variant.
+# With --hide-old it also writes the plugin copy <dir>-plugin, outside the project.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -89,7 +92,13 @@ mkdir -p "$DIR/.claude" || exit 1
 # ---- the plugin the session loads: the worktree plugin, or a copy without the old set ----
 LOADED=$PLUG
 if [ "$HIDE_OLD" = 1 ]; then
-  LOADED=$DIR/plugin
+  # outside <dir>: the measured session works in <dir>, and a plugin copy inside it would put every
+  # workflow script within reach of its own Glob, Grep and Read
+  LOADED=$DIR-plugin
+  if [ -e "$LOADED" ] && [ -n "$(ls -A "$LOADED" 2>/dev/null)" ]; then
+    echo "scenario-env: $LOADED is not empty; a run never reuses a plugin copy" >&2
+    exit 2
+  fi
   mkdir -p "$LOADED" || exit 1
   # copied entry by entry, skills and workflows apart: the old process skills and the old workflow
   # files are left out of the copy instead of being copied and then removed, so this script deletes

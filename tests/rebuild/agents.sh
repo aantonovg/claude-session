@@ -80,22 +80,35 @@ done
 # root, or a base-plugin name in a tool plugin, resolve to a file of the root that is being checked
 # and pass as its own agent. A qualified name must carry this root's prefix; a bare name is the
 # same root by definition.
+# The sites come from block.js agentTypesOf(), executed, never from a grep for `agentType: '...'`:
+# both tool-plugin workflows and all four workflows of this plugin write the launch name through a
+# const or the shorthand `{ agentType, phase }`, so a grep for a quoted name inspects zero names and
+# a foreign prefix passes unseen. A site whose name is decided at run time still carries its prefix.
+BLOCKJS=$REPO/plugins/session/lib/block.js
 check "a3 the launch prefix of this root is known" test -n "$PREFIX"
+check "a3 lib/block.js exists: the agentType rule is executed, never grepped" test -f "$BLOCKJS"
 for w in $WORKFLOWS; do
   f=$P/workflows/$w.js
   [ -f "$f" ] || continue
-  types=$(grep -oE "agentType: *['\"][^'\"]+['\"]" "$f" | sed -E "s/agentType: *['\"]//; s/['\"]$//" | sort -u)
-  for t in $types; do
-    case $t in
-      "$PREFIX":*) name=${t#"$PREFIX":} ;;
-      *:*) name= ;;
-      *) name=$t ;;
-    esac
-    check "a3 $w.js agentType $t is a name of this root (prefix $PREFIX)" test -n "$name"
-    [ -n "$name" ] || continue
-    check "a3 $w.js agentType $t carries no second prefix" bash -c 'case "$1" in *:*) exit 1 ;; esac' _ "$name"
-    check "a3 $w.js agentType $t has an agent file" test -f "$A/$name.md"
-  done
+  sites=$(node -e '
+const fs = require("fs")
+const b = require(process.argv[1])
+for (const s of b.agentTypesOf(fs.readFileSync(process.argv[2], "utf8"))) {
+  console.log([s.expr, s.prefix == null ? "-" : s.prefix, s.name == null ? "-" : s.name].join("|"))
+}' "$BLOCKJS" "$f" 2>/dev/null | sort -u)
+  check "a3 $w.js launches at least one agentType a reader can resolve" test -n "$sites"
+  while IFS='|' read -r expr prefix name; do
+    [ -n "$expr" ] || continue
+    check "a3 $w.js agentType $expr resolves to a prefix or a name" bash -c 'test "$1" != - || test "$2" != -' _ "$prefix" "$name"
+    if [ "$prefix" != - ]; then
+      check "a3 $w.js agentType $expr carries the prefix of this root ($prefix vs $PREFIX)" test "$prefix" = "$PREFIX"
+    fi
+    [ "$name" != - ] || continue
+    check "a3 $w.js agentType $expr carries no second prefix ($name)" bash -c 'case "$1" in *:*) exit 1 ;; esac' _ "$name"
+    check "a3 $w.js agentType $expr has an agent file ($name.md)" test -f "$A/$name.md"
+  done <<EOF
+$sites
+EOF
 done
 
 if [ "$FAILS" -eq 0 ]; then echo "agents: PASS $N"; exit 0; fi

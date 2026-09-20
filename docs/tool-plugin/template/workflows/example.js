@@ -84,7 +84,13 @@ const LINE = lastLine(r)
 // the word counts on the last line alone: the prompt above asks the agent to write it there, so a
 // return that quotes it higher up (a finding, a path, the rule itself) is a finished lookup
 if (!LINE || /^BLOCKED:/.test(LINE)) return result({ object: OBJ, out: OUT, blocked: LINE || 'the agent returned nothing' })
-if (!new RegExp(`${OUT}\\s+\\d+\\s+bytes`).test(String(r))) {
-  return result({ object: OBJ, out: OUT, blocked: `the return names no size for ${OUT}` })
+// the size stands on the FIRST line, the one the prompt asks for: a count quoted further down (a
+// log the agent pasted, another file) is no evidence that this file was written. The path is
+// compared as text and never built into a pattern — an `out` holding `(`, `[` or `\` would make a
+// pattern that throws a SyntaxError out of this script instead of returning the blocked shape.
+const FIRST = String(r == null ? '' : r).trim().split('\n')[0] || ''
+const SIZE = FIRST.match(/(\d[\d,]*) *bytes\b/)
+if (FIRST.indexOf(OUT) === -1 || !SIZE || !(Number(SIZE[1].replace(/,/g, '')) > 0)) {
+  return result({ object: OBJ, out: OUT, blocked: `the first line of the return is no size line for ${OUT}` })
 }
 return result({ object: OBJ, out: OUT, class: CLS, label: O.label, result: LINE })

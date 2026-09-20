@@ -329,31 +329,116 @@ function cellTokens(line) {
 // plugin is an ordinary English word ("make", "role", "chain"), so it counts in a carrier shape
 // only: a path (`workflows/role.js`), a launch name (`session:role`), or the word `workflow` beside
 // it — "one file per job, copy and make your own" names nothing.
-const CARRIER_PATHS = ['plugins/session', 'lib/block.js', 'lib/classes.json', 'build-manifest.json',
-  'workflow-usage.sh', 'hooks/modes.sh', 'ledger-stop.sh', 'skills/process', 'skills/pipeline',
-  'skills/review', 'lib/verification.md', 'lib/task-layout.md']
-const CARRIER_AGENTS = ['tools-read-write-bash', 'tools-read-write', 'tools-read-bash', 'tools-edit',
-  'tools-web', 'session-modes']
-const CARRIER_WORKFLOWS = ['role', 'chain', 'make', 'probe']
+// The carrier list is the roster of the plugin tree, not a sample of it: a path under one of the
+// directories below counts whatever directory it is written under (`skills/ask`, `bin/build.sh`,
+// `hooks/ping.sh`), so a tool plugin naming one is caught wherever the line puts it.
+// tests/rebuild/toolplugin.sh walks the real plugin tree against this list, so a carrier added to
+// the plugin and not added here fails that check instead of silently leaving a hole in A8.
+const CARRIER_PATHS = ['plugins/session']
+const CARRIER_DIRS = ['agents', 'base', 'bin', 'hooks', 'lib', 'monitors', 'skills', 'workflows']
+// an agent name that is no ordinary English word counts bare, wherever it stands
+const CARRIER_AGENTS = ['artifact-designer', 'artifact-publisher', 'code-reviewer', 'codex-proxy',
+  'security-reviewer', 'size-estimator', 'stage-author', 'stage-critic', 'stage-executor',
+  'stage-researcher', 'stage-reviewer', 'tools-read-write-bash', 'tools-read-write',
+  'tools-read-bash', 'tools-edit', 'tools-web', 'web-researcher', 'session-modes']
+// the rest of the roster: names that are ordinary English words ("base", "review", "make",
+// "waiter"), so they count in a carrier shape only — a path of the tree, or the word beside a
+// carrier noun. "copy the tree and make your own workflows" names nothing.
+const CARRIER_AGENT_WORDS = ['simplifier', 'translator', 'waiter']
+const CARRIER_SKILLS = ['ask', 'base', 'codex', 'pipeline', 'reset-counter', 'resume-ping',
+  'review', 'start-ping', 'stop-ping']
+const CARRIER_WORKFLOWS = ['role', 'chain', 'make', 'probe', 'build', 'dev', 'research', 'review-fix', 'translate-ru']
+const CARRIER_HOOKS = ['ledger-stop', 'modes', 'pipeline-subagent-stop', 'session-modes']
+const CARRIER_MONITORS = ['monitors', 'ping', 'resume-ping', 'session-pid', 'stop-ping']
+const CARRIER_BIN = ['build', 'codex-exec-logged', 'codex-style', 'workflow-usage']
+const CARRIER_LIB = ['aspects', 'block', 'build-manifest', 'classes', 'roles', 'task-layout',
+  'verification']
+const CARRIER_BASE = ['BASE', 'split']
+const CARRIER_NOUNS = ['workflow', 'workflows', 'agent', 'agents', 'skill', 'skills', 'hook', 'hooks']
 const CARRIER_PREFIX = 'session'
+// every file name of the tree, whatever directory it sits in: the path shape takes any of them
+const CARRIER_FILES = CARRIER_AGENTS.concat(CARRIER_AGENT_WORDS, CARRIER_SKILLS, CARRIER_WORKFLOWS,
+  CARRIER_HOOKS, CARRIER_MONITORS, CARRIER_BIN, CARRIER_LIB, CARRIER_BASE)
+// the words that count beside a carrier noun alone
+const CARRIER_WORDS = CARRIER_AGENT_WORDS.concat(CARRIER_SKILLS, CARRIER_WORKFLOWS)
 const RX_META = /[.*+?^${}()|[\]\\]/g
 const rxEsc = s => String(s).replace(RX_META, '\\$&')
 function carrierTokens(line) {
   const s = String(line == null ? '' : line)
-  const wf = CARRIER_WORKFLOWS.map(rxEsc).join('|')
+  const dirs = CARRIER_DIRS.map(rxEsc).join('|')
+  const files = CARRIER_FILES.map(rxEsc).join('|')
+  const words = CARRIER_WORDS.map(rxEsc).join('|')
+  const nouns = CARRIER_NOUNS.map(rxEsc).join('|')
   const parts = [
-    CARRIER_PATHS.map(rxEsc).join('|'), // a path of this plugin, wherever it stands
+    CARRIER_PATHS.map(rxEsc).join('|'), // the plugin directory itself, wherever it stands
+    `\\b(?:${dirs})/(?:${files})(?:\\.[A-Za-z0-9]+)*\\b`, // a file of the tree, by path
     `\\b(?:${CARRIER_AGENTS.map(rxEsc).join('|')})\\b`, // one of its agents by name
     `\\b${rxEsc(CARRIER_PREFIX)}:[a-z][a-z0-9-]*`, // a launch name under its prefix
-    `\\bworkflows?/(?:${wf})\\.js\\b`, // a workflow file of it
-    `\\b(?:${wf})\\b[\`*_ -]+workflows?\\b`, // "the role workflow", "\`make\` workflow"
-    `\\bworkflows?[\`*_ -]+(?:${wf})\\b`, // "workflow chain", "workflows: probe"
+    `\\b(?:${words})\\b[\`*_ -]+(?:${nouns})\\b`, // "the role workflow", "the \`ask\` skill"
+    `\\b(?:${nouns})[\`*_ -]+(?:${words})\\b`, // "workflow chain", "skills: review"
   ]
   const re = new RegExp(parts.join('|'), 'gi')
   const hits = []
   let m
   while ((m = re.exec(s)) !== null) hits.push(m[0])
   return hits
+}
+
+// agentTypesOf(src): every agentType a workflow script of a plugin launches, resolved as far as a
+// reader can resolve it — the launch name at the call site, the const it stands for, or the static
+// head of a template literal (`session:${roleAgent(role)}`), which names the prefix even when the
+// name itself is decided at run time. tests/rebuild/agents.sh executes this instead of grepping
+// `agentType: '...'`: the const form and the shorthand `{ agentType, phase }` carry no quoted name,
+// so a grep over them inspects nothing and an agentType of a foreign prefix passes unseen.
+// A shorthand whose name has no binding in the file is a parameter or a word in a comment, never a
+// launch a reader can see, so it is left out; an `agentType:` site is always a site, and one whose
+// expression resolves to nothing comes back with neither prefix nor name, for the caller to reject.
+const RX_BIND = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`)/g
+const RX_SITE = /agentType\s*(?::\s*(?:'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`|([A-Za-z_$][\w$]*)))?\s*(?=[,}])/g
+function agentTypeParts(text) {
+  const s = String(text == null ? '' : text)
+  const cut = s.indexOf('${')
+  const head = cut === -1 ? s : s.slice(0, cut)
+  // a template literal with a substitution resolves to no whole name: its static head still names
+  // the prefix, which is what says whose agent a launch asks for
+  const whole = cut === -1 ? s : null
+  const colon = head.indexOf(':')
+  if (colon === -1) return { value: whole, prefix: null, name: whole }
+  return { value: whole, prefix: head.slice(0, colon), name: whole === null ? null : whole.slice(colon + 1) }
+}
+function agentTypesOf(src) {
+  const s = String(src == null ? '' : src)
+  const binds = {}
+  let m
+  RX_BIND.lastIndex = 0
+  while ((m = RX_BIND.exec(s)) !== null) {
+    const v = m[2] !== undefined ? m[2] : m[3] !== undefined ? m[3] : m[4]
+    if (binds[m[1]] === undefined) binds[m[1]] = v
+  }
+  const sites = []
+  RX_SITE.lastIndex = 0
+  while ((m = RX_SITE.exec(s)) !== null) {
+    const lit = m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3]
+    const id = m[4] !== undefined ? m[4] : (m[0].indexOf(':') === -1 ? 'agentType' : null)
+    let expr
+    let text
+    if (lit !== undefined) { expr = lit; text = lit } else if (id) {
+      expr = id
+      text = binds[id]
+      if (text === undefined) { if (m[4] === undefined) continue; text = null }
+    } else continue
+    const p = text === null || text === undefined
+      ? { value: null, prefix: null, name: null }
+      : agentTypeParts(text)
+    sites.push({ expr, value: p.value, prefix: p.prefix, name: p.name })
+  }
+  const seen = {}
+  return sites.filter(x => {
+    const k = `${x.expr}|${x.prefix}|${x.name}`
+    if (seen[k]) return false
+    seen[k] = 1
+    return true
+  })
 }
 
 // bindClass(class, submodes): the class of one run; every stage asks it for its agent options.
@@ -1619,7 +1704,8 @@ function probeResult(s) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
-    CARRIER_PATHS, CARRIER_AGENTS, CARRIER_WORKFLOWS, carrierTokens,
+    CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
+    carrierTokens, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
