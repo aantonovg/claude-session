@@ -5,8 +5,11 @@
 # skipped, so this test lives from P1 on).
 # Proves: every tool-set agent carries a tool list, a return shape, a BLOCKED rule and a working
 # directory rule; none of them pins a model or a reasoning level (A9: the call site passes both
-# from the class table); every tool is a built-in of the allowed set; no workflow launches an
-# agentType without a file. Temp dirs only, no network, under 10 s.
+# from the class table); every tool is a built-in of the allowed set; every agentType a workflow of
+# this root launches carries this root's prefix, and every agent name those launches can reach —
+# the name at the call site, or, when the site names only the prefix, every agent of the role
+# catalog the site resolves through — has a file of this root. Temp dirs only, no network,
+# under 10 s.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -99,10 +102,10 @@ for (const s of b.agentTypesOf(fs.readFileSync(process.argv[2], "utf8"))) {
   check "a3 $w.js launches at least one agentType a reader can resolve" test -n "$sites"
   while IFS='|' read -r expr prefix name; do
     [ -n "$expr" ] || continue
-    check "a3 $w.js agentType $expr resolves to a prefix or a name" bash -c 'test "$1" != - || test "$2" != -' _ "$prefix" "$name"
-    if [ "$prefix" != - ]; then
-      check "a3 $w.js agentType $expr carries the prefix of this root ($prefix vs $PREFIX)" test "$prefix" = "$PREFIX"
-    fi
+    # the prefix is required, never assumed: a plugin agent is addressable only as <plugin>:<name>,
+    # so a bare name is no launch of this root, and an unresolved site (neither prefix nor name)
+    # fails here instead of passing as this root by definition
+    check "a3 $w.js agentType $expr carries the prefix of this root ($prefix vs $PREFIX)" test "$prefix" = "$PREFIX"
     [ "$name" != - ] || continue
     check "a3 $w.js agentType $expr carries no second prefix ($name)" bash -c 'case "$1" in *:*) exit 1 ;; esac' _ "$name"
     check "a3 $w.js agentType $expr has an agent file ($name.md)" test -f "$A/$name.md"
@@ -110,6 +113,32 @@ for (const s of b.agentTypesOf(fs.readFileSync(process.argv[2], "utf8"))) {
 $sites
 EOF
 done
+
+# a4: the names behind those launches. Every workflow of this plugin writes its agentType as
+# `session:${roleAgent(role)}`, so the site names the prefix and nothing else, and a3 can check no
+# file for it. The names a caller can reach are the agents of the role catalog of lib/classes.json,
+# read through the generated block: every one of them must have a file of this root. Executed, with
+# a mutation — a catalog row naming an agent with no file must turn this red.
+roleagents() { node -e 'const b = require(process.argv[1]); console.log(b.roleNames().map(b.roleAgent).join("\n"))' "$1" 2>/dev/null; }
+missing_agents() { # <block.js> <agents dir>: the reachable agent names with no file
+  local n miss=
+  for n in $(roleagents "$1"); do [ -f "$2/$n.md" ] || miss="$miss $n"; done
+  printf '%s' "$miss"
+}
+if [ -z "$FOREIGN" ]; then
+  check "a4 the role catalog names the agents a launch can reach" test -n "$(roleagents "$BLOCKJS")"
+  check "a4 every agent of the role catalog has a file (missing:$(missing_agents "$BLOCKJS" "$A"))" \
+    test -z "$(missing_agents "$BLOCKJS" "$A")"
+  T=$(mktemp -d) || exit 1
+  trap 'rm -rf "$T"' EXIT
+  python3 - "$BLOCKJS" "$T/mutant-block.js" <<'PY'
+import re, sys
+s = open(sys.argv[1], encoding='utf-8').read()
+open(sys.argv[2], 'w', encoding='utf-8').write(re.sub(r'"agent": "tools-[a-z-]+"', '"agent": "tools-no-such"', s, count=1))
+PY
+  check "a4 the mutant catalog row is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$BLOCKJS" "$T/mutant-block.js"
+  check "a4 a catalog row naming an agent with no file is caught" test -n "$(missing_agents "$T/mutant-block.js" "$A")"
+fi
 
 if [ "$FAILS" -eq 0 ]; then echo "agents: PASS $N"; exit 0; fi
 echo "agents: FAIL $FAILS failures, $N checks passed"

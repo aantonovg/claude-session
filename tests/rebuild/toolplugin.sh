@@ -24,6 +24,9 @@ PLUG=$REPO/plugins/session
 TPL=$DOC/template
 STUB=$HERE/fixtures/tool-stub
 ENVSH=$HERE/scenario-env.sh
+BLOCKJS=$PLUG/lib/block.js
+SKCHK=$HERE/fixtures/skills-check.sh
+SCEN=$REPO/tests/measure/rebuild-scenarios-0.16.txt
 OLD_WF="build dev research review-fix translate-ru"
 OLD_SKILLS="pipeline review"
 
@@ -95,6 +98,40 @@ for mutant in "session:tools-edit" "other:tools-x"; do
   check "t3 agents.sh catches the agentType $mutant of another plugin" test "$?" -ne 0
 done
 
+# t3 a plugin agent is addressable only as <plugin>:<name>: a bare name is no launch of this root,
+# and a shorthand `{ agentType, phase }` with no binding in the file is a name decided outside the
+# file, which must reach the oracle as an unresolved site and fail it, never vanish from the list.
+M=$T/mutant-agent-bare
+cp -R "$STUB" "$M" || exit 1
+perl -pi -e "s/'toolstub:tools-metrics'/'tools-metrics'/" "$M/workflows/metrics.js"
+check "t3 the bare-name mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$STUB/workflows/metrics.js" "$M/workflows/metrics.js"
+TOOLPLUGIN=$M bash "$HERE/agents.sh" > "$T/mutant-agent-bare.out" 2>&1
+check "t3 agents.sh catches the bare agentType tools-metrics, carrying no plugin prefix" test "$?" -ne 0
+M=$T/mutant-agent-shorthand
+cp -R "$STUB" "$M" || exit 1
+perl -pi -e 's/agentType: AGENT/agentType/' "$M/workflows/metrics.js"
+check "t3 the shorthand mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$STUB/workflows/metrics.js" "$M/workflows/metrics.js"
+TOOLPLUGIN=$M bash "$HERE/agents.sh" > "$T/mutant-agent-shorthand.out" 2>&1
+check "t3 agents.sh catches a shorthand agentType no reader of the file can resolve" test "$?" -ne 0
+
+# t3 the same rule one level down, executed: agentTypesOf() reports such a site with neither prefix
+# nor name, and the mutant that drops it — the shape before this fix, where an unresolvable launch
+# reached the oracle as no site at all — must be caught right here.
+printf 'const phase = 1\nawait agent(PROMPT, { agentType, phase })\n' > "$T/unresolved-wf.js"
+cat > "$T/sites.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const s = b.agentTypesOf(fs.readFileSync(process.argv[3], 'utf8'))
+console.log(JSON.stringify(s))
+process.exit(s.length === 1 && s[0].prefix === null && s[0].name === null ? 0 : 1)
+JS
+check "t3 a shorthand agentType with no binding comes back as one unresolved site" \
+  bash -c 'node "$1" "$2" "$3" > "$4"' _ "$T/sites.js" "$BLOCKJS" "$T/unresolved-wf.js" "$T/sites.out"
+perl -pe 's/if \(text === undefined\) text = null.*/if (text === undefined) continue/' "$BLOCKJS" > "$T/mutant-drop.js"
+check "t3 the mutant that drops an unresolved site is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$BLOCKJS" "$T/mutant-drop.js"
+check "t3 the mutant that drops an unresolved site is caught" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/sites.js" "$T/mutant-drop.js" "$T/unresolved-wf.js"
+
 # ---- t4: A8, neither root names anything of the base plugin ----
 # What counts as naming a carrier is no pattern list of this file: it is carrierTokens() of the
 # shared block, executed over every file of the two roots and re-run over a mutant of that function
@@ -104,7 +141,6 @@ done
 # The whole documentation tree, not only the template inside it: the README explains the pattern
 # without naming a carrier of the base plugin either, or the first plugin copied from it inherits
 # the dependency the pattern forbids.
-BLOCKJS=$REPO/plugins/session/lib/block.js
 cat > "$T/carrier.js" <<'JS'
 const fs = require('fs')
 const b = require(process.argv[2])
@@ -380,6 +416,37 @@ META_ARGS='{"object":"an object","ask":"read it","out":"/tmp/ex(1)[a]/out.md"}'
 printf '/tmp/ex(1)[a]/out.md 42 bytes\nthe answer\n' > "$T/ret-tpl-meta.txt"
 node "$T/run-wf.js" "$TPL/workflows/example.js" "$META_ARGS" "$T/ret-tpl-meta.txt" > "$T/tpl-meta.json" 2>/dev/null
 if blocked_key "$T/tpl-meta.json"; then fail "t10 example.js survives an out path with regex metacharacters ($(cat "$T/tpl-meta.json"))"; else pass; fi
+
+# ---- t11: the skills check the plugin-widens scenario reads ----
+# That scenario carries a user requirement: a newly enabled tool plugin widens the process with no
+# edit to a process skill. The check behind it must therefore be able to turn red, and it must hash
+# the skills of the plugin the session really loaded — with --hide-old that copy is the sibling
+# <project>-plugin, so a `plugin/skills` path inside the project hashes nothing and prints
+# SKILLS-UNCHANGED whatever happens. Executed over a real --hide-old build.
+check "t11 the scenario setup copies a checked-in skills check" test -f "$SKCHK"
+check "t11 the plugin-widens setup names that file, not a plugin/ path inside the project" \
+  bash -c 'b=$(sed -n "/^plugin-widens/,/^$/p" "$1"); printf %s "$b" | grep -q "fixtures/skills-check.sh" && ! printf %s "$b" | grep -q "find plugin/skills"' _ "$SCEN"
+SKD=$T/skills-proj
+mkdir -p "$SKD"
+bash "$ENVSH" --hide-old base "$SKD" > "$T/skills-env.out" 2>&1
+check "t11 the --hide-old build for the skills check came up ($(tail -1 "$T/skills-env.out"))" test -s "$SKD/claude-args"
+cp "$SKCHK" "$SKD/skills-check.sh"
+(cd "$SKD" && sh skills-check.sh --before > "$T/sk-before.out" 2>&1)
+check "t11 the baseline hashes the skills of the loaded copy ($(head -1 "$T/sk-before.out"))" test -s "$SKD/skills-before.txt"
+check "t11 the baseline holds the copy's skill files, never an empty set" grep -qF -- "$SKD-plugin/skills/" "$SKD/skills-before.txt"
+(cd "$SKD" && sh skills-check.sh > "$T/sk1.out" 2>&1)
+check "t11 an untouched plugin copy reads SKILLS-UNCHANGED ($(cat "$T/sk1.out"))" grep -qx SKILLS-UNCHANGED "$T/sk1.out"
+S1=$(ls "$SKD-plugin"/skills/*/SKILL.md 2>/dev/null | head -1)
+check "t11 the copy carries a process skill file to edit" test -n "$S1"
+if [ -n "$S1" ]; then
+  printf '\nhand edit\n' >> "$S1"
+  (cd "$SKD" && sh skills-check.sh > "$T/sk2.out" 2>&1)
+  check "t11 one edited skill file of the copy turns the check red ($(cat "$T/sk2.out"))" grep -qx SKILLS-CHANGED "$T/sk2.out"
+fi
+mkdir -p "$T/no-skills"
+(cd "$SKD" && PLUGIN_ROOT=$T/no-skills sh skills-check.sh > "$T/sk3.out" 2>&1); rc=$?
+check "t11 a plugin root with no skills exits non-zero, never SKILLS-UNCHANGED" test "$rc" -ne 0
+check "t11 a plugin root with no skills says so ($(cat "$T/sk3.out"))" grep -q SKILLS-CHECK-BROKEN "$T/sk3.out"
 
 if [ "$FAILS" -eq 0 ]; then echo "toolplugin: PASS $N"; exit 0; fi
 echo "toolplugin: FAIL $FAILS failures, $N checks passed"

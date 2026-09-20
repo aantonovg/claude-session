@@ -390,9 +390,11 @@ function carrierTokens(line) {
 // name itself is decided at run time. tests/rebuild/agents.sh executes this instead of grepping
 // `agentType: '...'`: the const form and the shorthand `{ agentType, phase }` carry no quoted name,
 // so a grep over them inspects nothing and an agentType of a foreign prefix passes unseen.
-// A shorthand whose name has no binding in the file is a parameter or a word in a comment, never a
-// launch a reader can see, so it is left out; an `agentType:` site is always a site, and one whose
-// expression resolves to nothing comes back with neither prefix nor name, for the caller to reject.
+// Every site of the code is reported, the shorthand `{ agentType, phase }` with no binding in the
+// file among them: dropping it would hand the caller a launch as no site at all, so an agent name
+// decided outside the file (a parameter, a destructured value) would reach no check. Such a site
+// comes back with neither prefix nor name — unresolved, for the caller to reject. The scan runs
+// over stripComments(src), so the word in a comment is no site and needs no such exception.
 const RX_BIND = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`)/g
 const RX_SITE = /agentType\s*(?::\s*(?:'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`|([A-Za-z_$][\w$]*)))?\s*(?=[,}])/g
 function agentTypeParts(text) {
@@ -406,8 +408,37 @@ function agentTypeParts(text) {
   if (colon === -1) return { value: whole, prefix: null, name: whole }
   return { value: whole, prefix: head.slice(0, colon), name: whole === null ? null : whole.slice(colon + 1) }
 }
-function agentTypesOf(src) {
+// stripComments(src): the code of a script with every comment taken out and nothing else moved. A
+// launch key named in a comment is no launch. Quotes and template literals are read as text, so a
+// `//` inside a string stays code; a newline is kept, so a line number still means something.
+function stripComments(src) {
   const s = String(src == null ? '' : src)
+  let out = ''
+  let i = 0
+  let q = null // the open quote character, or null outside a string
+  while (i < s.length) {
+    const c = s[i]
+    const d = s[i + 1]
+    if (q) {
+      if (c === '\\') { out += s.slice(i, i + 2); i += 2; continue }
+      if (c === q) q = null
+      out += c; i++; continue
+    }
+    if (c === "'" || c === '"' || c === '`') { q = c; out += c; i++; continue }
+    if (c === '/' && d === '/') { while (i < s.length && s[i] !== '\n') i++; continue }
+    if (c === '/' && d === '*') {
+      const e = s.indexOf('*/', i + 2)
+      const end = e === -1 ? s.length : e + 2
+      out += s.slice(i, end).replace(/[^\n]/g, ' ')
+      i = end
+      continue
+    }
+    out += c; i++
+  }
+  return out
+}
+function agentTypesOf(src) {
+  const s = stripComments(src)
   const binds = {}
   let m
   RX_BIND.lastIndex = 0
@@ -425,7 +456,7 @@ function agentTypesOf(src) {
     if (lit !== undefined) { expr = lit; text = lit } else if (id) {
       expr = id
       text = binds[id]
-      if (text === undefined) { if (m[4] === undefined) continue; text = null }
+      if (text === undefined) text = null // unresolved, never dropped
     } else continue
     const p = text === null || text === undefined
       ? { value: null, prefix: null, name: null }
