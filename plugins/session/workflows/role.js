@@ -156,7 +156,8 @@ const CLASSES = {
     "closure-author": {
       "agent": "tools-read-write",
       "slot": "sonnet",
-      "uplift": false
+      "uplift": false,
+      "returns": "text"
     },
     "critic": {
       "agent": "tools-read-write",
@@ -309,6 +310,11 @@ function roleSlot(name, size, split) {
 }
 // roleClass(role, class): an output no oracle can check gets a stronger author, one class step up.
 function roleClass(name, cls) { return roleOf(name).uplift ? classUp(cls) : cls }
+// roleReturnsText(role): true for a role whose whole output is its return. This harness lets no
+// subagent hand a report file to anybody, so such a role writes nothing, reads its `out` as the
+// directory the run filled, and is checked on closureReport() of its return, never on a path. The
+// fact lives in lib/classes.json because a workflow script may carry no role name of its own.
+function roleReturnsText(name) { return roleOf(name).returns === 'text' }
 
 // ceiling(depth) -> { agents, cycles } (A30); ceilingHit is true when `used` units reach the
 // ceiling, so the next unit may not start: the stage ends and writes the gap.
@@ -525,10 +531,6 @@ const LAYOUT = {
       "key": "coverage",
       "stem": ""
     },
-    "closure-author": {
-      "key": "report",
-      "stem": ""
-    },
     "critic": {
       "key": "reviews",
       "stem": "hints"
@@ -594,6 +596,22 @@ function taskPath(dir, key, stem) {
   const s = String(stem == null ? '' : stem).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+/, '').replace(/[-.]+$/, '')
   if (!s) throw new Error(`task directory ${key} needs a stem`)
   return `${d}/${e.path}/${s}.md`
+}
+
+// writeHint(out, hasShell): the sentence a stage needs before it can write `out`. A `dir` row of
+// the layout puts its file one level below the task directory, and the roles on a shell-only tool
+// set create their output with a redirect: `> <dir>/runs/run.md` dies with "No such file or
+// directory" when `<dir>/runs` is absent, and no stage, script or role text of this flow runs
+// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself), and
+// a file that sits directly in the task directory needs none either: the launcher made that one.
+function writeHint(out, hasShell) {
+  const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!s || s[0] !== '/') throw new Error(`writeHint needs an absolute output path, got ${out}`)
+  if (!hasShell) return ''
+  const cut = s.lastIndexOf('/')
+  const parent = cut < 1 ? '/' : s.slice(0, cut)
+  if (parent === '/') return ''
+  return ` Make its directory first, \`mkdir -p ${parent}\`: a redirect into a directory that does not exist writes nothing.`
 }
 
 // liteTarget(key): what the depth `lite` does with that row — the collapsed file it becomes, its
@@ -1467,9 +1485,9 @@ function probeResult(s) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
-    roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
+    roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
-    LAYOUT, taskEntry, taskKeys, taskPath, liteTarget, roleOut, roleOutPath,
+    LAYOUT, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
@@ -1539,11 +1557,19 @@ if (!OUT) return fail('args.out (one absolute output path) is required')
 // nobody can find: the contract says absolute, and the script holds the launcher to it
 if (typeof OUT !== 'string' || OUT[0] !== '/') return fail(`args.out must be an absolute path, got ${OUT}`)
 
+// `/` is neither a task directory nor an output file: strip its trailing slashes and nothing is
+// left, so the layout lookup below would throw where every other argument error returns
+if (OUT.replace(/\/+$/, '') === '') return fail('args.out must name a task directory or an output file, not the filesystem root')
+
+// A role whose whole output is its return (the catalog says which): this harness lets no subagent
+// write a report file, so it reads `out` as the directory the run filled and is checked on text.
+const TEXTMODE = roleReturnsText(ROLE)
+
 // `out` may name the task directory instead of a file: a path ending in `/` is the directory of
 // the task file group, and the role writes the file lib/task-layout.md gives it (idea 8.8), so a
 // launcher never has to know the file name of a level it did not write. A role with no row of
 // that table writes no file of the group and keeps needing a path of its own.
-const FILE = /\/$/.test(OUT) ? roleOutPath(OUT, ROLE) : OUT
+const FILE = TEXTMODE ? outDir(OUT) : /\/$/.test(OUT) ? roleOutPath(OUT, ROLE) : OUT
 if (!FILE) return fail(`role ${ROLE} has no file of the task layout: args.out must name the output file`, { keys: taskKeys() })
 if (!CLASSES.table[CLS]) return fail(`unknown class ${CLS}`, { classes: Object.keys(CLASSES.table) })
 if (!CLASSES.sizes.includes(SIZE)) return fail(`unknown size ${SIZE}`, { sizes: CLASSES.sizes })
@@ -1587,8 +1613,19 @@ const COUNT = BASH_AGENTS.includes(AGENT) ? 'count it with `wc -c`'
   : 'you have neither a shell nor a Read tool: state the number of characters you wrote'
 // The size line comes first because a return that buries it, or forgets it, is a blocked stage
 // here even when the file is on disk: the count is the only evidence this script can read.
-const TAIL = `\n\nWork only inside the directories the paths above name. Write ${FILE} yourself. Start your return with one line \`${FILE} <n> bytes\` giving the size of what you wrote (${COUNT}), then the return the job above asks for. A file you did not write, or left empty, is not a finished job: return BLOCKED: <why> instead of a size. On a permission denial stop at once and return BLOCKED: <the denied action>.`
+// writeHint() of the shared block adds the `mkdir -p` a shell-only tool set needs when the layout
+// puts the file one level below the task directory: a redirect makes no directory.
+const TAIL = TEXTMODE
+  ? `\n\nRead only inside the directories the paths above name, and write no file: a subagent of this harness returns its findings as text, so a report written into a file reaches nobody. Return the report the job above asks for. On a permission denial stop at once and return BLOCKED: <the denied action>.`
+  : `\n\nWork only inside the directories the paths above name. Write ${FILE} yourself.${writeHint(FILE, BASH_AGENTS.includes(AGENT))} Start your return with one line \`${FILE} <n> bytes\` giving the size of what you wrote (${COUNT}), then the return the job above asks for. A file you did not write, or left empty, is not a finished job: return BLOCKED: <why> instead of a size. On a permission denial stop at once and return BLOCKED: <the denied action>.`
 const r = await agent(PROMPT + TAIL, O)
+// a role whose output is its return is checked on that return by closureReport() of the shared
+// block: an empty or blocked return is a blocked stage, never a finished one
+if (TEXTMODE) {
+  const c = closureReport(r)
+  if (!c.ok) return { role: ROLE, out: null, class: JOB.class, slot: SLOT, label: O.label, blocked: blockedLine(c.gap) }
+  return { role: ROLE, out: null, class: JOB.class, slot: SLOT, label: O.label, agent: AGENT, report: c.report, result: lastLine(r) }
+}
 // the stage is done only when the return names the output file and reports a positive size for it;
 // a stage that wrote nothing, or an empty file, returns blocked, never done. The whole verdict is
 // outVerdict() of the shared block, so a test can execute it instead of reading this line.

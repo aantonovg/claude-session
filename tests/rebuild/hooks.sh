@@ -101,7 +101,10 @@ for old in pipeline review; do
 done
 check "h1 modes.sh names no old process skill" bash -c '! grep -Eq "(^|[^a-z-])(pipeline|review)([^a-z-]|$)" "$1"' _ "$MODES"
 check "h1 modes.sh names no old state directory" bash -c '! grep -Fq "session-modes" "$1"' _ "$MODES"
-check "h1 modes.sh names no old depth word" bash -c '! grep -Eq "fast\|standard\|full|standard\|full" "$1"' _ "$MODES"
+# the old depths were fast|standard|full; `full` is a depth of the new set too, so only the two
+# retired words may not stand in the hook. The alternation this check used to hold was escaped,
+# so it matched the literal string `fast|standard|full` and passed over any word at all.
+check "h1 modes.sh names no old depth word" bash -c '! grep -Eq "(^|[^a-z-])(fast|standard)([^a-z-]|$)" "$1"' _ "$MODES"
 
 # both payload shapes, as measured on real sessions
 EXP='<command-message>session:process</command-message>

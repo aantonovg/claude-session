@@ -136,7 +136,8 @@ const CLASSES = {
     "closure-author": {
       "agent": "tools-read-write",
       "slot": "sonnet",
-      "uplift": false
+      "uplift": false,
+      "returns": "text"
     },
     "critic": {
       "agent": "tools-read-write",
@@ -289,6 +290,11 @@ function roleSlot(name, size, split) {
 }
 // roleClass(role, class): an output no oracle can check gets a stronger author, one class step up.
 function roleClass(name, cls) { return roleOf(name).uplift ? classUp(cls) : cls }
+// roleReturnsText(role): true for a role whose whole output is its return. This harness lets no
+// subagent hand a report file to anybody, so such a role writes nothing, reads its `out` as the
+// directory the run filled, and is checked on closureReport() of its return, never on a path. The
+// fact lives in lib/classes.json because a workflow script may carry no role name of its own.
+function roleReturnsText(name) { return roleOf(name).returns === 'text' }
 
 // ceiling(depth) -> { agents, cycles } (A30); ceilingHit is true when `used` units reach the
 // ceiling, so the next unit may not start: the stage ends and writes the gap.
@@ -505,10 +511,6 @@ const LAYOUT = {
       "key": "coverage",
       "stem": ""
     },
-    "closure-author": {
-      "key": "report",
-      "stem": ""
-    },
     "critic": {
       "key": "reviews",
       "stem": "hints"
@@ -574,6 +576,22 @@ function taskPath(dir, key, stem) {
   const s = String(stem == null ? '' : stem).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+/, '').replace(/[-.]+$/, '')
   if (!s) throw new Error(`task directory ${key} needs a stem`)
   return `${d}/${e.path}/${s}.md`
+}
+
+// writeHint(out, hasShell): the sentence a stage needs before it can write `out`. A `dir` row of
+// the layout puts its file one level below the task directory, and the roles on a shell-only tool
+// set create their output with a redirect: `> <dir>/runs/run.md` dies with "No such file or
+// directory" when `<dir>/runs` is absent, and no stage, script or role text of this flow runs
+// mkdir. A role with a Write tool needs no hint (the tool makes the parent directory itself), and
+// a file that sits directly in the task directory needs none either: the launcher made that one.
+function writeHint(out, hasShell) {
+  const s = String(out == null ? '' : out).trim().replace(/\/+$/, '')
+  if (!s || s[0] !== '/') throw new Error(`writeHint needs an absolute output path, got ${out}`)
+  if (!hasShell) return ''
+  const cut = s.lastIndexOf('/')
+  const parent = cut < 1 ? '/' : s.slice(0, cut)
+  if (parent === '/') return ''
+  return ` Make its directory first, \`mkdir -p ${parent}\`: a redirect into a directory that does not exist writes nothing.`
 }
 
 // liteTarget(key): what the depth `lite` does with that row — the collapsed file it becomes, its
@@ -1447,9 +1465,9 @@ function probeResult(s) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
-    roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
+    roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport,
-    LAYOUT, taskEntry, taskKeys, taskPath, liteTarget, roleOut, roleOutPath,
+    LAYOUT, taskEntry, taskKeys, taskPath, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
