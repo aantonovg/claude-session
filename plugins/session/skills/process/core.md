@@ -92,8 +92,11 @@ The sources and the checks a task needs are a hard requirement, not a nice-to-ha
    the missing capability stays in the block and in the report. A carrier that comes back blocked
    because a capability it needed is denied ends that launch, never the stage: the missing
    capability goes into one chat line and the same need is launched once more on a carrier that
-   does not need it. A stage reports blocked only when no carrier of the contracts can reach the
-   fact.
+   does not need it. A denied way of writing the output file is the same case, never the end of the
+   task: the need goes once more to a carrier that writes that file another way, through the shell
+   where nothing else is left. A stage reports blocked only when no carrier of the contracts can
+   reach the fact, and the task never ends with the wanted file unwritten while a way to write it
+   is still open.
 5. "Continue without <name>" from the user overrides the gate, and the unavailable list stays in
    the report.
 
