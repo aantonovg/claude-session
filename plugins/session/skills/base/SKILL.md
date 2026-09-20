@@ -12,7 +12,7 @@ disable-model-invocation: true
 2. Main session own calls per turn: at most 1. Exceptions: the Start turn, the commit, fork and workflow launches.
 3. A file over 20 lines: a fork or a cold agent writes it.
 4. Tests, builds, servers, browsers: never in a fork (a Bash or MCP call over 5 min in a fork is a cache miss on the main model). Noisy or long run: a cold agent on the sonnet slot of the class. Short async command: main session with `run_in_background`.
-5. Input volume picks the slot; the volume table below names the value and the launch passes it as the `size` argument.
+5. Input volume picks the slot; the volume table below names the value, and every launch whose contract names `size` passes it (a contract that names no `size` takes none).
 6. In doubt: delegate; workflow over fork.
 7. Every reply caveman ultra (section Style); no narration before, between or after tool calls.
 
@@ -58,7 +58,7 @@ Boundaries: everything persisted outside chat is normal prose (code, comments, c
 
 ## Verification first
 
-One page decides who checks what: `lib/verification.md` of this plugin. At runtime the plugin lives in the cache, so resolve it like every plugin file (`ls -d ~/.claude/plugins/cache/<marketplace>/<plugin>/*/lib/verification.md | sort -V | tail -1`) and read it before planning any task; this section repeats nothing from it and adds nothing to it. Four of its rules hold in every session:
+One page decides who checks what: `lib/verification.md` of this plugin. The session-start context line `Verification page (read before planning a task): <path>` names its absolute path, so reading it is one Read of a known path, inside rule 2. Read it before planning any task; this section repeats nothing from it and adds nothing to it. Four of its rules hold in every session:
 
 - Output with an oracle (tests, a validator, a build, a control-call file) gets no review. An executor runs the oracle and the run is the verdict.
 - Output with no possible oracle gets a stronger author, one class step up, not a second reader.
@@ -100,7 +100,7 @@ Workflow choice:
 | medium | 4-10 files or 3-15K tokens | `medium`, the default |
 | large | >10 files, >15K tokens, or unknown (logs, test runs, sweeps, verification) | `large` |
 
-`small` and `medium` leave a role on its own slot; `large` moves it one slot down, never up. The value is judged from this table before the launch and passed as the `size` argument.
+`small` and `medium` leave a role on its own slot; `large` moves it one slot down, never up. The value is judged from this table before the launch and passed as the `size` argument by every launch whose contract names it.
 
 Prompt size: fork prompt <100 tokens (job, owned files, return format). Cold agent prompt 300-1000 tokens: inputs by absolute path, never pasted; acceptance criteria; commands; return format; last line names the return format (facts, diff summary, or PASS/FAIL with decisive lines, word limit; no file contents, no raw logs). Author, fixer, executor prompts: "On a permission denial stop at once and return BLOCKED: <denied action>." Over 1000 tokens: split the job or move inputs into a file.
 

@@ -33,6 +33,14 @@
 # later seed must stay possible. A resume changes nothing: it replays the
 # transcript, so the recorded modes are still true.
 
+# SessionStart also injects one context line: the absolute path of lib/verification.md. The base
+# rule "read the verification page before planning a task" would otherwise cost the main session a
+# path-resolving command plus a Read, and hard rules 1 and 2 of the base allow one own call per
+# turn. The
+# plugin root is taken from this script's own location, so the line is right in the cache copy and
+# in a --plugin-dir checkout alike.
+PLUGIN_ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
+
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -254,6 +262,12 @@ case "$EVENT" in
       *) wipe; mark ;;                  # compact, clear, unknown, missing
     esac
     # State and marker expire together, so an old marker never blocks a rebuild.
-    find "$STATE_DIR" -type f -mtime +7 -delete 2>/dev/null ;;
+    find "$STATE_DIR" -type f -mtime +7 -delete 2>/dev/null
+    # The one context line. A missing page prints nothing: a wrong path would send the session to a
+    # Read that fails, which costs the same call the line was meant to save.
+    VPAGE=$PLUGIN_ROOT/lib/verification.md
+    [ -n "$PLUGIN_ROOT" ] && [ -f "$VPAGE" ] && jq -nc --arg p "$VPAGE" \
+      '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:("Verification page (read before planning a task): " + $p)}}'
+    : ;;
 esac
 exit 0
