@@ -1,0 +1,34 @@
+{
+  "comment": "Targets of bin/build.sh. A target that does not exist yet is skipped, so a part lands before its workflow exists. block: the file carries the shared-block markers. table: the file carries the class-table markers. roles/aspects: the subset of lib/roles/*.md and lib/aspects/*.md stamped into that file (A23), by role name without the .md suffix. A key set to true whose marker pair is missing from an existing target fails the build, so a deleted marker is never a silent skip.",
+  "targets": [
+    {
+      "path": "workflows/role.js",
+      "block": true,
+      "roles": ["plan-author", "spec-author", "scenario-author", "code-author", "test-author", "coverage-checker", "critic", "evidence-researcher", "evidence", "evidence-triage", "fixer", "researcher", "web-researcher", "synthesizer", "executor", "waiter", "translator"],
+      "aspects": []
+    },
+    {
+      "path": "workflows/chain.js",
+      "block": true,
+      "roles": ["critic", "evidence-researcher", "evidence", "evidence-triage", "fixer"],
+      "aspects": ["*"]
+    },
+    {
+      "path": "workflows/make.js",
+      "block": true,
+      "roles": ["spec-author", "scenario-author", "test-author", "code-author", "executor", "coverage-checker", "fixer"],
+      "aspects": []
+    },
+    {
+      "path": "workflows/probe.js",
+      "block": true,
+      "roles": ["researcher", "web-researcher", "critic", "synthesizer"],
+      "aspects": []
+    },
+    {
+      "path": "base/BASE.md",
+      "comment": "P6 rewrites this file with the class-table marker pair and flips table to true; the old base text carries no marker, and a true here would fail the build today",
+      "table": false
+    }
+  ]
+}
