@@ -356,6 +356,40 @@ const HINT_CAP = 5 // A27: at most 5 hints per critic, so N critics give at most
 const SEVERITY_ORDER = ['low', 'medium', 'high']
 const EVIDENCE_VERDICTS = ['confirmed', 'refuted', 'undetermined', 'harness']
 
+// keyedFields(text, tag, width): the lines of an agent return that carry one keyed answer, split
+// into their fields. A real return decorates its answers the way an agent writes everything else:
+// a list marker, a blockquote or a heading before the tag, backticks or bold around the tag, a
+// lowercase tag, a colon or a dash where the first `|` belongs, prose lines before and after, and
+// a long answer wrapped onto a second line. None of that changes the answer, so it is stripped.
+// Nothing else is guessed: a line without the tag is prose and binds nothing, and a field that is
+// absent stays absent — which every caller below reads as "settled by nobody".
+// `width` is how many fields a whole answer has; only a row still short of that many takes the
+// next prose line as its continuation, so a finished answer is never extended by the text after
+// it. A wrap inside the last field of a whole row is therefore cut at the wrap: the role texts
+// ask for one line per answer, and swallowing the prose after a complete row would be worse.
+const LEAD = /^[ \t]*(?:[-*+>][ \t]+|#{1,6}[ \t]+|\d+[.)][ \t]+)*/
+const TAG_DECOR = '[`*_]*'
+const WORD_DECOR = /^[`*_"']+|[`*_"'.,;]+$/g
+// word(s): a short field — an id, a verdict, a severity, the control-run flag — with its
+// decoration removed. The prose fields keep theirs: only the keys the flow reads are normalised.
+const word = s => String(s == null ? '' : s).trim().replace(WORD_DECOR, '').trim()
+function keyedFields(text, tag, width) {
+  const head = new RegExp(`^${TAG_DECOR}${tag}${TAG_DECOR}[ \\t]*[|:\\u2013\\u2014-][ \\t]*`, 'i')
+  const n = Number(width || 0)
+  const rows = []
+  for (const line of String(text == null ? '' : text).split('\n')) {
+    const s = String(line).replace(LEAD, '').trim()
+    if (!s) continue
+    if (head.test(s)) { rows.push(s.replace(head, '').split('|').map(x => x.trim())); continue }
+    const last = rows[rows.length - 1]
+    if (!last || last.length >= n) continue
+    const add = s.split('|').map(x => x.trim())
+    last[last.length - 1] = `${last[last.length - 1]} ${add[0]}`.trim()
+    for (const x of add.slice(1)) last.push(x)
+  }
+  return rows
+}
+
 // placeOf(place): "file:12-30", "file:12" or "doc.md#Section"; anything else is the whole file.
 function placeOf(place) {
   const s = String(place == null ? '' : place).trim()
@@ -378,18 +412,16 @@ function placeText(p) {
 // parseHints(text, aspect): the hint lines of one critic return. Format, one line per hint:
 //   HINT | <aspect> | <place> | <severity> | <suspected error> | <evidence that would settle it>
 // Everything else in the return is prose and is ignored; a hint with no place could not be
-// grouped and could not be settled, so it is no hint.
+// grouped and could not be settled, so it is no hint. The decoration a real critic writes around
+// such a line is read through keyedFields().
 function parseHints(text, aspect) {
   const hints = []
-  for (const line of String(text == null ? '' : text).split('\n')) {
-    const parts = line.split('|')
-    if (parts[0].trim() !== 'HINT') continue
-    const f = parts.slice(1).map(s => s.trim())
-    const place = f[1] || ''
+  for (const f of keyedFields(text, 'HINT', 5)) {
+    const place = word(f[1] || '')
     if (!place) continue
-    const sev = (f[2] || '').toLowerCase()
+    const sev = word(f[2] || '').toLowerCase()
     hints.push({
-      aspect: f[0] || aspect || '',
+      aspect: word(f[0] || '') || aspect || '',
       place,
       ...placeOf(place),
       // an unreadable severity counts as medium: it must not silently become the highest one and
@@ -507,17 +539,14 @@ function criticSplit(depth, names) {
 // An unreadable verdict counts as undetermined: it then goes to the user and never to the fixer.
 function parseEvidence(text) {
   const answers = []
-  for (const line of String(text == null ? '' : text).split('\n')) {
-    const parts = line.split('|')
-    if (parts[0].trim() !== 'EVIDENCE') continue
-    const f = parts.slice(1).map(s => s.trim())
+  for (const f of keyedFields(text, 'EVIDENCE', 4)) {
     // the id of an answer is a hint id (`g1.h2`); the group it belongs to is its head
-    const id = f[0] || ''
+    const id = word(f[0] || '')
     if (!id) continue
     const group = id.split('.')[0]
-    const v = (f[1] || '').toLowerCase()
+    const v = word(f[1] || '').toLowerCase()
     let verdict = EVIDENCE_VERDICTS.includes(v) ? v : 'undetermined'
-    const base = (f[2] || '').trim()
+    const base = word(f[2] || '')
     // a missing or unreadable control-run field settles nothing: reading it as `base:no` would
     // turn an answer nobody controlled into a finding of this change. It goes to the user, the
     // same way an unreadable verdict does. A harness failure needs no control run.
@@ -672,12 +701,10 @@ function unansweredOf(groups, answers) {
 // file access can read, and they are the only mandate the fixer gets.
 function parseAccepted(text) {
   const rows = []
-  for (const line of String(text == null ? '' : text).split('\n')) {
-    const parts = line.split('|')
-    if (parts[0].trim() !== 'ACCEPTED') continue
-    const f = parts.slice(1).map(s => s.trim())
-    if (!f[0]) continue
-    rows.push({ id: f[0], group: f[0].split('.')[0], change: f.slice(1).join(' | ') })
+  for (const f of keyedFields(text, 'ACCEPTED', 2)) {
+    const id = word(f[0] || '')
+    if (!id) continue
+    rows.push({ id, group: id.split('.')[0], change: f.slice(1).join(' | ') })
   }
   return rows
 }
@@ -818,7 +845,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, mustExist, outVerdict,
-    HINT_CAP, SEVERITY_ORDER, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
+    HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,
     hintRows, chainRows, openRowsText,
     fixerInput, confirmedOf, undeterminedOf, unansweredOf, parseAccepted, judgedInput, chainSeats,

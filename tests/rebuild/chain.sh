@@ -13,7 +13,10 @@
 # high severity, the short form otherwise (idea decision 5); the status sends the open rows to the
 # user and states the one round; an undetermined answer is closed by no control run; the whole
 # return of a run — the open rows, the harness failures, the on-base rows naming the base version,
-# the evidence files, the status — is built by chainResult() and survives a late block. Every
+# the evidence files, the status — is built by chainResult() and survives a late block; and, over
+# the real stage returns of run 20260920-174213 kept in tests/rebuild/fixtures, that a real answer
+# line binds a real hint id through the decoration an agent writes around it, while a counts-only
+# return binds none and gives the fixer nothing. Every
 # decision is executed over lib/block.js, never grepped out of the workflow file, and each rule is
 # re-run over a mutant that must turn that same named rule red.
 # Temp dirs only, no network, no session, under 20 s.
@@ -72,6 +75,28 @@ if [ -f "$C" ]; then
 else
   fail "a2 lib/roles/critic.md exists"
 fi
+
+# ---- a2b: every role text of the chain returns its answers, never a count of them ----
+# Run 20260920-174213 lost all 8 of its hints because these `Return:` lines asked for a path and
+# counts while the flow reads keyed lines out of the return: the answers stayed in the files. Each
+# role text now states its own line, with one worked example, and says one line per id.
+while IFS='|' read -r rf tag idword; do
+  [ -n "$rf" ] || continue
+  f=$LIB/roles/$rf.md
+  if [ ! -f "$f" ]; then fail "a2b lib/roles/$rf.md exists"; continue; fi
+  check "a2b $rf states the $tag line the flow reads" grep -Fq "$tag | " "$f"
+  check "a2b $rf gives a worked example with a real id" grep -Fq "$tag | g1.h2 | " "$f"
+  check "a2b $rf asks for one line per $idword" grep -Fq "one line per $idword" "$f"
+  # the return is where the flow reads them: a role text that only orders the file loses them again
+  check "a2b $rf says the file alone reaches nobody" grep -Fqi 'on no line of your return' "$f"
+done <<'ROLES'
+evidence|EVIDENCE|hint id
+evidence-researcher|EVIDENCE|hint id
+evidence-triage|ACCEPTED|accepted hint id
+ROLES
+check "a2 critic.md states the hint line the flow reads" grep -Fq 'HINT | reliability | ' "$C"
+check "a2 critic.md asks for one line per hint" grep -Fq 'one line per hint' "$C"
+check "a2 critic.md says a hint only in the file reaches nobody" grep -Fqi 'on no line of your return' "$C"
 
 # ---- a3: the chain decisions, executed over lib/block.js ----
 cat > "$T/chain.js" <<'JS'
@@ -418,12 +443,92 @@ eq(b.openRowsText(b.chainRows(mixed, b.parseEvidence(
     'EVIDENCE | g1.h2 | refuted | base:no | a fact',
     'EVIDENCE | g1.h3 | refuted | base:no | a fact'].join('\n')))), '(none)',
    'nothing open, no unsettled row for the file')
+
+// --- the real returns of the live run, parsed as they were written ---
+// Run base:chain-seeded 20260920-174213 on commit 44a2b95 lost all 8 of its hints: the evidence
+// stages wrote their answers into their files and returned counts, the triage returned counts, and
+// the parsers read a return. The fixtures below are those texts; parsing them here is the oracle
+// that a real answer binds a real hint id, and that a counts-only return binds none.
+const fx = n => require('fs').readFileSync(`${process.argv[3]}/${n}`, 'utf8')
+
+const realHints = b.parseHints(fx('chain-hints-reliability.txt'), 'reliability')
+eq(realHints.map(h => h.place),
+   ['slug.js:4', 'slug.js:3-4', 'slug.js:2-4', 'slug.js:1,3,6', 'slug.js:4'],
+   'the real critic return of the run gives every hint line it wrote')
+eq(realHints.map(h => h.severity), ['high', 'high', 'medium', 'medium', 'low'],
+   'the real critic return carries the severity of each hint')
+eq(b.maxSeverity(b.groupHints(realHints)), 'high',
+   'the real critique of that run takes the long form')
+
+const realG1 = b.parseEvidence(fx('chain-evidence-g1.txt'))
+eq(realG1.map(a => a.id),
+   ['g1.h1', 'g1.h2', 'g1.h3', 'g1.h4', 'g1.h5', 'g1.h6', 'g1.h7'],
+   'the real evidence text of g1 binds every hint id of the group')
+eq(realG1.map(a => a.verdict),
+   ['confirmed', 'confirmed', 'confirmed', 'refuted', 'undetermined', 'refuted', 'refuted'],
+   'the real evidence text of g1 carries one verdict per hint, and the answer that left the control-run field out is unsettled')
+const realG2 = b.parseEvidence(fx('chain-evidence-g2.txt'))
+eq(realG2.map(a => [a.id, a.verdict, a.onBase]), [['g2.h1', 'refuted', true]],
+   'the real evidence text of g2 binds its hint id and its control run')
+const realG3 = b.parseEvidence(fx('chain-evidence-g3.txt'))
+eq(realG3.map(a => [a.id, a.verdict, a.onBase]), [['g3.h1', 'refuted', false]],
+   'the real evidence return of g3 binds its hint id')
+
+// the groups of that run: 7 hints at the cut, 1 at the two exports, 1 at the limit
+const mk = (id, place, ids) => ({ id, place, severity: 'high', aspects: ['reliability'],
+  hints: ids.map(h => ({ id: `${id}.${h}`, place, what: `${id}.${h}` })) })
+const realGroups = [
+  mk('g1', 'slug.js:2-4', ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7']),
+  mk('g2', 'slug.js:6-7', ['h1']),
+  mk('g3', 'slug.js:1,3,6', ['h1']),
+]
+const realAns = realG1.concat(realG2, realG3)
+const realTbl = b.chainRows(realGroups, realAns)
+eq(realTbl.unanswered.map(r => r.id), [],
+   'read from the real texts, not one of the 9 hints of that run comes back unanswered')
+eq(realTbl.confirmed.map(r => r.id), ['g1.h1', 'g1.h2', 'g1.h3'],
+   'the real texts confirm the three hints that run confirmed, the seeded trailing dash first')
+eq(realTbl.undetermined.map(r => r.id), ['g1.h5'],
+   'the one real answer with no control run goes to the user, not to the fixer')
+eq(b.fixerInput(realGroups, realAns).map(g => g.hints.map(h => h.id)),
+   [['g1.h1', 'g1.h2', 'g1.h3']],
+   'the seeded defect reaches the fixer and the bait does not')
+
+// the triage return of that run was counts only: a count is no mandate, and no hint is fixed
+eq(b.parseAccepted(fx('chain-triage.txt')), [],
+   'the counts-only triage return of that run binds no accepted row')
+eq(b.judgedInput(realGroups, realAns, b.parseAccepted(fx('chain-triage.txt'))), [],
+   'with that return the fixer got nothing, however many facts were confirmed')
+const acc = b.parseAccepted(fx('chain-triage-accepted.txt'))
+eq(acc.map(r => r.id), ['g1.h1'],
+   'the repaired triage return binds its accepted row through the list marker, the bold and the backticks')
+eq(b.judgedInput(realGroups, realAns, acc).map(g => g.hints.map(h => h.id)), [['g1.h1']],
+   'and that row, confirmed by a fact, is the whole mandate of the fixer')
+
+// --- harmless decoration around an answer line, and an answer wrapped over two lines ---
+eq(b.parseEvidence('- **EVIDENCE** | `g4.h1` | **confirmed** | `base:no` | src/x.js:4 prints "a-"')
+   .map(a => [a.id, a.verdict, a.onBase]), [['g4.h1', 'confirmed', false]],
+   'a list marker, bold and backticks around an answer line still bind its hint')
+eq(b.parseEvidence('evidence: g4.h2 | Refuted | base: yes | src/x.js:9 has the same line')
+   .map(a => [a.id, a.verdict, a.onBase]), [['g4.h2', 'refuted', true]],
+   'a lowercase tag, a colon for the first bar and a capitalised verdict are read the same way')
+eq(b.parseEvidence('EVIDENCE | g4.h3 | confirmed\n| base:no | src/x.js:4 prints "a-"')
+   .map(a => [a.id, a.verdict, a.onBase]), [['g4.h3', 'confirmed', false]],
+   'an answer wrapped onto a second line is one answer, not a row that lost its control run')
+eq(b.parseEvidence('EVIDENCE | g4.h4 | confirmed | base:no | src/x.js:4\nSome prose after a whole answer.')
+   .map(a => a.pointer), ['src/x.js:4'],
+   'the prose after a whole answer is no part of it')
+eq(b.parseEvidence('The EVIDENCE for g4.h5 is that the file reads well.'), [],
+   'a sentence that merely says the word is no answer line')
+eq(b.parseHints('  - **HINT** | `cost` | `src/a.js:1-2` | **High** | waste | read it', 'cost')
+   .map(h => [h.aspect, h.place, h.severity]), [['cost', 'src/a.js:1-2', 'high']],
+   'a decorated hint line binds its place and its severity')
 console.log(out.join('\n'))
 JS
 
 run_suite() { # run_suite <label> <block file> <expect ok|red> [the rule that must go red]
   local label=$1 file=$2 expect=$3 rule=${4:-}
-  node "$T/chain.js" "$file" > "$T/suite.out" 2>&1
+  node "$T/chain.js" "$file" "$REPO/tests/rebuild/fixtures" > "$T/suite.out" 2>&1
   if [ ! -s "$T/suite.out" ]; then
     fail "$label produced no line (node failed)"
     sed 's/^/  /' "$T/suite.out" 2>/dev/null
@@ -473,7 +578,7 @@ a group with no answer vanishes|a group with no readable answer line is its own 
 the judge's accepted rows stop filtering the fixer's mandate|the judge accepted nothing|s/ids\.includes\(g\.id\)/true/
 the ceiling never cuts a stage|lite seats two agents in a stage|s/const seats = Math\.min\(n, room\)/const seats = n/
 an unknown aspect name runs anyway|an unknown aspect stops the workflow|s/if \(p\.unknown\.length\) \{/if (false) {/
-a hint with an empty aspect field loses its tag|takes the aspect of the critic that wrote it|s/f\[0\] \|\| aspect \|\| ''/f[0] || ''/
+a hint with an empty aspect field loses its tag|takes the aspect of the critic that wrote it|s/word\(f\[0\] \|\| ''\) \|\| aspect \|\| ''/word(f[0] || '')/
 the status keeps the open rows to itself|the status sends the open rows to the user|s/put them to the user/keep them here/
 the status promises another round|the status states that the chain ran one round|s/One round only/Another round/
 the result drops the undetermined rows|the result carries the undetermined rows|s/undetermined: und\.map/undetermined: [].map/
@@ -491,6 +596,13 @@ an unknown aspect name plans a run anyway|an unknown aspect name stops the run b
 the ceiling never cuts the critic stage|the plan seats five critics, the ceiling of the stage|s/sets: all\.slice\(0, seats\.seats\)/sets: all.slice(0)/
 the ceiling never cuts the evidence stage|the long form starts the strongest groups first|s/ran: ordered\.slice\(0, seats\.seats\)/ran: ordered.slice(0)/
 the confirmed count is whatever the caller claims|the confirmed count comes from the answers|s/confirmed: conf\.length,/confirmed: Number(o.confirmed),/
+only the first answer line of a return is read|binds every hint id of the group|s/for \(const f of keyedFields\(text, 'EVIDENCE', 4\)\)/for (const f of keyedFields(text, 'EVIDENCE', 4).slice(0, 1))/
+an answer id keeps its decoration|binds its accepted row through the list marker|s/const id = word\(f\[0\] \|\| ''\)/const id = String(f[0] || '')/
+a hint place keeps its decoration|a decorated hint line binds its place and its severity|s/const place = word\(f\[1\] \|\| ''\)/const place = String(f[1] || '')/
+a decorated tag is no longer a tag|bold and backticks around an answer line still bind|s/const TAG_DECOR = .*/const TAG_DECOR = '';/
+a wrapped answer loses the fields it wrapped|an answer wrapped onto a second line is one answer|s/if \(!last \|\| last\.length >= n\) continue/continue/
+a list marker hides the answer under it|a list marker, bold and backticks around an answer line still bind|s/const LEAD = .*/const LEAD = \/(?:)\/;/
+the prose after a whole answer is glued to it|the prose after a whole answer is no part of it|s/last\.length >= n/false/
 MUT
 
 # ---- a5: the wiring of workflows/chain.js, by grep over its own code ----

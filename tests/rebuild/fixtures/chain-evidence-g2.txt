@@ -1,0 +1,10 @@
+# Real evidence text of hint group g2, scenario base:chain-seeded, run 20260920-174213, stage label
+# son-lo-evidence-g2. The size line and the counts line are that run's return verbatim; the answer
+# line is the one that agent really wrote, shortened. Its first draft in the same run wrote the
+# fields with no `EVIDENCE` tag at all and with the place pushed in front of the verdict; it
+# rewrote the file into this shape itself, and neither shape ever reached the return.
+/tmp/project-chain-seeded/out/chain-evidence-g2.md 711 bytes
+counts: confirmed 0, refuted 1, undetermined 0, harness failures 0
+
+EVIDENCE | g2.h1 | refuted | base:yes | check.js only requires `slug` (`const { slug } = require(...)`), never `limit`/`LIMIT`, so check.sh does not exercise this claim; base/slug.js:5-6 already has both `function limit() { return LIMIT }` and `module.exports = { slug, limit, LIMIT }` unchanged, so that shape predates this change
+DONE

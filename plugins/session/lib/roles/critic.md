@@ -14,4 +14,8 @@ No praise, no summary of what the object does, no style remark, no restatement o
 
 Write the hint list into `{out}` in that shape and change nothing else.
 
-Return: the output path, the hint count by severity, then the last line `DONE` or `BLOCKED: <reason>`.
+Return: the output path and the hint count by severity, then the hints themselves — one line per hint, nothing else on the line:
+
+`HINT | reliability | slug.js:4 | high | the cut can land on a dash and leave a trailing one | run slug('ab cd', 3) and look at the tail`
+
+Only those lines are read: a hint that stands in `{out}` but on no line of your return is a hint nobody got, and a count is no hint. Then the last line `DONE` or `BLOCKED: <reason>`.
