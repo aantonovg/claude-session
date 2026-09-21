@@ -52,7 +52,8 @@ option and is named in the closure report. Skip steps 3 to 5 below.
 Every process file instantiates this table for its task type. A stage writes its file, passes its
 gate, and only then does the next stage start. The main session writes the one-line status of each
 gate, the ledger rows and the final report in chat; the files are written by the carriers it
-launches.
+launches. A returned out path is output only after a check on disk — `test -s` on it, and `-nt`
+against its input — before it is opened or shown to the user.
 
 The task file of a row is the file of that level; which files a depth collapses into one file, and
 which it drops, stands in `core.md`, "Task directory", and nowhere else.
