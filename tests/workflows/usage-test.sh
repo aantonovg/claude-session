@@ -436,7 +436,7 @@ pre=$(awk '/^## Version log/{exit} {print}' "$RD")
 check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
 
 # k13: the change set of this branch, and the two version files agree (suite pass itself is the
-# rest of k13; the bump to 0.16.0 is asserted by k14)
+# rest of k13; the bump to 0.16.0 is asserted once by tests/rebuild/release-gate.sh)
 # The change set is read against the branch point, never against the working tree alone: the parts
 # of the rebuild commit as they land, so `git status` is empty right after a commit and a check over
 # it would pass over nothing. A per-file allow list says nothing here either — the rebuild rewrites
@@ -454,18 +454,20 @@ bad=$(printf '%s\n' "$changed" | grep -vE '^(README\.md|CLAUDE\.md|\.claude-plug
 check "k13 change set within the product, test and doc tree (extra: $bad)" test -z "$bad"
 check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
 
-# k14: the 0.16.0 release (P10 of the rebuild). Both version files carry 0.16.0 and nothing of the
-# previous release; the description and the keywords of both carry no mode word of the old set
-# (pipeline, review and its fast/standard levels, the old workflow names); the plugin README
-# carries a section for the new set that names this test, and its version log holds 0.16.0 as
-# the newest entry, the line right above 0.15.18 (the 0.15.x log runs 0.15.1-0.15.7, then
-# 0.15.18 down to 0.15.8).
+# k14: what of the 0.16.0 release (P10 of the rebuild) holds on every later commit: no older
+# plugin version left in the version files, and the description and the keywords of both carry no mode
+# word of the old set (pipeline, review and its fast/standard levels, the old workflow names).
+# The checks that hold only at the release commit (both version files at 0.16.0, the README 0.16
+# section and version log line, the HEAD subject `session 0.16.0: <summary>`, a clean tree) live
+# in the one-time tests/rebuild/release-gate.sh, run once right after the release commit.
 PJ=$P/.claude-plugin/plugin.json
 MJ=$REPO/.claude-plugin/marketplace.json
-REL=0.16.0
-check "k14 plugin.json version $REL" python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["version"]==sys.argv[2] else 1)' "$PJ" "$REL"
-check "k14 marketplace.json session version $REL" python3 -c 'import json,sys; m=[p["version"] for p in json.load(open(sys.argv[1]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[sys.argv[2]] else 1)' "$MJ" "$REL"
-check "k14 no 0.15.18 left in the version files" bash -c '! grep -Fq "0.15.18" "$1" "$2"' _ "$PJ" "$MJ"
+# no version of an older release left in either file: every 0.x.y string in them is the plugin
+# version (the 1.0.0 of the marketplace metadata is no plugin version)
+check "k14 no other plugin version left in the version files" python3 -c 'import json,re,sys
+v=json.load(open(sys.argv[1]))["version"]
+found={x for f in sys.argv[1:] for x in re.findall(r"(?<![0-9.])0\.[0-9]+\.[0-9]+(?![0-9])", open(f).read())}
+sys.exit(0 if found=={v} else 1)' "$PJ" "$MJ"
 oldword='(^|[^a-z-])(pipeline|pipeline-codex|review|reviews|review-fix|translate-ru|fast|standard|modes|stage-[a-z]+)([^a-z-]|$)'
 meta=$(python3 -c 'import json,sys
 p=json.load(open(sys.argv[1])); m=[x for x in json.load(open(sys.argv[2]))["plugins"] if x["name"]=="session"]
@@ -473,28 +475,7 @@ for d in [p]+m:
     print(d.get("description","")); print(" ".join(d.get("keywords",[])))' "$PJ" "$MJ" 2>/dev/null)
 check "k14 description and keywords of both files readable" test -n "$meta"
 check "k14 description and keywords carry no old mode word" bash -c '! grep -Eiq "$1" <<<"$2"' _ "$oldword" "$meta"
-rsec=$(awk '/^## The 0\.16 set/{f=1; print; next} f&&/^## /{exit} f{print}' "$RD")
-check "k14 README section The 0.16 set" test -n "$rsec"
-check "k14 README 0.16 section names the four workflows" bash -c 'for w in role chain make probe; do grep -q "session:$w" <<<"$1" || exit 1; done' _ "$rsec"
-check "k14 README 0.16 section usage-test.sh sentence" grep -Fq 'tests/workflows/usage-test.sh' <<<"$rsec"
-check "k14 README 0.16 section static suite sentence" grep -Fq 'tests/rebuild/all.sh' <<<"$rsec"
-newest=$(awk '/^## Version log/{f=1; next} f&&/^## /{exit} f&&/^0\.15\.18: /{print prev; exit} f&&/^[0-9]/{prev=$0}' "$RD")
-check "k14 README version log: $REL is the line right above 0.15.18" grep -q "^$REL: " <<<"$newest"
-check "k14 README version log holds $REL once" test "$(grep -c "^$REL: " "$RD")" = 1
-# The release commit carries the subject `session 0.16.0: <summary>` (part P10), and it is HEAD:
-# a later commit may change versions or files after the release, so an older match does not count.
-# Before the land step the tree is dirty and nothing is committed yet; the check is then not run,
-# and the result line says PENDING instead of a bare PASS, so a skipped check never reads as passed.
-PENDING=""
-if [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
-  check "k14 HEAD subject is 'session $REL: <summary>'" bash -c 'git -C "$1" log -1 --format=%s | grep -Eq "^session ${2//./\\.}: ."' _ "$REPO" "$REL"
-else
-  PENDING="k14 release subject (tree dirty, left to the clean release commit)"
-fi
 
-if [ "$FAILS" -eq 0 ] && [ -n "$PENDING" ]; then
-  echo "usage-test: PASS $N, PENDING 1: $PENDING"; exit 0
-fi
 if [ "$FAILS" -eq 0 ]; then
   echo "usage-test: PASS $N"; exit 0
 fi
