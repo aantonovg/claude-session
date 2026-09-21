@@ -153,7 +153,7 @@ const CLASSES = {
       "uplift": false
     },
     "coverage-checker": {
-      "agent": "tools-read-write",
+      "agent": "tools-read-write-bash",
       "slot": "sonnet",
       "uplift": false
     },
@@ -869,6 +869,34 @@ function roleAgent(name) { return roleOf(name).agent }
 function roleSlot(name, size, split) {
   const r = roleOf(name)
   return slotForSize(split && r.splitSlot ? r.splitSlot : r.slot, size)
+}
+// roleToolGaps(text, tools): what a role text asks of its agent that the agent's tool list does not
+// give. A role that lists a directory, runs a check or a command, greps or polls needs Bash; a role
+// that writes its output file needs Write, or Bash when its text says it writes through a shell
+// redirect; a role that cites pages needs WebFetch. A tool that does not exist in this build (Glob)
+// is a gap of its own, so it can not come back into an agent file. Returns the gap lines, [] when
+// the tools cover the text. The backtick is written \x60 for the same reason as in echoedWaits().
+const ROLE_NEEDS_SHELL = [
+  /\blist (?:that|the|each|every) director/i, /\brun (?:exactly )?the (?:check|command)\b/i,
+  /\brun a read-only command\b/i, /\bgrep\b/i, /\bgit log\b/i, /\bpoll\b/i,
+]
+const ROLE_OUT = /\x60\{out\}\x60/
+const ROLE_NO_FILE = /\bwrite no file\b/i
+const ROLE_REDIRECT = /\bshell redirect\b/i
+const ROLE_WEB = /\bURL\b/
+const NO_SUCH_TOOLS = ['Glob']
+function roleToolGaps(text, tools) {
+  const t = String(text || '')
+  const have = new Set((Array.isArray(tools) ? tools : String(tools || '').split(','))
+    .map(s => String(s).trim()).filter(Boolean))
+  const gaps = []
+  const shell = ROLE_NEEDS_SHELL.filter(rx => rx.test(t))
+  if (shell.length && !have.has('Bash')) gaps.push(`asks for a shell (${shell[0].source}) but has no Bash`)
+  if (ROLE_OUT.test(t) && !ROLE_NO_FILE.test(t) && !have.has('Write')
+    && !(have.has('Bash') && ROLE_REDIRECT.test(t))) gaps.push('writes its output file but has no Write and no stated shell redirect')
+  if (ROLE_WEB.test(t) && !have.has('WebFetch')) gaps.push('cites pages by URL but has no WebFetch')
+  for (const n of NO_SUCH_TOOLS) if (have.has(n)) gaps.push(`names ${n}, a tool this build does not have`)
+  return gaps
 }
 // roleClass(role, class): an output no oracle can check gets a stronger author, one class step up.
 function roleClass(name, cls) { return roleOf(name).uplift ? classUp(cls) : cls }
@@ -2142,7 +2170,7 @@ if (typeof module !== 'undefined' && module.exports) {
     staleNameHits, staleFileHits, oldDesignHits, OLD_DESIGN_PHRASES, echoedWaits,
     HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
-    roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
+    roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, roleToolGaps, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, blockGap, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
     LAYOUT, taskDirOf, outForm, taskEntry, taskKeys, taskPath, runStem, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,

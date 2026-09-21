@@ -62,7 +62,7 @@
     "scenario-author": { "agent": "tools-read-write", "slot": "main", "uplift": true },
     "code-author": { "agent": "tools-edit", "slot": "sonnet", "uplift": false },
     "test-author": { "agent": "tools-edit", "slot": "sonnet", "uplift": false },
-    "coverage-checker": { "agent": "tools-read-write", "slot": "sonnet", "uplift": false },
+    "coverage-checker": { "agent": "tools-read-write-bash", "slot": "sonnet", "uplift": false },
     "closure-author": { "agent": "tools-read-write", "slot": "sonnet", "uplift": false, "returns": "text" },
     "critic": { "agent": "tools-read-write", "slot": "main", "splitSlot": "opus", "uplift": false },
     "evidence-researcher": { "agent": "tools-read-bash", "slot": "sonnet", "uplift": false },

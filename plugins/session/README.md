@@ -22,9 +22,9 @@ comes from the launch prompt, which a workflow builds out of the role text of `l
 
 | agent | tools | used by |
 |---|---|---|
-| `tools-read-write` | Read, Write | the authors, the critic, the triage, the coverage check, the synthesis, the translation |
+| `tools-read-write` | Read, Write | the authors, the critic, the triage, the synthesis, the translation |
 | `tools-read-bash` | Read, Bash | the evidence roles, the executor, the waiter, the codex shim |
-| `tools-read-write-bash` | Read, Write, Bash | the researcher |
+| `tools-read-write-bash` | Read, Write, Bash | the researcher, the coverage check (its shell lists a directory input, nothing else) |
 | `tools-edit` | Bash, Read, Edit, Write | the code and test authors, the fixer |
 | `tools-web` | WebFetch, WebSearch, Write | the web researcher |
 

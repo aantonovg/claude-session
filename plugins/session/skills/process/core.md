@@ -36,11 +36,12 @@ of that level.
 
 A session that lost its context resumes from these files alone: read the pointer, then the intent,
 the ledger and the last file of the chain that exists, and continue at the first level whose file
-is not whole. A level counts as done only when its file is complete: the launch that wrote it has a
-stop row in `ledger.jsonl`, or the file carries the closing marker of its level (the status block,
-the last section the level asks for). A file that exists but is not whole — a stage killed
-mid-write by a compact, an interruption or a denied capability — is redone from that level, not
-read as a result. No stage researches again what a whole file already holds, and no stage trusts a
+is not whole. A level counts as done only when the launch that wrote its file has a stop row in
+`ledger.jsonl`: that row is written by a hook when the launch finishes, never by the session and
+never by the launched work, so it stands every time and only then. A closing line, a status block
+or any other marker inside the file proves nothing about completeness. A file whose launch has no
+stop row — a stage killed mid-write by a compact, an interruption or a denied capability — is
+redone from that level, not read as a result. No stage researches again what a whole file already holds, and no stage trusts a
 memory of the conversation over a file of this group. The same rule carries a task across
 `/compact`, across an interruption and into a new session.
 

@@ -1,6 +1,6 @@
 ---
 name: tools-read-write-bash
-description: Lean workflow agent with Read, Write and Bash, for research that must run commands and leave one file. The launch prompt carries the role and the output path; this file pins nothing else.
+description: Lean workflow agent with Read, Write and Bash, for a role that runs commands or lists a directory and leaves one file. The launch prompt carries the role and the output path; this file pins nothing else.
 tools: Read, Write, Bash
 ---
 

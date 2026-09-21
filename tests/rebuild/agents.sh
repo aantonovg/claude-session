@@ -138,6 +138,39 @@ open(sys.argv[2], 'w', encoding='utf-8').write(re.sub(r'"agent": "tools-[a-z-]+"
 PY
   check "a4 the mutant catalog row is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$BLOCKJS" "$T/mutant-block.js"
   check "a4 a catalog row naming an agent with no file is caught" test -n "$(missing_agents "$T/mutant-block.js" "$A")"
+
+  # a5: each role's agent has the tools its role text asks for (roleToolGaps of lib/block.js,
+  # executed over the real catalog, the real role texts and the real agent tool lines). A coverage
+  # role on an agent with no shell stopped a live run: "cannot list directory contents of tests/".
+  # The mutant puts that role back on the agent without Bash and must be caught.
+  tool_gaps() { # <block.js>: one line per role whose agent lacks a tool its text asks for
+    node -e '
+const fs = require("fs"), path = require("path")
+const b = require(process.argv[1]), roles = process.argv[2], agents = process.argv[3]
+for (const r of b.roleNames()) {
+  const text = fs.readFileSync(path.join(roles, r + ".md"), "utf8")
+  const a = b.roleAgent(r)
+  const m = /^tools:\s*(.*)$/m.exec(fs.readFileSync(path.join(agents, a + ".md"), "utf8"))
+  for (const g of b.roleToolGaps(text, m ? m[1] : "")) console.log(`${r} on ${a}: ${g}`)
+}' "$1" "$P/lib/roles" "$A" 2>&1
+  }
+  gaps=$(tool_gaps "$BLOCKJS")
+  check "a5 every role's agent has the tools its role text asks for (${gaps:-no gap})" test -z "$gaps"
+  check "a5 the check sees a listing need, a missing shell and a tool this build lacks" node -e '
+const b = require(process.argv[1])
+const ok = b.roleToolGaps("list that directory", ["Read", "Write"]).length === 1
+  && b.roleToolGaps("list that directory", ["Read", "Write", "Bash"]).length === 0
+  && b.roleToolGaps("x", ["Read", "Glob"]).length === 1
+process.exit(ok ? 0 : 1)' "$BLOCKJS"
+  python3 - "$BLOCKJS" "$T/mutant-tools.js" <<'PY'
+import sys
+s = open(sys.argv[1], encoding='utf-8').read()
+a = '"coverage-checker": {\n      "agent": "tools-read-write-bash"'
+b = '"coverage-checker": {\n      "agent": "tools-read-write"'
+open(sys.argv[2], 'w', encoding='utf-8').write(s.replace(a, b, 1))
+PY
+  check "a5 the mutant role row is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$BLOCKJS" "$T/mutant-tools.js"
+  check "a5 a listing role on an agent with no shell is caught" bash -c 'grep -q "^coverage-checker on tools-read-write: asks for a shell" <<<"$1"' _ "$(tool_gaps "$T/mutant-tools.js")"
 fi
 
 if [ "$FAILS" -eq 0 ]; then echo "agents: PASS $N"; exit 0; fi
