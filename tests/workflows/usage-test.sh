@@ -481,14 +481,20 @@ check "k14 README 0.16 section static suite sentence" grep -Fq 'tests/rebuild/al
 newest=$(awk '/^## Version log/{f=1; next} f&&/^## /{exit} f&&/^0\.15\.18: /{print prev; exit} f&&/^[0-9]/{prev=$0}' "$RD")
 check "k14 README version log: $REL is the line right above 0.15.18" grep -q "^$REL: " <<<"$newest"
 check "k14 README version log holds $REL once" test "$(grep -c "^$REL: " "$RD")" = 1
-# The release commit carries the subject `session 0.16.0: <summary>` (part P10). Before the land
-# step the tree is dirty and nothing is committed yet, so the check runs on a clean tree only.
+# The release commit carries the subject `session 0.16.0: <summary>` (part P10), and it is HEAD:
+# a later commit may change versions or files after the release, so an older match does not count.
+# Before the land step the tree is dirty and nothing is committed yet; the check is then not run,
+# and the result line says PENDING instead of a bare PASS, so a skipped check never reads as passed.
+PENDING=""
 if [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
-  check "k14 a commit with subject 'session $REL: <summary>' exists" bash -c 'git -C "$1" log --format=%s | grep -Eq "^session ${2//./\\.}: ."' _ "$REPO" "$REL"
+  check "k14 HEAD subject is 'session $REL: <summary>'" bash -c 'git -C "$1" log -1 --format=%s | grep -Eq "^session ${2//./\\.}: ."' _ "$REPO" "$REL"
 else
-  echo "usage-test: note: tree dirty, k14 release subject check left to the clean release commit"
+  PENDING="k14 release subject (tree dirty, left to the clean release commit)"
 fi
 
+if [ "$FAILS" -eq 0 ] && [ -n "$PENDING" ]; then
+  echo "usage-test: PASS $N, PENDING 1: $PENDING"; exit 0
+fi
 if [ "$FAILS" -eq 0 ]; then
   echo "usage-test: PASS $N"; exit 0
 fi
