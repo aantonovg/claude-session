@@ -238,6 +238,14 @@ const done = b.makeResult({ ...S, run: 'PASS' })
 ck(done.ok === true, 'the range ran to its end and the oracle passed')
 ck(done.blocked === undefined, 'a finished run carries no blocked line')
 ck(done.range === 'spec..fixer', `the result names the range it ran (${done.range})`)
+// a block is a gap of the run: a blocked line beside an empty gap list was read out as "Gaps: none"
+// over a run that stopped on a check nobody could satisfy
+ck((stopped.gap || []).filter(g => /the code stage stopped this run: the tool was denied/.test(g)).length === 1,
+  `a blocked stage stands in the gap list with its reason (${(stopped.gap || []).join(' ;; ')})`)
+ck(/gap\(s\) stand in this return/.test(String(stopped.status)), `the status of a blocked run counts that gap (${stopped.status})`)
+ck(done.gap.length === 0, 'a finished run carries no gap of a block')
+ck(!/BLOCKED:/.test(b.blockGap('code', 'BLOCKED: two answers for one call')), 'the gap line carries the reason, never the block word')
+ck(/the unnamed stage/.test(b.blockGap(null, 'x')), 'a block with no stage name still names that it has none')
 const ctlBad = b.makeResult({ ...S, run: 'PASS', control: b.negativeControl('full', 'PASS') })
 ck(ctlBad.ok === false, 'a suite that passes on the base version is no finished run either')
 ck((ctlBad.gap || []).filter(g => /base version/.test(g)).length === 1, 'and that gap stands in the result')
@@ -420,6 +428,8 @@ const pStopped = b.probeResult({ ...PB, stage: 'synthesis', blocked: 'the tool w
 ck(pStopped.ok === false, 'a blocked probe stage is never a finished run')
 ck(/^BLOCKED: /.test(String(pStopped.blocked)), 'its blocked line opens with the word')
 ck(pStopped.stage === 'synthesis', 'and names the stage that stopped')
+ck((pStopped.gap || []).filter(g => /the synthesis stage stopped this run: the tool was denied/.test(g)).length === 1,
+  `a blocked probe stage stands in the gap list with its reason (${(pStopped.gap || []).join(' ;; ')})`)
 ck(b.probeResult({ ...PB, synthesis: null }).ok === false, 'no synthesis file, no finished probe')
 ck(b.probeResult({ ...PB, critique: null }).ok === false, 'no critique, no finished probe')
 ck(b.probeResult({ ...PB, bundles: [] }).ok === false, 'no bundle, no finished probe')
@@ -525,6 +535,7 @@ a run that returned no closing report is finished anyway|s/const reportOk = repo
 a file named as out is taken for the directory of the stage files|s/if \(s\.slice\(cut \+ 1\)\.indexOf\('\.'\) === -1\) return s/return s/
 a closure return carrying nothing but its shape line passes for a report|s/while \(lines\.length && \/\^DONE\[\.!\]\?\$\/i\.test\(lines\[lines\.length - 1\]\.trim\(\)\)\) lines\.pop\(\)//
 a shell-only role is sent to write into a directory nobody made|s/  if \(!hasShell\) return ''/  if (true) return ''/
+a run that stopped at a stage returns an empty gap list|s/if \(blocked\) gap\.push\(blockGap\(o\.stage, blocked\)\)/if (false) gap.push(0)/
 MUT
 
 # ---- s3: the wiring of workflows/make.js ----
@@ -935,6 +946,90 @@ for w in make probe; do
   # directory: the stage tail carries the mkdir, built by writeHint() of the shared block
   check "s7 $w.js tells a shell-only stage to make its directory" grep -Fq 'writeHint(' <<<"$code"
 done
+
+# ---- s8: the fix-cycle ceiling, executed over make.js itself under stub agents ----
+# The live scenario `ceiling` can not force fix cycles: an agent that refuses a check no code can
+# satisfy is right to refuse it, and the run then ends blocked before any cycle. The ceiling gets
+# this deterministic oracle instead. make.js runs whole, at each depth, with its own stamped block,
+# under stubs that answer in the shape every stage checks: the files are "written", every run of the
+# check says FAIL, and the fix stage never turns it green. Each run must end at the cycle ceiling
+# of its depth — the numbers below are written here on purpose, independent of lib/classes.json, so
+# a ceiling that moved by one is seen — with the ceiling sentence in the status, the unmet check in
+# the gap list, and no field that reports success. Nothing is launched and no file is written.
+cat > "$T/dry.js" <<'JS'
+const fs = require('fs')
+const out = []
+const ck = (cond, what) => out.push(`${cond ? 'ok' : 'bad'} ${what}`)
+const src = fs.readFileSync(process.argv[2], 'utf8').replace(/^export const meta =/m, 'const meta =')
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+const flow = new AsyncFunction('args', 'log', 'phase', 'agent', 'workflow', src)
+const CEILING = { lite: 1, std: 2, full: 3 }
+const TEST = 'bash check.sh'
+async function run(depth) {
+  const jobs = []
+  const agent = async (prompt, o) => {
+    jobs.push(String((o && o.label) || ''))
+    const size = /one line `([^`\n]+) <n> bytes`/.exec(prompt)
+    // the closure stage: its output is its return, no file
+    if (!size) return 'Stages ran. The check still fails; every open point stands as it was handed over.\nDONE'
+    const file = size[1]
+    // every run of the check, the control run on the base version included: it fails, and the tree
+    // stays as it was
+    if (/The first PASS or FAIL line is read as the verdict/.test(prompt)) {
+      return `${file} 64 bytes\nFAIL exit 1: FAIL impossible\nTREE | untouched\nDONE`
+    }
+    return `${file} 64 bytes\nwritten\nDONE`
+  }
+  const workflow = async (name, a) => ({ out: a.out, gap: [], undetermined: [], unanswered: [] })
+  const args = { ask: 'make `bash check.sh` pass', out: `/tmp/dry-${depth}/task`, run: 'r1', test: TEST, depth, class: 'c1', size: 'small' }
+  const r = await flow(args, () => {}, () => {}, agent, workflow)
+  return { r: r || {}, jobs }
+}
+;(async () => {
+  for (const depth of ['lite', 'std', 'full']) {
+    let got
+    try { got = await run(depth) } catch (e) { ck(false, `${depth}: make.js ran to its end (${e && e.message})`); continue }
+    const { r, jobs } = got
+    const fixes = jobs.filter(l => /fix-\d+/.test(l)).length
+    ck(r.cycles === CEILING[depth], `${depth}: the run ends at the cycle ceiling of its depth, ${CEILING[depth]} (got ${r.cycles})`)
+    ck(fixes === CEILING[depth], `${depth}: exactly ${CEILING[depth]} fix stage(s) started, none past the ceiling (got ${fixes})`)
+    ck(new RegExp(`fix cycle ceiling of ${CEILING[depth]} at depth ${depth} ended the stage`).test(String(r.status)),
+      `${depth}: the status holds the ceiling sentence (${String(r.status).slice(0, 200)})`)
+    ck((r.gap || []).some(g => /ceiling/.test(g) && /the check still fails/.test(g)),
+      `${depth}: the gap names the unmet check (${(r.gap || []).join(' ;; ')})`)
+    ck(r.run === 'FAIL', `${depth}: the result keeps the verdict of the check (${r.run})`)
+    ck(r.ok === false, `${depth}: nothing reports ok`)
+    ck((r.done || []).indexOf('fixer') === -1, `${depth}: the cut fix stage is not reported as one that ran`)
+    ck(!r.blocked, `${depth}: the ceiling ends the stage, no stage blocked (${r.blocked || ''})`)
+  }
+  console.log(out.join('\n'))
+})()
+JS
+dry_suite() { # dry_suite <make.js> <out>
+  node "$T/dry.js" "$1" > "$2" 2>&1
+}
+MAKE=$WF/make.js
+if [ -f "$MAKE" ]; then
+  dry_suite "$MAKE" "$T/dry.out"
+  if [ ! -s "$T/dry.out" ]; then
+    fail "s8 the dry run printed no line (node failed)"
+  else
+    while IFS= read -r line; do
+      case $line in
+        "ok "*) pass ;;
+        "bad "*) fail "s8 ${line#bad }" ;;
+        *) fail "s8 unexpected output: $line" ;;
+      esac
+    done < "$T/dry.out"
+  fi
+  # the mutant: a ceiling off by one, in the block make.js carries itself — the dry run must go red
+  perl -pe 's/return n >= c\[kind\]/return n > c[kind]/' "$MAKE" > "$T/make-offbyone.js"
+  check "s8 the ceiling mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$MAKE" "$T/make-offbyone.js"
+  dry_suite "$T/make-offbyone.js" "$T/dry-mutant.out"
+  check "s8 the dry run catches a cycle ceiling off by one" grep -q '^bad .*cycle ceiling' "$T/dry-mutant.out"
+else
+  fail "s8 plugins/session/workflows/make.js exists"
+fi
 
 if [ "$FAILS" -eq 0 ]; then echo "stages: PASS $N"; exit 0; fi
 echo "stages: FAIL $FAILS failures, $N checks passed"

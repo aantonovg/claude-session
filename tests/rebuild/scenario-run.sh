@@ -22,8 +22,9 @@
 # The driver writes FAIL for every key it ran, so a scenario nobody judged never reads as PASS;
 # the judge of test-session records the real verdict afterwards with --verdict, and
 # tests/rebuild/verdicts.sh takes the last line for the key. A key whose environment or setup never
-# came up gets no verdict line at all — nothing was measured, so there is nothing to fail — and the
-# run ends non-zero with that count instead.
+# came up, or whose `finish` gate timed out (the gated prompt is then never sent), gets no verdict
+# line at all — nothing was measured, so there is nothing to fail — and the run ends non-zero with
+# that count instead.
 #
 # Scenario file format (free text, no id inside a test name):
 #     <key>  base: <arguments or (none)>   prompts: "first prompt" "second prompt"
@@ -239,6 +240,7 @@ for key in $KEYS; do
   # every prompt of the scenario, not only the first: one `read -d ''` per NUL-terminated record.
   # A single `read -r -d '' -a` stops at the first NUL and drops the rest silently.
   PROMPTS=()
+  GATE_LOST=0
   while IFS= read -r -d '' p; do PROMPTS+=("$p"); done < <(field "$key" prompts)
   # the gate of the `finish` field: the named prompt waits for the workflow finish notices, so a
   # prompt that reads a result never races the launch it reads
@@ -250,7 +252,14 @@ for key in $KEYS; do
     gwant=$(awk -v i="$pi" '$1 == i {print ($2 == "" ? 1 : $2); exit}' <<<"$FINISH")
     if [ -n "$gwant" ]; then
       if wait_finished "$gwant"; then log "$key: prompt $pi gated on $gwant workflow finish notice(s): seen"
-      else log "$key: prompt $pi waited for $gwant workflow finish notice(s), none within $IDLE_S s"; fi
+      else
+        # a gate that timed out is an environment error, never a reading: the prompt behind it would
+        # race the launch it reads, and a judge would take that race for a normal run. No prompt is
+        # sent after it, the scenario gets no verdict line, and the run ends non-zero.
+        log "$key: prompt $pi waited for $gwant workflow finish notice(s), none within $IDLE_S s: environment error, prompt not sent"
+        echo "scenario-run: $key: finish gate of prompt $pi timed out, see $R" >&2
+        ERRORS=$((ERRORS + 1)); GATE_LOST=1; break
+      fi
     fi
     send "$p"
     wait_idle || log "$key: turn cap $IDLE_S s hit"
@@ -261,6 +270,9 @@ for key in $KEYS; do
   if [ -n "$f" ]; then cp "$f" "$OUT/$key.jsonl"; log "$key: transcript $OUT/$key.jsonl"; else log "$key: no transcript"; fi
   rm -f "$BEFORE"
   [ "${KEEP_PROJECT:-0}" = 1 ] || rm -rf "$PROJ" "$PROJ-plugin"
+  # the pane and the transcript of a run whose gate timed out are kept for the diagnosis above, but
+  # nothing was measured: no verdict line, like an environment that never came up
+  [ "$GATE_LOST" = 1 ] && continue
   printf '%s %s FAIL %s %s\n' "$VARIANT" "$key" "$RUN_TS" "$COMMIT" >> "$V"
 done
 
@@ -268,6 +280,6 @@ log "done ($ERRORS environment error(s))"
 touch "$OUT/done"
 echo "scenario-run: $OUT"
 if [ "$ERRORS" -gt 0 ]; then
-  echo "scenario-run: $ERRORS scenario(s) never ran: environment error, no verdict line for them" >&2
+  echo "scenario-run: $ERRORS scenario(s) measured nothing (environment, setup or a finish gate that timed out): no verdict line for them" >&2
   exit 1
 fi
