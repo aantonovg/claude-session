@@ -457,14 +457,16 @@ check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v
 # k14: the 0.16.0 release (P10 of the rebuild). Both version files carry 0.16.0 and nothing of the
 # previous release; the description and the keywords of both carry no mode word of the old set
 # (pipeline, review and its fast/standard levels, the old workflow names); the plugin README
-# carries a section for the new set that names this test, and its version log opens with 0.16.0.
+# carries a section for the new set that names this test, and its version log holds 0.16.0 as
+# the newest entry, the line right above 0.15.18 (the 0.15.x log runs 0.15.1-0.15.7, then
+# 0.15.18 down to 0.15.8).
 PJ=$P/.claude-plugin/plugin.json
 MJ=$REPO/.claude-plugin/marketplace.json
 REL=0.16.0
 check "k14 plugin.json version $REL" python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["version"]==sys.argv[2] else 1)' "$PJ" "$REL"
 check "k14 marketplace.json session version $REL" python3 -c 'import json,sys; m=[p["version"] for p in json.load(open(sys.argv[1]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[sys.argv[2]] else 1)' "$MJ" "$REL"
 check "k14 no 0.15.18 left in the version files" bash -c '! grep -Fq "0.15.18" "$1" "$2"' _ "$PJ" "$MJ"
-oldword='(^|[^a-z-])(pipeline|pipeline-codex|review|reviews|review-fix|translate-ru|fast|standard|stage-[a-z]+)([^a-z-]|$)'
+oldword='(^|[^a-z-])(pipeline|pipeline-codex|review|reviews|review-fix|translate-ru|fast|standard|modes|stage-[a-z]+)([^a-z-]|$)'
 meta=$(python3 -c 'import json,sys
 p=json.load(open(sys.argv[1])); m=[x for x in json.load(open(sys.argv[2]))["plugins"] if x["name"]=="session"]
 for d in [p]+m:
@@ -476,8 +478,16 @@ check "k14 README section The 0.16 set" test -n "$rsec"
 check "k14 README 0.16 section names the four workflows" bash -c 'for w in role chain make probe; do grep -q "session:$w" <<<"$1" || exit 1; done' _ "$rsec"
 check "k14 README 0.16 section usage-test.sh sentence" grep -Fq 'tests/workflows/usage-test.sh' <<<"$rsec"
 check "k14 README 0.16 section static suite sentence" grep -Fq 'tests/rebuild/all.sh' <<<"$rsec"
-firstlog=$(awk '/^## Version log/{f=1; next} f&&/^[0-9]/{print; exit}' "$RD")
-check "k14 README version log opens with $REL" grep -q "^$REL: " <<<"$firstlog"
+newest=$(awk '/^## Version log/{f=1; next} f&&/^## /{exit} f&&/^0\.15\.18: /{print prev; exit} f&&/^[0-9]/{prev=$0}' "$RD")
+check "k14 README version log: $REL is the line right above 0.15.18" grep -q "^$REL: " <<<"$newest"
+check "k14 README version log holds $REL once" test "$(grep -c "^$REL: " "$RD")" = 1
+# The release commit carries the subject `session 0.16.0: <summary>` (part P10). Before the land
+# step the tree is dirty and nothing is committed yet, so the check runs on a clean tree only.
+if [ -z "$(git -C "$REPO" status --porcelain 2>/dev/null)" ]; then
+  check "k14 a commit with subject 'session $REL: <summary>' exists" bash -c 'git -C "$1" log --format=%s | grep -Eq "^session ${2//./\\.}: ."' _ "$REPO" "$REL"
+else
+  echo "usage-test: note: tree dirty, k14 release subject check left to the clean release commit"
+fi
 
 if [ "$FAILS" -eq 0 ]; then
   echo "usage-test: PASS $N"; exit 0
