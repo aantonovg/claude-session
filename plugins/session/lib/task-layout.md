@@ -23,8 +23,8 @@ The pointer to the task a session is working on:
 One line: the absolute path of the task directory. The pointer is
 written by the process skill when the task directory is created and
 removed by the process skill when the task is closed; no hook and no workflow writes it.
-`hooks/ledger-stop.sh` reads it and nothing else: with no pointer an ordinary session writes no
-ledger row at all.
+`hooks/ledger-stop.sh` and `hooks/modes.sh` read it and nothing else: with no pointer an ordinary
+session writes no ledger row at all and gets no resume line after a clear, a compact or a resume.
 
 A file of the layout is written by one stage and read by later ones. Nobody rewrites a file of a
 level above their own: a stage that disagrees with the level above says so in its own file, and
@@ -52,7 +52,7 @@ the row stays as it is.
 | tests | tests.md | file | the test stage (`test-author`): the test files it wrote, one path per line | the coverage check, the executor, closure | - |
 | coverage | coverage.md | file | the coverage stage (`coverage-checker`): scenarios without tests, tests without scenarios | closure, the user | - |
 | report | report.md | file | the synthesis stage (`synthesizer`): the answer its inputs add up to. The closure stage writes no file: this harness lets no subagent write a report, so its report travels back as the text of its return | the user, the next task | task.md |
-| ledger | ledger.jsonl | state | one row per launch by the stage that launches (class, depth, slot, label, and `agent_id` filled in from the launch result, the field the stop hook finds the row by), one stop row per agent by the SubagentStop hook | closure, the cost reading, the loop guard | ledger.jsonl |
+| ledger | ledger.jsonl | state | one row per launch by the stage that launches (class, depth, slot, label, and `agent_id` filled in from the launch result, the field the stop hook finds the row by), one stop row per agent by the SubagentStop hook, which also writes the one intent stop row (`stage` `intent`, no `agent_id`) at the first stop row of the task | closure, the cost reading, the loop guard | ledger.jsonl |
 | evidence | evidence | dir | the research and evidence stages (`researcher`, `web-researcher`, `evidence-researcher`, `evidence`), one bundle per run | triage, the synthesis stage, closure | evidence |
 | reviews | reviews | dir | the review chain: hint lists per critic, the accepted list of triage, the result of a key-document check | the fixer, closure, the user | reviews |
 | changes | changes | dir | the code author and the fixer: the paths they changed, one file per run | the executor, closure | changes |

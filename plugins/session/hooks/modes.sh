@@ -33,7 +33,8 @@
 # later seed must stay possible. A resume changes nothing: it replays the
 # transcript, so the recorded modes are still true.
 
-# SessionStart also injects one context line: the absolute path of lib/verification.md. The base
+# SessionStart also injects one context line: the absolute path of lib/verification.md (plus, after a
+# clear, a compact or a resume with a live tasks/current pointer, the resume line of that task). The base
 # rule "read the verification page before planning a task" would otherwise cost the main session a
 # path-resolving command plus a Read, and hard rules 1 and 2 of the base allow one own call per
 # turn. The
@@ -266,8 +267,29 @@ case "$EVENT" in
     # The one context line. A missing page prints nothing: a wrong path would send the session to a
     # Read that fails, which costs the same call the line was meant to save.
     VPAGE=$PLUGIN_ROOT/lib/verification.md
-    [ -n "$PLUGIN_ROOT" ] && [ -f "$VPAGE" ] && jq -nc --arg p "$VPAGE" \
-      '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:("Verification page (read before planning a task): " + $p)}}'
+    CTX=
+    [ -n "$PLUGIN_ROOT" ] && [ -f "$VPAGE" ] && CTX="Verification page (read before planning a task): $VPAGE"
+    # After a clear, a compact or a resume with a live tasks/current pointer: one more line, the
+    # resume state of that task, computed by resumeLine() of lib/block.js from its ledger and its
+    # file names. This glue reads the files; the decision is the pure function.
+    case "$src" in
+      clear|compact|resume)
+        CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null); [ -n "$CWD" ] || CWD=$PWD
+        ENC=$(printf '%s' "$CWD" | sed 's#[^A-Za-z0-9-]#-#g')
+        CUR="$HOME/.claude/projects/$ENC/tasks/current"
+        TDIR=$(head -1 "$CUR" 2>/dev/null)
+        if [ -n "$TDIR" ] && [ -d "$TDIR" ] && [ -f "$PLUGIN_ROOT/lib/block.js" ] && command -v node >/dev/null 2>&1; then
+          RLINE=$(node -e '
+            const b = require(process.argv[1]), fs = require("fs"), d = process.argv[2]
+            const rd = f => { try { return fs.readFileSync(d + "/" + f, "utf8") } catch (e) { return "" } }
+            process.stdout.write(b.resumeLine(d, rd("ledger.jsonl"), fs.readdirSync(d), rd("intent.md") || rd("task.md")))
+          ' "$PLUGIN_ROOT/lib/block.js" "$TDIR" 2>/dev/null)
+          [ -n "$RLINE" ] && CTX="${CTX:+$CTX
+}$RLINE"
+        fi ;;
+    esac
+    [ -n "$CTX" ] && jq -nc --arg c "$CTX" \
+      '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
     : ;;
 esac
 exit 0

@@ -38,7 +38,9 @@ A session that lost its context resumes from these files alone: read the pointer
 the ledger and the last file of the chain that exists, and continue at the first level whose file
 is not whole. A level counts as done only when the launch that wrote its file has a stop row in
 `ledger.jsonl`: that row is written by a hook when the launch finishes, never by the session and
-never by the launched work, so it stands every time and only then. A closing line, a status block
+never by the launched work, so it stands every time and only then. The intent has no launch: the
+same hook writes its stop row, `{"ts","stage":"intent","event":"stop","depth"}`, at the first stop
+row of the task, because nothing is launched before the intent is confirmed. A closing line, a status block
 or any other marker inside the file proves nothing about completeness. A file whose launch has no
 stop row — a stage killed mid-write by a compact, an interruption or a denied capability — is
 redone from that level, not read as a result. No stage researches again what a whole file already holds, and no stage trusts a
@@ -193,8 +195,9 @@ result keeps every fact its sources carry, each marked checked or not checked. A
 nothing its sources stated, because a hint doubted it, is wrong and goes back once.
 
 The aspect list is proposed by the main session from the quality criteria agreed with the intent,
-cut to the count the depth allows, and approved by the user. No aspect critic runs without that
-approval. A criterion with no aspect of its own is recorded in the task files and named in the
+cut to the count the depth allows, and approved by the user, on the `Review aspects` line of the
+intent form (`intent-form.md`). The approved list is that line of `intent.md`, and a review launch
+carries exactly those aspects. No aspect critic runs without that approval. A criterion with no aspect of its own is recorded in the task files and named in the
 report as not covered by a critic, never dropped in silence.
 
 A critic may raise the class of the stages that follow, never lower it, and says so in one line.

@@ -2161,6 +2161,104 @@ function probeResult(s) {
   return res
 }
 
+// ---- resume of a task and the intent form ----
+// The stages of the process skill in their order (skills/process/SKILL.md, "Stages and gates"), and
+// the ones a depth marks `–` or folds into the intent level. hooks/modes.sh reads the ledger and the
+// file names of the task directory named by tasks/current and prints resumeLine() as a context line
+// after a clear, a compact or a resume, so a session that lost its context continues from the
+// machine rows instead of from its own reading of a long text.
+const PROCESS_STAGES = ['intent', 'subtasks', 'specification', 'scenarios', 'verification-plan',
+  'checks', 'result', 'review', 'coverage', 'closure']
+const STAGE_OFF = { lite: ['subtasks', 'specification', 'verification-plan', 'checks', 'coverage'], std: [], full: [] }
+const INTENT_FILES = ['intent.md', 'task.md']
+function ledgerRows(text) {
+  const rows = []
+  for (const l of String(text == null ? '' : text).split('\n')) {
+    try { const r = JSON.parse(l); if (r && typeof r === 'object' && !Array.isArray(r)) rows.push(r) } catch (e) { /* skip */ }
+  }
+  return rows
+}
+const stopIds = rows => new Set(rows.filter(r => r.event === 'stop' && r.agent_id).map(r => r.agent_id))
+// The stages that have a stop row: a launch row of the stage whose agent_id has a stop row, or the
+// intent stop row, which names its stage itself because no launch writes the intent.
+function stoppedStages(rows) {
+  const stopped = stopIds(rows)
+  const done = new Set()
+  for (const r of rows) {
+    if (r.event === 'stop' && r.stage === 'intent') done.add('intent')
+    else if (!r.event && r.agent_id && stopped.has(r.agent_id) && PROCESS_STAGES.includes(r.stage)) done.add(r.stage)
+  }
+  return done
+}
+function taskDepth(rows) {
+  let d = null
+  for (const r of rows) if (Object.prototype.hasOwnProperty.call(STAGE_OFF, r.depth)) d = r.depth
+  return d
+}
+// resumeState(ledgerText, files): the depth, the stages with a stop row in order, the last of them,
+// the next stage that is on at that depth, and whether the intent is confirmed (its stop row stands
+// and its file exists).
+function resumeState(ledgerText, files) {
+  const rows = ledgerRows(ledgerText)
+  const depth = taskDepth(rows)
+  const off = STAGE_OFF[depth] || []
+  const done = stoppedStages(rows)
+  const order = PROCESS_STAGES.filter(s => done.has(s))
+  const lastIdx = order.length ? PROCESS_STAGES.indexOf(order[order.length - 1]) : -1
+  const next = PROCESS_STAGES.find((s, i) => i > lastIdx && !off.includes(s)) || null
+  const hasIntent = (files || []).some(f => INTENT_FILES.includes(f))
+  return { depth, done: order, last: lastIdx < 0 ? null : PROCESS_STAGES[lastIdx], next, intent: done.has('intent') && hasIntent }
+}
+// intentStopDue(ledgerText, files): hooks/ledger-stop.sh writes the intent stop row once, at the
+// first stop row of any launch of the task. At std and full nothing is launched before the user
+// confirmed the intent, so a finished launch proves the confirmation; at lite the intent has no gate.
+function intentStopDue(ledgerText, files) {
+  const rows = ledgerRows(ledgerText)
+  if (!(files || []).some(f => INTENT_FILES.includes(f))) return false
+  if (rows.some(r => r.event === 'stop' && r.stage === 'intent')) return false
+  const stopped = stopIds(rows)
+  return rows.some(r => !r.event && r.agent_id && stopped.has(r.agent_id) && r.stage !== 'intent')
+}
+function intentStopRow(ledgerText, ts) {
+  const depth = taskDepth(ledgerRows(ledgerText))
+  return Object.assign({ ts: ts, stage: 'intent', event: 'stop' }, depth ? { depth } : {})
+}
+// The intent form (skills/process/intent-form.md): the default quality aspects the confirmation
+// proposes, cut to the lower bound of the depth's range, and the aspects line read back from the
+// intent file, the only source the review stage takes its aspects from.
+const DEFAULT_ASPECTS = ['reliability', 'simplicity', 'testability', 'security', 'operability']
+const ASPECT_CUT = { lite: 1, std: 2, full: 3 }
+const ASPECTS_HEAD = 'Review aspects'
+function defaultAspects(depth) {
+  if (!Object.prototype.hasOwnProperty.call(ASPECT_CUT, depth)) throw new Error(`unknown depth ${depth}`)
+  return DEFAULT_ASPECTS.slice(0, ASPECT_CUT[depth])
+}
+// intentAspects(text): the names on the aspects line, a note in parentheses dropped; null when the
+// text has no such line.
+function intentAspects(text) {
+  const head = new RegExp('^[\\s>*_#-]*' + ASPECTS_HEAD + '[*_]*\\s*:[*_]*(.*)$', 'i')
+  for (const l of String(text == null ? '' : text).split('\n')) {
+    const m = l.match(head)
+    if (!m) continue
+    return m[1].replace(/\([^)]*\)/g, ' ').split(/[\s,;\x60]+/).map(w => w.toLowerCase())
+      .filter(w => /^[a-z][a-z-]*$/.test(w))
+  }
+  return null
+}
+// resumeLine(dir, ledgerText, files, intentText): the one context line of a resumed task.
+function resumeLine(dir, ledgerText, files, intentText) {
+  const s = resumeState(ledgerText, files)
+  const out = [`Open task: ${dir}${s.depth ? ` (depth ${s.depth})` : ''}.`]
+  out.push(s.done.length ? `Stages with a stop row, done: ${s.done.join(', ')}; last: ${s.last}.` : 'No stage has a stop row yet.')
+  out.push(s.next ? `Next stage: ${s.next}.` : 'No stage is left.')
+  out.push(s.intent
+    ? 'The intent is confirmed: its stop row stands.'
+    : 'The intent has no stop row: its confirmation is not proven by the files.')
+  const asp = intentAspects(intentText)
+  if (asp && asp.length) out.push(`Approved review aspects: ${asp.join(', ')}.`)
+  return out.join(' ')
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
@@ -2181,6 +2279,8 @@ if (typeof module !== 'undefined' && module.exports) {
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
     fixerState, fixerDone, keyCheckState, controlTree, stageStop, makeStatus, makeResult,
     probeStatus, probeResult,
+    PROCESS_STAGES, STAGE_OFF, ledgerRows, resumeState, resumeLine, intentStopDue, intentStopRow,
+    DEFAULT_ASPECTS, ASPECTS_HEAD, defaultAspects, intentAspects,
   }
 }
 // ---- end shared block ----
