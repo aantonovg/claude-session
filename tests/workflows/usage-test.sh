@@ -24,25 +24,22 @@ check() {  # $1 label, rest: command
 }
 now_ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
 
-# Step 1 baseline: arg names of each old `Args:` list.
+# Step 1 baseline: arg names of each `Args:` list. P9 of the 0.16 rebuild took the five old plugin
+# workflows out of this list with the files themselves; the four new ones (role, chain, make, probe)
+# are owned by tests/rebuild/contracts.sh, which checks their usage block, their word cap and their
+# plugin.json entry.
 args_of() {
   case $1 in
-    build) echo "cwd plan class submodes test" ;;
-    dev) echo "cwd task class submodes paths test out" ;;
-    research) echo "cwd question directions paths class submodes out" ;;
-    review-fix) echo "cwd target class submodes test fix" ;;
     memory-gc) echo "trim class submodes" ;;
     skill-author) echo "name purpose sources cap out reviews absorbs class submodes" ;;
     test-session) echo "scenarios runner out ids parser budget class submodes" ;;
-    translate-ru) echo "file out class submodes" ;;
   esac
 }
 # Step 1 baseline: shasum (first 12 chars) of the whenToUse line.
 when_of() {
   case $1 in
-    build) echo bf8556d8f89f ;; dev) echo f986277b56a2 ;; research) echo aa621fd9bdd1 ;;
-    review-fix) echo bb6ec7d84d07 ;; memory-gc) echo 1f7e0a0699b4 ;; skill-author) echo df4695e1aca5 ;;
-    test-session) echo 9c7fa53f7327 ;; translate-ru) echo 951e6f4e2e07 ;;
+    memory-gc) echo 1f7e0a0699b4 ;; skill-author) echo df4695e1aca5 ;;
+    test-session) echo 9c7fa53f7327 ;;
   esac
 }
 # Step 1 baseline: `node --check` exit code of every unmodified script
@@ -50,9 +47,7 @@ when_of() {
 NODE_BASE=1
 
 SCRIPTS=()
-for n in build dev research review-fix; do SCRIPTS+=("$P/workflows/$n.js"); done
 for n in memory-gc skill-author test-session; do SCRIPTS+=("$REPO/.claude/workflows/$n.js"); done
-SCRIPTS+=("$P/workflows/translate-ru.js")
 
 # ---------- c1, c2, c3: real scripts ----------
 for f in "${SCRIPTS[@]}"; do
@@ -268,7 +263,7 @@ k4 "dir without .js" --hook --dir "$K/txt"
 k4 "--file without value" --hook --file
 k4 "--dir without value" --hook --dir
 real_plain=$(cd "$REPO" && env -u CLAUDE_PROJECT_DIR sh "$COLLECTOR" 2>/dev/null)
-check "k4 plain real lists session:translate-ru" grep -q '^- session:translate-ru — ' <<<"$real_plain"
+check "k4 plain real lists session:role" grep -q '^- session:role — ' <<<"$real_plain"
 
 # k5, k6: plugin.json
 PJ=$P/.claude-plugin/plugin.json
@@ -380,9 +375,26 @@ for a in tools-edit tools-read-bash tools-read-write tools-read-write-bash tools
   check "k8 agents/$a.md frontmatter tools" grep -Eq '^tools: .+' <<<"$fm"
 done
 
-# k9 (the repo-wide scan for translate-ru, translator and size-estimator) is gone: `translator` is
-# a live role name of lib/roles/ from P2 on, so the scan would be red by construction. P9 puts
-# tests/rebuild/stale.sh here instead, which matches qualified forms only.
+# k9: the repo-wide scan for the old names. The 0.15 version of it grepped for `translate-ru`,
+# `translator` and `size-estimator` in any shape, which `translator` as a live role name of
+# lib/roles/ made red by construction (P2 removed it). Its successor is tests/rebuild/stale.sh,
+# which matches qualified forms only and needs the user-level copy as its argument: the three
+# scripts of part 9 run here in order, over a copy of their own under this test's temp dir, so this
+# file still answers the question "does any old name survive" on its own.
+UC=$T/user-copy
+check "k9 user-copy.sh builds the copy of the user-level assets" \
+  bash -c 'bash "$1" "$2" > /dev/null' _ "$REPO/tests/rebuild/user-copy.sh" "$UC"
+check "k9 switch-user.sh patches the copy" \
+  bash -c 'bash "$1" "$2" > /dev/null' _ "$REPO/tests/rebuild/switch-user.sh" "$UC"
+check "k9 switch-user.sh is idempotent: the second run applies nothing" \
+  bash -c 'bash "$1" "$2" | grep -q "0 applied in this run"' _ "$REPO/tests/rebuild/switch-user.sh" "$UC"
+check "k9 stale.sh finds no live reference to a retired name" \
+  bash -c 'bash "$1" "$2" > "$3" 2>&1 || { tail -20 "$3"; exit 1; }' \
+  _ "$REPO/tests/rebuild/stale.sh" "$UC" "$T/stale.out"
+check "k9 stale.sh fails on a directory that holds no file" \
+  bash -c 'mkdir -p "$2/empty" && ! bash "$1" "$2/empty" > /dev/null 2>&1' _ "$REPO/tests/rebuild/stale.sh" "$T"
+check "k9 stale.sh fails without its argument" \
+  bash -c '! bash "$1" > /dev/null 2>&1' _ "$REPO/tests/rebuild/stale.sh"
 
 # k10: base
 for f in "$BASE" "$SKILL"; do
@@ -396,7 +408,8 @@ check "k10 $(basename "$SKILL") no allowed-tools" bash -c '! grep -Fq "allowed-t
 # contract is the only thing a launch by name needs.
 check "k10 BASE.md SessionStart contract sentence" grep -Fq 'A named workflow arrives as one SessionStart contract line; launch it by `name` and never read the script body.' "$BASE"
 
-# k11: bin/build.sh regenerates SKILL.md from BASE.md (P6 replaced base/split.sh as the generator;
+# k11: bin/build.sh regenerates SKILL.md from BASE.md (P6 replaced the retired split script as the
+# generator;
 # the copy holds lib/, bin/, base/ and skills/base/, so the build runs against a tree of its own)
 mkdir -p "$T/g/plugin/skills/base"
 cp -R "$P/base" "$T/g/plugin/base"
@@ -423,7 +436,7 @@ pre=$(awk '/^## Version log/{exit} {print}' "$RD")
 check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
 
 # k13: changed paths, no version bump (suite pass itself is the rest of k13)
-bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE '\.claude-plugin/marketplace.json|plugins/session/lib/.*|plugins/session/hooks/(modes|ledger-stop)\.sh|plugins/session/bin/build\.sh|plugins/session/agents/tools-[a-z-]+\.md|tests/rebuild/.*|docs/tool-plugin/.*|plugins/session/bin/workflow-usage.sh|plugins/session/\.claude-plugin/plugin.json|plugins/session/workflows/(build|chain|dev|make|probe|research|review-fix|role|translate-ru)\.js|tests/measure/rebuild-scenarios-0\.16\.txt|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|\.claude/skills/plugin-release/SKILL\.md|plugins/session/agents/(translator|size-estimator)\.md|plugins/session/base/BASE.md|plugins/session/base/split.sh|plugins/session/skills/base/SKILL.md|plugins/session/skills/process/.*|plugins/session/README.md|plugins/session/monitors/.*|plugins/session/skills/start-ping/.*|tests/monitors/.*|tests/workflows/usage-test.sh' | tr '\n' ' ')
+bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE 'README\.md|\.claude-plugin/marketplace\.json|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|\.claude/skills/plugin-release/SKILL\.md|docs/tool-plugin/.*|plugins/session/\.claude-plugin/plugin\.json|plugins/session/README\.md|plugins/session/lib/.*|plugins/session/bin/.*|plugins/session/agents/.*\.md|plugins/session/hooks/.*\.sh|plugins/session/workflows/.*\.js|plugins/session/base/.*|plugins/session/skills/.*|plugins/session/monitors/.*|tests/rebuild/.*|tests/measure/.*|tests/monitors/.*|tests/workflows/usage-test\.sh|tests/codex/wrapper-test\.sh|tests/corp/launch\.sh|tests/demo-game/launch\.sh|tests/session-modes-hook\.sh' | tr '\n' ' ')
 check "k13 changed paths within allowed list (extra: $bad)" test -z "$bad"
 check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
 

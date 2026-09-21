@@ -413,11 +413,18 @@ else
   fail "g6 skills/process/ops.md exists"
 fi
 
-# ---- g7: the six scenario texts this part's gate runs ----
-# The verdicts themselves are read by the part's Test through tests/rebuild/verdicts.sh; here only
-# the texts are guarded, so a key can never go missing from the scenario file.
+# ---- g7: the scenario texts of the gate, and the five the cleanup part runs ----
+# The verdicts themselves are read by a part's Test through tests/rebuild/verdicts.sh; here only
+# the texts are guarded, so a key can never go missing from the scenario file. The six keys of the
+# P8 gate and the five keys P9 runs in the `base` variant after the cleanup (resume,
+# aspect-approval, coverage, ceiling, lite-skips) carry the same shape, so one guard reads them all:
+# a missing field, a PASS text that reads lines from before the launch finished, a finish line that
+# disagrees with the prompt list or with the PASS text, and a text that does not call a launch of a
+# retired carrier a FAIL are caught for every one of them.
+GATE_KEYS="carrier-pick labels intent-gate compact-contracts plugin-widens deny-completes"
+P9_KEYS="resume aspect-approval coverage ceiling lite-skips"
 if [ -f "$SCEN" ]; then
-  for k in carrier-pick labels intent-gate compact-contracts plugin-widens deny-completes; do
+  for k in $GATE_KEYS $P9_KEYS; do
     block=$(awk -v k="$k" '$0 ~ "^"k"[[:space:]]"{f=1} f&&/^[A-Za-z][A-Za-z0-9_-]*[[:space:]].*prompts:/&&$1!=k{exit} f{print}' "$SCEN")
     check "g7 the scenario $k exists" test -n "$block"
     [ -n "$block" ] || continue
@@ -471,9 +478,10 @@ for b in bad:
     print(b)
 sys.exit(1 if bad else 0)
 PY
-  # the four scenarios of the gate that this part writes: each says a launch of an old carrier name
-  # is a FAIL, which is what the gate measures
-  for k in carrier-pick labels intent-gate compact-contracts; do
+  # the four scenarios of the gate that this part writes, plus the five of the cleanup part: each
+  # says a launch of an old carrier name is a FAIL, which is what both measure — the gate because
+  # the process must pick a carrier of the new set, the cleanup because the old set is gone by then
+  for k in carrier-pick labels intent-gate compact-contracts $P9_KEYS; do
     block=$(awk -v k="$k" '$0 ~ "^"k"[[:space:]]"{f=1} f&&/^[A-Za-z][A-Za-z0-9_-]*[[:space:]].*prompts:/&&$1!=k{exit} f{print}' "$SCEN")
     [ -n "$block" ] || continue
     printf '%s\n' "$block" > "$T/scen-$k.txt"
@@ -494,7 +502,7 @@ PY
     > "$T/scen-loose.txt"
   check "g7 a text naming the old carriers outside a FAIL sentence is a gap" \
     bash -c '! node "$1" "$2" old "$3" > /dev/null' _ "$T/gap.js" "$BLOCK" "$T/scen-loose.txt"
-  mut noold "s/'session:review-fix'/'session:zz-review-fix'/"
+  mut noold "s/'session:review-fix'/'session:zz-review-fix'/"  # stale-ok: a retired carrier of the OLD_CARRIERS roster, renamed to prove the rule
   check "g7 the mutant that renames a retired carrier is caught" \
     bash -c '! node "$1" "$2" old "$3" > /dev/null' _ "$T/gap.js" "$T/noold.js" "$T/scen-carrier-pick.txt"
   # the names have to stand in one sentence that calls such a launch a FAIL: a text that spreads them

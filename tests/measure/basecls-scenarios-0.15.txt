@@ -6,7 +6,7 @@
 
 S1  base: (none)   prompts: "Count the human user messages (not tool results, not meta records) in the Claude Code transcript sample-transcript.jsonl in this folder; it is a copy of a session file from ~/.claude/projects."
     setup: sample-transcript.jsonl generated (4 human prompts, 1 meta, 2 tool_result records, 3 assistant records).
-    PASS: a Skill call transcripts-jsonl, or a Workflow call named session:research whose args mention "transcript" or "jsonl".
+    PASS: a Skill call transcripts-jsonl, or a Workflow call named session:role or session:probe whose args mention "transcript" or "jsonl".
 S2  base: (none)   prompts: "Plan a behavior test of the shell-gotchas skill in a fresh Claude Code session on sonnet: describe the launch and how you would read the result. Describe only, do not launch anything."
     PASS: reply text or a Skill call names tmux-sessions or test-session.
 S3  base: (none)   prompts: "Write run-jobs.zsh (about 15 lines, zsh, set -e): start three background jobs (sleep 1, sleep 2, sleep 3), count finished jobs with a counter, wait for each job by pid and exit non-zero if any failed."

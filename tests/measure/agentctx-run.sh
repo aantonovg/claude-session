@@ -16,8 +16,8 @@ mkdir -p $OUT; : > $R
 printf '%s\n' '{ "model": "sonnet" }' > $P/.claude/settings.json
 rm -rf $PROJ
 
-AGENTS="session:stage-executor session:stage-author session:stage-researcher session:stage-reviewer session:stage-critic session:waiter session:codex-proxy session:web-researcher session:code-reviewer session:simplifier session:security-reviewer session:artifact-publisher session:artifact-designer user-prefs:Explore general-purpose Explore"
-[ "$1" = probe ] && AGENTS="session:stage-executor"
+AGENTS="session:tools-read-bash session:tools-read-write session:tools-read-write-bash session:tools-edit session:tools-web general-purpose Explore"
+[ "$1" = probe ] && AGENTS="session:tools-read-bash"
 
 # parse one subagent jsonl: system prompt blocks, attachments, usage
 parse(){ python3 - "$1" <<'PY'

@@ -32,7 +32,7 @@
     },
     {
       "path": "skills/base/SKILL.md",
-      "comment": "generated from base/BASE.md (P6: the successor of base/split.sh); the frontmatter below is the whole difference between the two files",
+      "comment": "generated from base/BASE.md (P6: the successor of the retired split script); the frontmatter below is the whole difference between the two files",
       "fromBase": "base/BASE.md",
       "frontmatter": [
         "name: base",

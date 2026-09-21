@@ -1,14 +1,14 @@
 # session:codex: reference
 
 Read once at the start of `session:codex`; tables and conventions (modes: `SKILL.md`).
-The stage tables below apply when `session:pipeline` or `session:review` is on; in a
+The stage tables below apply when a process skill of the base set is on; in a
 base-only session the mapping is the one in `SKILL.md` (executor-kind fork job → executor
 axis, heavy agent on request → heavy axis) and the exchange directory is
 `$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/`, one per session, never shared.
 
 ## Codex model ids
 
-The shim (`agents/codex-proxy.md` in this plugin) maps targets: `luna` → `gpt-5.6-luna`, `terra` → `gpt-5.6-terra`,
+The shim (`skills/codex/proxy-prompt.md` in this plugin) maps targets: `luna` → `gpt-5.6-luna`, `terra` → `gpt-5.6-terra`,
 `sol` → `gpt-5.6-sol`, `luna-reserve` → `gpt-reserve` (luna billed against the separate GPT
 reserve quota, for a 0% main quota). `astra` → `gpt-6-astra` (efforts medium and high, low accepted; label code `atr`).
 
@@ -69,12 +69,15 @@ negative control and codex reports it.
 ## Launch convention
 
 One `agent()` per codex stage inside a `Workflow`:
-`agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium'` (the workflow opts pick haiku;
-the agent file's own model pin does not apply inside a Workflow), label `hai-me-<tier>-<stage>`
-with tiers `luna`, `luna-reserve`, `terra`, `sol`, `astra`. The prompt is the header block and
+`agentType: 'session:tools-read-bash', model: 'haiku', effort: 'medium'` (the cheap wrapper cell
+is passed here at the call site, the one place of this plugin that pins a model instead of taking a
+slot of the class: the shim only wraps an external CLI), label `hai-me-<tier>-<stage>`
+with tiers `luna`, `luna-reserve`, `terra`, `sol`, `astra`. The prompt is the path of the shim page
+`$CODEX_BIN/../skills/codex/proxy-prompt.md` ("read it first and follow it") and the header block,
 nothing else:
 
 ```
+Read $CODEX_BIN/../skills/codex/proxy-prompt.md first and follow it.
 CODEX TARGET: <luna|luna-reserve|terra>-high | <sol>-<medium|high> | <astra>-<medium|high>
 CODEX CWD: <repo root>
 CODEX PROMPT FILE: <task dir>/codex/<stage>-<n>.md
@@ -91,9 +94,9 @@ by a relay fork; the shim's `LAST LINE` is the gate signal. Per workflow: `meta.
 
 ```
 export const meta = { name: 'c3-fable-opus-critic-codex', description: 'sol critic', phases: [{ title: 'Critic' }] }
-return await agent(args.header, { agentType: 'session:codex-proxy', model: 'haiku', effort: 'medium', label: 'hai-me-sol-critic', phase: 'Critic' })
+return await agent(args.header, { agentType: 'session:tools-read-bash', model: 'haiku', effort: 'medium', label: 'hai-me-sol-critic', phase: 'Critic' })
 ```
-with `args: { header: "CODEX TARGET: sol-medium\nCODEX CWD: <repo>\nCODEX PROMPT FILE: <…>\nCODEX OUTPUT FILE: <…>" }`.
+with `args: { header: "Read <plugin root>/skills/codex/proxy-prompt.md first and follow it.\nCODEX TARGET: sol-medium\nCODEX CWD: <repo>\nCODEX PROMPT FILE: <…>\nCODEX OUTPUT FILE: <…>" }`.
 
 ## Ledger row and cost
 

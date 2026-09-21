@@ -4,7 +4,7 @@
     "name": "Aleksandr Antonov"
   },
   "metadata": {
-    "description": "Session modes for the main Claude Code session: forks, pipeline, pipeline-codex, ask; the worker pool as an unstable experiment.",
+    "description": "Session rules for the main Claude Code session: the base, the task process, codex, ask.",
     "version": "1.0.0",
     "pluginRoot": "./plugins"
   },
@@ -12,15 +12,15 @@
     {
       "name": "session",
       "source": "./plugins/session",
-      "description": "Session modes as user-invocable skills: forks (main + fork subagents), pipeline (forks plus a staged pipeline for one task with a cost ledger), codex (codex models on base fork jobs and pipeline or review stages), ask (non-blocking questions), pool-* (unstable). README holds the cache and compact reference.",
+      "description": "Session rules as user-invocable skills: base (named workflows, classes and slots, verification first), process (the stages, gates and task files of one task), codex (codex models behind a stage), ask (non-blocking questions). README holds the cache and compact reference.",
       "version": "0.15.18",
       "keywords": [
         "session",
         "modes",
         "cache",
         "forks",
-        "pipeline",
-        "pipeline-codex"
+        "process",
+        "codex"
       ]
     }
   ]

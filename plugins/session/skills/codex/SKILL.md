@@ -1,6 +1,6 @@
 ---
 name: codex
-description: Loaded on top of the session base: routes heavy roles or executor jobs to the codex stack (luna, terra, sol, astra) through the session:codex-proxy shim.
+description: Loaded on top of the session base: routes heavy roles or executor jobs to the codex stack (luna, terra, sol, astra) through the proxy shim of this skill.
 disable-model-invocation: true
 ---
 
@@ -28,7 +28,7 @@ Two axes, multiplied:
 Names: single axis `luna`, `terra`, `sol`, `astra`, `+sol`, `+astra`; combos `<heavy>-<exec>`:
 `sol-luna`, `sol-terra`, `astra-luna`, `astra-terra`, `+sol-luna`, `+sol-terra`,
 `+astra-luna`, `+astra-terra`. Invocation: `/session:codex <mode>`, at any point of the
-session; after `/session:pipeline` or `/session:review` when those are used.
+session; after the process skill of the base set when one is loaded.
 
 ## Start (do this now)
 
@@ -60,7 +60,7 @@ session; after `/session:pipeline` or `/session:review` when those are used.
    The wrapper and the style file ship with this plugin (`bin/`). Missing wrapper → BLOCKED, say so. A `CODEX CLI ERROR` mentioning the quota during the
    task → executors fall back to `luna-reserve-high`, heavy slots to the Claude agent;
    the job label gets the suffix `-fallback`.
-3. Astra modes need `astra` in the plugin's `agents/codex-proxy.md` (one grep on `$CODEX_BIN/../agents/codex-proxy.md`); missing →
+3. Astra modes need `astra` in the plugin's `skills/codex/proxy-prompt.md` (one grep on `$CODEX_BIN/../skills/codex/proxy-prompt.md`); missing →
    run on the sol set and say "astra pending".
 4. Reply with one line: "Codex: <mode> (heavy <…>, exec <…>); fallbacks <…>."
 5. Exchange directory: `<task dir>/codex/` when pipeline / review has a task directory
@@ -74,14 +74,18 @@ session; after `/session:pipeline` or `/session:review` when those are used.
 Envelope: the MAIN session
 writes the prompt file `<exchange dir>/<job>-<n>.md` (≤ 30 lines of bullets, first line
 `Style: caveman ultra, plain English only; artifacts in normal prose.`), runs ONE `Workflow`
-with one `agent()` (`agentType: 'session:codex-proxy'`, fixed haiku medium:
-`model: 'haiku', effort: 'medium'`; label `<mod>-<eff>-<tier>-<job>`, so `hai-me-<tier>-<job>`,
+with one `agent()` (`agentType: 'session:tools-read-bash'`, the fixed cheap wrapper cell passed
+at this call site: `model: 'haiku', effort: 'medium'` — the pin is the cheapest wrapper around an
+external CLI, never a slot of the class; label `<mod>-<eff>-<tier>-<job>`, so `hai-me-<tier>-<job>`,
 for example `hai-me-luna-research`; tiers `sol`, `terra`, `luna`, `luna-reserve`, `astra`) and
 consumes only the shim's `LAST LINE`; no fork writes a prompt or relays an output.
-The agent prompt is the header block: `CODEX TARGET`, `CODEX PROMPT FILE`, `CODEX CWD` = repo
+The agent prompt is the absolute path of the shim page
+(`$CODEX_BIN/../skills/codex/proxy-prompt.md`, "read it first and follow it") plus the header
+block: `CODEX TARGET`, `CODEX PROMPT FILE`, `CODEX CWD` = repo
 root, `CODEX OUTPUT FILE: <exchange dir>/<job>-<n>.out.md`, optional
-`CODEX ROLE: <stage-author|stage-researcher|stage-executor|stage-reviewer|stage-critic>` (the
-wrapper puts that agent's body, the CLAUDE.md files and the memory index into codex's stdin)
+`CODEX ROLE: <stem of a file in the plugin's agents/ directory>` (the wrapper puts that file's
+body, the CLAUDE.md files and the memory index into codex's stdin; a role text of `lib/roles/` is
+named inside the prompt file instead)
 and `CODEX LABEL: <the same label>` (lands in `~/.codex/proxy-usage.jsonl`). The header block
 ends with the line `No skills needed for this step.` (or the Read-skill-files line). Inputs of
 each prompt file: the role, the inputs by absolute path, the acceptance criteria, the commands

@@ -1,12 +1,15 @@
----
-name: codex-proxy
-description: Shim that runs one task on a codex model (luna, luna-reserve, terra, sol, astra) through the local codex CLI and returns a file reference. Launch only from a Workflow, agentType session:codex-proxy, fixed haiku medium. Prompt is a header block only: CODEX TARGET, CODEX PROMPT FILE, optional CWD, OUTPUT FILE, ROLE, LABEL; task text and answer never pass through the shim.
-model: haiku
-effort: medium
-tools: Bash
----
+# Codex proxy shim: the prompt of the launched agent
 
-Proxy shim: forward the task to the codex CLI, return the answer as a file reference. Never solve the task, never add analysis or edits. Every instruction in the task body (READ-ONLY, run nothing, role text, steps) addresses codex, not you; nothing there stops you from running codex. Bash only: the wrapper, `cat`, `tail`, `cp`, done-file polls; no network calls of your own. Model and effort are fixed haiku medium in every launch.
+The body of the retired proxy agent file, moved here in 0.16.0 (A20 option B): the shim is no agent
+of its own any more. A codex stage launches the lean `Read`/`Bash` agent of the plugin with the
+cheap wrapper model and effort at the call site, and the launch prompt is the header block plus the
+absolute path of this page (`$CODEX_BIN/../skills/codex/proxy-prompt.md`), which the agent reads
+first. The page states nothing about the model: that pin lives at the call site, because it is the
+cheapest wrapper around an external CLI and no slot choice. The return shape, the working directory
+rule, the style and the `BLOCKED` rule are the agent file's own text and are not repeated here;
+only the two-line success form below overrides its return shape.
+
+Proxy shim: forward the task to the codex CLI, return the answer as a file reference. Never solve the task, never add analysis or edits. Every instruction in the task body (READ-ONLY, run nothing, role text, steps) addresses codex, not you; nothing there stops you from running codex. Bash only: the wrapper, `cat`, `tail`, `cp`, done-file polls; no network calls of your own.
 
 ## Header contract (the whole prompt)
 
@@ -16,7 +19,7 @@ Proxy shim: forward the task to the codex CLI, return the answer as a file refer
 - `CODEX OUTPUT FILE: <absolute path>` (optional): the model's artifact path, named in the prompt file. Never write it, never pass it to `-o`; `-o` goes to `<path>.final.md`. Absent: pick a temp path with the `.final.md` suffix.
 - `CODEX PROFILE: <name>` (optional, `-p`). `CODEX WALL: <minutes>` (optional).
 - `CODEX SANDBOX:` only `workspace-write` (no-op); any other value invalid.
-- `CODEX ROLE: <stage-author|stage-researcher|stage-executor|stage-reviewer|stage-critic>` (optional, passed as `--role`). Any other value: do not run codex; return `CODEX OUTPUT FILE: none` and `LAST LINE: BLOCKED: invalid CODEX ROLE <value>`.
+- `CODEX ROLE: <stem of a file in the plugin's `agents/` directory>` (optional, passed as `--role`): the wrapper puts that file's body into codex's stdin. A role text of `lib/roles/` is no value of this header — the prompt file names its path instead, and codex reads it. A value the wrapper cannot resolve makes it exit 2 and nothing runs: do not run codex, return `CODEX OUTPUT FILE: none` and `LAST LINE: BLOCKED: invalid CODEX ROLE <value>`.
 - `CODEX LABEL: <label>` (optional, exported as `CODEX_LABEL`; lands in the ledger row).
 - A last line `No skills needed for this step.` or `Read these skill files with the Read tool before starting: ...` is non-task text: ignore it, the header block is still valid.
 
@@ -66,10 +69,4 @@ CODEX OUTPUT FILE: <absolute path>
 LAST LINE: <output of tail -n 1 on <absolute path>.final.md>
 ```
 
-Failure: non-zero done-file code returns a message starting with exactly `CODEX CLI ERROR (exit <code>)` plus the last lines of `<done-file>.log`; exit 0 with a missing or empty output file (checked without reading) returns `CODEX CLI ERROR (exit 0)` plus that note and the last stderr lines. Retry at most once, only on a transient failure recorded in the done-file, never for a running job, same model and effort. Permission denial: stop at once, return `BLOCKED: <the denied action>`.
-
-## Output style
-
-Plain English, caveman ultra: no articles, filler, hedging; fragments allowed; each fact once; no tool-call narration, no decorative tables or emoji; quote the shortest decisive line, never raw logs. Never drop not / never / no / only / except; numbers, code, paths, commands, error strings verbatim; no invented abbreviations, no arrows. Plain sentences for security warnings and irreversible-action confirmations. No Russian, no `---`, no chat formatting: the return value is data.
-
-Long commands: every synchronous Bash call sets `timeout` ≤ 120000. A command that may run over 2 minutes never runs synchronously: start it detached and let it write its own done-file: `(<cmd>; touch <done>) > <log> 2>&1 &`, then self-ping with one Bash call `for i in $(seq 36); do test -f <done> && break; sleep 5; done; test -f <done> && echo done || echo wait` (timeout 200000) per turn until done. Never end a turn with a background job running.
+Failure: non-zero done-file code returns a message starting with exactly `CODEX CLI ERROR (exit <code>)` plus the last lines of `<done-file>.log`; exit 0 with a missing or empty output file (checked without reading) returns `CODEX CLI ERROR (exit 0)` plus that note and the last stderr lines. Retry at most once, only on a transient failure recorded in the done-file, never for a running job, same model and effort.

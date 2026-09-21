@@ -106,7 +106,7 @@ elif sid=='T8':
     t=find('run-tests'); tl=ttools(t) if t else []; out['tools']=summ(t) if t else None
     bg=any(b['name']=='Bash' and b['input'].get('run_in_background') and 'run-tests.sh' in b['input'].get('command','') for b in tl)
     wfs=[wf_info(b) for b in tl if b['name']=='Workflow']
-    wf=any(any((a['agentType'] or '')=='session:stage-executor' and a['model']=='sonnet' for a in w['agents']) for w in wfs)
+    wf=any(any((a['agentType'] or '')=='session:tools-read-bash' and a['model']=='sonnet' for a in w['agents']) for w in wfs)
     fork=any(b['name']=='Agent' for b in tl)
     res=(bg or wf) and not fork
 

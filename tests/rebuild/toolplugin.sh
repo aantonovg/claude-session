@@ -186,7 +186,7 @@ check "t4 the mutant that drops the workflow names is caught" \
 
 # t4 the carrier list is the whole roster of the plugin tree, not a sample of it: every entry one
 # level below a directory of plugins/session must be seen in its bare path form (`skills/ask`,
-# `agents/waiter.md`, `monitors/ping.sh`, `bin/build.sh`) — the form a tool plugin would write it in
+# `agents/tools-web.md`, `monitors/ping.sh`, `bin/build.sh`) — the form a tool plugin would write it in
 # without the `plugins/session` prefix. A carrier added to the plugin and left out of the list would
 # otherwise leave a hole in A8 that no file here notices.
 cat > "$T/roster.js" <<'JS'
@@ -324,8 +324,8 @@ for gv in gate gate-stub-on gate-stub-off-deny; do
   check "t7 [$gv] scenario-env exit 0 ($(tail -1 "$T/env-$i.out"))" test "$rc" -eq 0
   check "t7 [$gv] records its own variant name" grep -qxF "$gv" "$D/variant"
   check "t7 [$gv] hides the old set" test -f "$D-plugin/.claude-plugin/plugin.json"
-  check "t7 [$gv] no old contract entry" bash -c '! grep -qF "workflows/dev.js" "$1"' _ "$D-plugin/.claude-plugin/plugin.json"
-  check "t7 [$gv] no old workflow file in the copy" test ! -e "$D-plugin/workflows/dev.js"
+  check "t7 [$gv] no old contract entry" bash -c '! grep -qF "workflows/dev.js" "$1"' _ "$D-plugin/.claude-plugin/plugin.json"  # stale-ok: a retired workflow path, quoted to assert its absence from the gate copy
+  check "t7 [$gv] no old workflow file in the copy" test ! -e "$D-plugin/workflows/dev.js"  # stale-ok: the same retired path, asserted absent on disk
   check "t7 [$gv] the copy is out of the project the session works in" test ! -e "$D/plugin"
 done
 
