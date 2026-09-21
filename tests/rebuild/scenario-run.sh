@@ -31,6 +31,9 @@
 #         setup: <one shell line, run inside the scratch project>
 #         finish: <prompt index> <how many workflow finish notices>   (one line per gated prompt)
 #         PASS: <the rule the judge applies>
+# Prompts come from the head line alone, which holds nothing but quoted prompts; quotes on the
+# lines below it are shell or prose. A list that does not parse, or a `finish` index outside it, is
+# an environment error, and so is a run that typed another number of prompts than the list holds.
 #
 # `finish` is the gate against a prompt racing a launch: that prompt is sent only after the
 # transcript holds that many workflow finish notices, so a prompt that reads a result never runs
@@ -151,9 +154,23 @@ for l in lines:
     if on: block.append(l)
 text = '\n'.join(block)
 if name == 'prompts':
+    # the prompts stand on the head line of the block and nowhere else: the setup, finish and PASS
+    # lines below it carry shell and prose whose quotes are no prompts (a `node -e "..."` of a setup
+    # line was once typed into the session as a prompt of its own). The head line must be nothing
+    # but quoted prompts after `prompts:`, none of them empty; anything else is a scenario file this
+    # runner can not read, exit 3, and the caller counts it as an environment error.
+    head_line = block[0] if block else ''
+    if 'prompts:' not in head_line:
+        sys.stderr.write('scenario-run: %s: no prompts: on the head line\n' % key); sys.exit(3)
+    tail = head_line.split('prompts:', 1)[1]
+    one = r'"((?:[^"\\]|\\.)*)"'
+    if not re.fullmatch(r'\s*(?:%s\s*)+' % one, tail):
+        sys.stderr.write('scenario-run: %s: the prompts line holds more than quoted prompts\n' % key); sys.exit(3)
+    prompts = re.findall(one, tail)
+    if any(not p.strip() for p in prompts):
+        sys.stderr.write('scenario-run: %s: an empty prompt in the prompts line\n' % key); sys.exit(3)
     # one NUL after every prompt, none joined: the reader loops over the whole stream
-    tail = text.split('prompts:', 1)[1] if 'prompts:' in text else ''
-    sys.stdout.write(''.join(p + '\x00' for p in re.findall(r'"((?:[^"\\]|\\.)*)"', tail)))
+    sys.stdout.write(''.join(p + '\x00' for p in prompts))
 elif name == 'finish':
     # every `finish` line of the block, not the first one only: a scenario that reads a result twice
     # gates twice, and a second gate line read as absent would let the last prompt race its launch
@@ -164,6 +181,11 @@ else:
     print(m.group(1).strip() if m else '')
 PY
 }
+
+if [ "${1:-}" = --prompts ]; then # --prompts <key>: the prompts the runner would type, one per line
+  field "${2:-}" prompts | tr '\0' '\n'
+  exit "${PIPESTATUS[0]}"
+fi
 
 keys_all() { grep -E '^[A-Za-z][A-Za-z0-9_-]*[[:space:]].*prompts:' "$SCENARIOS" | awk '{print $1}'; }
 
@@ -205,6 +227,24 @@ ERRORS=0
 export REPO
 for key in $KEYS; do
   PROJ=$OUT/project-$key
+  # the prompt list is read before anything is built: a list the parser refuses, or a `finish` line
+  # naming a prompt the list does not hold, is an environment error and nothing is typed
+  PROMPTS=()
+  PF=$OUT/$key.prompts
+  if ! field "$key" prompts > "$PF" 2>> "$R"; then
+    log "$key: prompt list unreadable, no verdict line written"
+    echo "scenario-run: $key: prompt list unreadable, see $R" >&2
+    rm -f "$PF"; ERRORS=$((ERRORS + 1)); continue
+  fi
+  while IFS= read -r -d '' p; do PROMPTS+=("$p"); done < "$PF"
+  rm -f "$PF"
+  FINISH=$(field "$key" finish)
+  bad=$(awk -v n="${#PROMPTS[@]}" 'NF && !($1 ~ /^[0-9]+$/ && $1 >= 1 && $1 <= n) {print $1}' <<<"$FINISH")
+  if [ "${#PROMPTS[@]}" -eq 0 ] || [ -n "$bad" ]; then
+    log "$key: ${#PROMPTS[@]} prompt(s), finish index(es) outside the list: ${bad:-none}; no verdict line written"
+    echo "scenario-run: $key: prompt list and finish lines disagree, see $R" >&2
+    ERRORS=$((ERRORS + 1)); continue
+  fi
   # both, always: with --hide-old the plugin copy lives beside the project as <project>-plugin, so
   # clearing the project alone leaves a copy that makes scenario-env refuse a directory which is
   # not empty on the next run into the same OUT, and piles copies up under the results root
@@ -237,17 +277,12 @@ for key in $KEYS; do
   case $base in '' | '(none)') send "/session:base" ;; *) send "/session:base $base" ;; esac
   wait_idle || log "$key: no reply to /session:base within $IDLE_S s"
   sleep 10
-  # every prompt of the scenario, not only the first: one `read -d ''` per NUL-terminated record.
-  # A single `read -r -d '' -a` stops at the first NUL and drops the rest silently.
-  PROMPTS=()
+  # every prompt of the scenario, read before the environment came up, one at a time.
   GATE_LOST=0
-  while IFS= read -r -d '' p; do PROMPTS+=("$p"); done < <(field "$key" prompts)
   # the gate of the `finish` field: the named prompt waits for the workflow finish notices, so a
   # prompt that reads a result never races the launch it reads
-  FINISH=$(field "$key" finish)
   pi=0
-  for p in ${PROMPTS[@]+"${PROMPTS[@]}"}; do
-    [ -n "$p" ] || continue
+  for p in "${PROMPTS[@]}"; do
     pi=$((pi + 1))
     gwant=$(awk -v i="$pi" '$1 == i {print ($2 == "" ? 1 : $2); exit}' <<<"$FINISH")
     if [ -n "$gwant" ]; then
@@ -273,6 +308,11 @@ for key in $KEYS; do
   # the pane and the transcript of a run whose gate timed out are kept for the diagnosis above, but
   # nothing was measured: no verdict line, like an environment that never came up
   [ "$GATE_LOST" = 1 ] && continue
+  # the session got exactly the prompts of the list, one each: any other count measured another run
+  if [ "$pi" -ne "${#PROMPTS[@]}" ]; then
+    log "$key: sent $pi prompt(s) of a list of ${#PROMPTS[@]}: environment error, no verdict line written"
+    ERRORS=$((ERRORS + 1)); continue
+  fi
   printf '%s %s FAIL %s %s\n' "$VARIANT" "$key" "$RUN_TS" "$COMMIT" >> "$V"
 done
 

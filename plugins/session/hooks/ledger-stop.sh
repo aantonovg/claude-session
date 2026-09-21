@@ -10,7 +10,10 @@
 # agent's own launch row, and records the main session id in <task dir>/session
 # on first use, so a cost reading finds the transcripts without help from the model.
 #
-# Input: the hook JSON on stdin (session_id, cwd, agent_id). Output: none.
+# Input: the hook JSON on stdin (session_id, cwd, agent_id, and for the run of a workflow
+# agent agent_transcript_path or transcript_path). Output: none. The stop row is the machine
+# record that a launch finished; the resume rule of the process reads it instead of any marker
+# an agent writes into its own file.
 #
 # Only agents the ledger already names get a stop row: any other subagent that
 # stops while tasks/current points at this task (forks of other work, workflow
@@ -40,10 +43,35 @@ LEDGER="$DIR/ledger.jsonl"
 # The launch row of this agent, and its own stop row if one already stands. A line
 # that is no JSON object is skipped, never fatal: the ledger is appended to by
 # several writers and one broken line may not silence every later stop.
-ROW=$(jq -c -R --arg a "$AID" '
-  fromjson? | select(type == "object") | select(.agent_id == $a) | select(has("event") | not)
-' "$LEDGER" 2>/dev/null | tail -1)
-[ -n "$ROW" ] || exit 0
+launch_row() {
+  jq -c -R --arg a "$1" '
+    fromjson? | select(type == "object") | select(.agent_id == $a) | select(has("event") | not)
+  ' "$LEDGER" 2>/dev/null | tail -1
+}
+ROW=$(launch_row "$AID")
+# An agent of a workflow launch stops under its own id, while the launch row holds the id of the
+# run (`wf_...`), the only id the launch result gives. The run is the directory the agent's
+# transcript sits in, `.../subagents/workflows/<run>/agent-<id>.jsonl`: read from the payload's
+# agent_transcript_path, else looked up beside the session transcript. The stop row then names the
+# run, once: the first agent of the run that stops writes it.
+if [ -z "$ROW" ]; then
+  RUN=
+  ATP=$(field agent_transcript_path)
+  case $ATP in */subagents/workflows/*/agent-*) RUN=$(basename "$(dirname "$ATP")") ;; esac
+  if [ -z "$RUN" ]; then
+    SID0=$(field session_id); TP=$(field transcript_path)
+    if [ -n "$TP" ]; then BASE=${TP%.jsonl}
+    elif [ -n "$SID0" ]; then BASE=$HOME/.claude/projects/$ENC/$SID0
+    else exit 0; fi
+    for f in "$BASE"/subagents/workflows/*/agent-"$AID".jsonl; do
+      [ -f "$f" ] && { RUN=$(basename "$(dirname "$f")"); break; }
+    done
+  fi
+  [ -n "$RUN" ] || exit 0
+  ROW=$(launch_row "$RUN")
+  [ -n "$ROW" ] || exit 0
+  AID=$RUN
+fi
 DONE=$(jq -c -R --arg a "$AID" '
   fromjson? | select(type == "object") | select(.agent_id == $a and .event == "stop")
 ' "$LEDGER" 2>/dev/null | head -1)

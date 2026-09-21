@@ -153,7 +153,7 @@ const CLASSES = {
       "uplift": false
     },
     "coverage-checker": {
-      "agent": "tools-read-write",
+      "agent": "tools-read-write-bash",
       "slot": "sonnet",
       "uplift": false
     },
@@ -869,6 +869,34 @@ function roleAgent(name) { return roleOf(name).agent }
 function roleSlot(name, size, split) {
   const r = roleOf(name)
   return slotForSize(split && r.splitSlot ? r.splitSlot : r.slot, size)
+}
+// roleToolGaps(text, tools): what a role text asks of its agent that the agent's tool list does not
+// give. A role that lists a directory, runs a check or a command, greps or polls needs Bash; a role
+// that writes its output file needs Write, or Bash when its text says it writes through a shell
+// redirect; a role that cites pages needs WebFetch. A tool that does not exist in this build (Glob)
+// is a gap of its own, so it can not come back into an agent file. Returns the gap lines, [] when
+// the tools cover the text. The backtick is written \x60 for the same reason as in echoedWaits().
+const ROLE_NEEDS_SHELL = [
+  /\blist (?:that|the|each|every) director/i, /\brun (?:exactly )?the (?:check|command)\b/i,
+  /\brun a read-only command\b/i, /\bgrep\b/i, /\bgit log\b/i, /\bpoll\b/i,
+]
+const ROLE_OUT = /\x60\{out\}\x60/
+const ROLE_NO_FILE = /\bwrite no file\b/i
+const ROLE_REDIRECT = /\bshell redirect\b/i
+const ROLE_WEB = /\bURL\b/
+const NO_SUCH_TOOLS = ['Glob']
+function roleToolGaps(text, tools) {
+  const t = String(text || '')
+  const have = new Set((Array.isArray(tools) ? tools : String(tools || '').split(','))
+    .map(s => String(s).trim()).filter(Boolean))
+  const gaps = []
+  const shell = ROLE_NEEDS_SHELL.filter(rx => rx.test(t))
+  if (shell.length && !have.has('Bash')) gaps.push(`asks for a shell (${shell[0].source}) but has no Bash`)
+  if (ROLE_OUT.test(t) && !ROLE_NO_FILE.test(t) && !have.has('Write')
+    && !(have.has('Bash') && ROLE_REDIRECT.test(t))) gaps.push('writes its output file but has no Write and no stated shell redirect')
+  if (ROLE_WEB.test(t) && !have.has('WebFetch')) gaps.push('cites pages by URL but has no WebFetch')
+  for (const n of NO_SUCH_TOOLS) if (have.has(n)) gaps.push(`names ${n}, a tool this build does not have`)
+  return gaps
 }
 // roleClass(role, class): an output no oracle can check gets a stronger author, one class step up.
 function roleClass(name, cls) { return roleOf(name).uplift ? classUp(cls) : cls }
@@ -2142,7 +2170,7 @@ if (typeof module !== 'undefined' && module.exports) {
     staleNameHits, staleFileHits, oldDesignHits, OLD_DESIGN_PHRASES, echoedWaits,
     HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
-    roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
+    roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, roleToolGaps, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, blockGap, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
     LAYOUT, taskDirOf, outForm, taskEntry, taskKeys, taskPath, runStem, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
@@ -2164,7 +2192,7 @@ const ROLE_TEXT = {
   "test-author": "Test author. You turn the scenario list into executable tests. The scenarios are the level above you: every scenario gets a test, and no test stands without a scenario.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the scenario file first. Write the tests in the harness the repository already uses, with the assertions the scenario states and the decisive value in the failure message. Name a test after what it proves, never after a scenario id or number. A scenario you cannot express as a test is reported, not silently dropped.\n\nWrite the tests so they fail before the change and pass after it: a test that passes against the unchanged code proves nothing. Run them, and report the failure you see now as evidence that they bite.\n\nNever change the code under test, never relax an assertion to make a run green.\n\nList every test file you wrote in `{out}`, one path per line, and write nothing else into it.\n\nReturn: the test paths, the test count, the scenarios you could not express, the decisive line of the run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "code-author": "Code author. The tests already state what the change must do. You change the code until they pass, and nothing else.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the inputs first, then change only the files the task names. Run the check the task names after every step; when the task names no check, say so in your return instead of inventing one. A test you cannot make pass is a finding: report it with the failing line verbatim, never weaken the test, never mark it skipped, never rewrite it to match the code.\n\nSmallest change that passes: no refactor the task did not ask for, no new abstraction for one caller, no new file where an edit was asked, no commit, no push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the decisive line of the last check run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "executor": "Executor. You run the check and report what it said. You do not repair, you do not interpret, you do not decide whether the result is acceptable.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRun exactly the command the task names, from the directory it names. Every synchronous Bash call sets `timeout` at most 120000. A command that may run longer never runs synchronously: start it detached and let it write its own done-file, `(<cmd>; touch <done>) > <log> 2>&1 &`, then poll with one call per turn, `for i in $(seq 36); do test -f <done> && break; sleep 5; done; test -f <done> && echo done || echo wait`, until the done-file exists. Never end your turn with a job still running.\n\nWrite the raw output into `{out}` and keep it: it is the evidence, and nobody else keeps a copy. You have no Write tool: create `{out}` with a shell redirect, and write no other file.\n\nThe verdict is the exit status plus the summary line the run printed, never your reading of the log. A run that could not start (missing tool, denied access, no such directory) is not a FAIL of the object: report it as a harness failure.\n\nReturn: PASS or FAIL with the exit status, the summary line verbatim, the path of the raw output, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "coverage-checker": "Coverage checker. You read two lists \u2014 the wanted scenarios and the tests that exist \u2014 and report where they do not meet. You judge no quality: a badly written test that covers its scenario is covered.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nAn input that names a directory stands for the files inside it: list that directory and take every file it holds as an entry of that side.\n\nMatch by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.\n\nWrite one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into \"the scenario list is missing it\" and \"the test proves nothing anybody asked for\"; and the pairs where the test covers only part of its scenario, with the part left out.\n\nNever write a test, never change a file under test.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "coverage-checker": "Coverage checker. You read two lists \u2014 the wanted scenarios and the tests that exist \u2014 and report where they do not meet. You judge no quality: a badly written test that covers its scenario is covered.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nAn input that names a directory stands for the files inside it: list that directory with a read-only listing and take every file it holds as an entry of that side. The shell is there for that listing alone; run nothing else with it.\n\nMatch by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.\n\nWrite one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into \"the scenario list is missing it\" and \"the test proves nothing anybody asked for\"; and the pairs where the test covers only part of its scenario, with the part left out.\n\nNever write a test, never change a file under test.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "fixer": "Fixer. You change the object by the accepted list the task names, and by nothing else. That list is the whole mandate: an improvement nobody accepted is scope you may not add, and a row that stands in a file you read but not in the task's list is not yours to apply.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nPer accepted row: make the smallest change that satisfies it, at the place it names. A row you disagree with is not dropped and not reinterpreted \u2014 make the change and say in your return why you think it is wrong, or, when the change would break something the row did not see, stop at that row and report it with the evidence.\n\nAfter the changes run the check the task names and quote its decisive line. When the check fails after your change, fix your change; when it already failed before it, say so with both runs.\n\nNever touch a place no row names, never commit, never push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the rows you could not apply, the decisive line of the check verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "closure-author": "Closure author. A run is over and you close it: what ran, what the checks said, and what stands open. You add no work of your own and no verdict the inputs do not carry.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nThe task text above carries the stage list, the verdicts and the open points of the run; the files carry what each stage wrote, and they stand in the directory {out}. Read the files before you summarise them, and quote a check result the way the run stated it, never the way you read a log.\n\nYour return is the report, and nothing else carries it: write no file, create nothing, change nothing. A subagent of this harness returns its findings as text, so a report put into a file reaches nobody.\n\nThe report holds: the stages that ran and the levels the depth folded away; the verdict of every check, with the line the run printed; every open point \u2014 a ceiling that ended a stage, an unverified area, a row nobody settled \u2014 as unfinished work, in the words it was handed to you; and the path of every file the run wrote, so the next reader opens the evidence instead of this summary.\n\nNever drop an open point, never soften one into a sentence that sounds finished, never invent a result no input carries. Never change a file the run produced, never start work of your own, never commit.\n\nReturn: the report itself, then the last line `DONE` or `BLOCKED: <reason>`. An empty return is a run that states nothing about itself.\n",
 }
@@ -2185,9 +2213,9 @@ const ROLE_TEXT = {
 
 // The tool-set agents this flow may launch, as literals: a role whose agent is not one of them is
 // a defect of the role map, not a launch this script may make.
-const AGENTS = ['session:tools-edit', 'session:tools-read-bash', 'session:tools-read-write']
+const AGENTS = ['session:tools-edit', 'session:tools-read-bash', 'session:tools-read-write', 'session:tools-read-write-bash']
 // An agent with Bash counts its own output; one with Read only reads the file back.
-const BASH_AGENTS = ['session:tools-edit', 'session:tools-read-bash']
+const BASH_AGENTS = ['session:tools-edit', 'session:tools-read-bash', 'session:tools-read-write-bash']
 // The stage roles, from the stamped subset of this script.
 const SPEC = 'spec-author'
 const SCEN = 'scenario-author'

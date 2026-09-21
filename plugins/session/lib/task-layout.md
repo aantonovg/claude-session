@@ -102,5 +102,6 @@ file to anybody. The stage that launches it checks the return, never a path.
 
 A session that lost its context resumes from these files alone: it reads the pointer, then the
 intent, the ledger and the last file of the artifact chain that exists, and continues at the
-first level that has no file. No stage re-researches what a file of the group already holds, and
+first level that is not done by the completeness rule of the process core (a stop row of the
+launch that wrote the file). No stage re-researches what a file of the group already holds, and
 no stage trusts a memory of a conversation over a file of this group.

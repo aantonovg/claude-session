@@ -6,7 +6,7 @@ Inputs (absolute paths):
 Task:
 {ask}
 
-An input that names a directory stands for the files inside it: list that directory and take every file it holds as an entry of that side.
+An input that names a directory stands for the files inside it: list that directory with a read-only listing and take every file it holds as an entry of that side. The shell is there for that listing alone; run nothing else with it.
 
 Match by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.
 

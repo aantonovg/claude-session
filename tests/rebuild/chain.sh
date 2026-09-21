@@ -821,6 +821,51 @@ check "a7 the mutant ran the loop and typed the gated prompt" grep -q 'second pr
 why=$(gate_ok mutant)
 check "a7 a runner that sends the gated prompt anyway is caught (reading: ${why:-none failed})" test -n "$why"
 
+# ---- a8: only the head line of a block yields prompts, and a list that does not fit is no run ----
+# A setup line with quoted shell text (`node -e "..."`) was typed into the session as extra prompts.
+# Executed through the real loop with the stubs of a7: the typed lines are exactly the prompt list;
+# a prompts line with anything but quoted prompts, or a finish line naming a prompt the list does not
+# hold, measures nothing and ends non-zero. The mutant reads prompts from the whole block again.
+Q=$T/quotes
+mkdir -p "$Q/m/tests/rebuild"
+printf '%s\n' 'quoted  prompts: "first prompt" "second prompt"' '    base: (none)' \
+  "    setup: printf '%s\\n' 'node -e \"console.log(1)\" || exit 1' > check.sh" \
+  '    PASS: a "quoted word" in the rule is no prompt either' > "$Q/scen.txt"
+printf '%s\n' 'junk  prompts: "one prompt" stray words' '    base: (none)' '    PASS: nothing' \
+  '' 'overgated  prompts: "one prompt"' '    base: (none)' '    finish: 2 1' '    PASS: nothing' > "$Q/bad.txt"
+ln -s "$REPO/tests/rebuild/scenario-env.sh" "$Q/m/tests/rebuild/scenario-env.sh"
+# the mutant is the parser of before: the whole block is the tail, and whatever surrounds the quotes
+# is let through
+perl -pe 's/^    head_line = block\[0\] if block else \x27\x27$/    head_line = text/; s/^    if not re\.fullmatch\(/    if False and re.fullmatch(/' "$RUNNER" > "$Q/m/tests/rebuild/scenario-run.sh"
+q_run() { # q_run <runner> <name> <scenarios> <keys...>
+  local r=$1 n=$2 sc=$3; shift 3
+  : > "$G/tmux.log"
+  HOME=$G/home PATH="$G/bin:$PATH" VERDICTS_ROOT=$Q/root-$n SCENARIOS=$sc IDLE_S=10 RUN_TS=q \
+    bash "$r" "$@" > "$Q/$n.out" 2>&1
+  echo $? > "$Q/$n.rc"
+  grep -F -- ' -l ' "$G/tmux.log" | grep -v '/session:base' > "$Q/$n.typed" || true
+}
+typed_ok() { # typed_ok <name>: exactly the two prompts were typed, in order, and nothing else
+  [ "$(cat "$Q/$1.rc")" = 0 ] || { echo "the run exited $(cat "$Q/$1.rc")"; return 1; }
+  [ "$(wc -l < "$Q/$1.typed" | tr -d ' ')" = 2 ] || { echo "$(wc -l < "$Q/$1.typed" | tr -d ' ') lines typed"; return 1; }
+  ! grep -q 'console.log\|quoted word' "$Q/$1.typed" || { echo "setup or PASS text was typed"; return 1; }
+  grep -q 'first prompt' "$Q/$1.typed" && grep -q 'second prompt' "$Q/$1.typed" || { echo "a prompt is missing"; return 1; }
+}
+q_run "$RUNNER" real "$Q/scen.txt" quoted
+check "a8 a setup line with quotes yields no prompt ($(typed_ok real))" typed_ok real
+check "a8 the real scenario file: ceiling carries its 3 prompts" bash -c '[ "$(OUT="$2" bash "$1" --prompts ceiling | wc -l | tr -d " ")" = 3 ]' _ "$RUNNER" "$Q/o"
+check "a8 the real scenario file: lite-skips carries its 3 prompts" bash -c '[ "$(OUT="$2" bash "$1" --prompts lite-skips | wc -l | tr -d " ")" = 3 ]' _ "$RUNNER" "$Q/o"
+q_run "$RUNNER" bad "$Q/bad.txt" junk overgated
+check "a8 a malformed prompt list and an overgated one end non-zero" test "$(cat "$Q/bad.rc")" != 0
+check "a8 neither gets a verdict line" bash -c '! grep -qs "^base " "$1"' _ "$Q/root-bad/base/q/verdicts.txt"
+check "a8 both are counted as environment errors" grep -q 'done (2 environment error' "$Q/root-bad/base/q/result.log"
+check "a8 nothing of them was typed" test ! -s "$Q/bad.typed"
+check "a8 the parse mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$RUNNER" "$Q/m/tests/rebuild/scenario-run.sh"
+q_run "$Q/m/tests/rebuild/scenario-run.sh" mutant "$Q/scen.txt" quoted
+check "a8 the mutant ran the loop and typed the setup text" grep -q 'console.log(1)' "$Q/mutant.typed"
+why=$(typed_ok mutant)
+check "a8 a runner that reads prompts from the whole block is caught (reading: ${why:-none failed})" test -n "$why"
+
 if [ "$FAILS" -eq 0 ]; then echo "chain: PASS $N"; exit 0; fi
 echo "chain: FAIL $FAILS failures, $N checks passed"
 exit 1

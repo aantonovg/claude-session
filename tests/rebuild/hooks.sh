@@ -284,6 +284,46 @@ ledger_reset
 printf '%s' "$(jq -nc --arg c "$CWD" '{hook_event_name:"SubagentStop",session_id:"s",cwd:$c}')" | bash "$LEDGER_HOOK" >/dev/null 2>&1
 check "h2 a payload without an agent id writes nothing (rows: $(stops))" test "$(stops)" = 0
 
+# A workflow launch: the launch row holds the run id the launch result gives (`wf_...`), and each
+# agent of the run stops under its own id. Live run 20260921-065113 (base:resume) had launch rows of
+# that form and no stop row at all, so a finished stage read as unfinished and was redone. The run
+# is found from the agent's transcript path, from the payload or beside the session transcript.
+wf_setup() { # wf_setup <run> <agent...>: a session transcript dir holding the run's agent files
+  local run=$1; shift
+  mkdir -p "$PDIR/sess1/subagents/workflows/$run"
+  : > "$PDIR/sess1.jsonl"
+  for a in "$@"; do : > "$PDIR/sess1/subagents/workflows/$run/agent-$a.jsonl"; done
+}
+wf_payload() { # wf_payload <agent> <with agent_transcript_path: yes|no> <run>
+  if [ "$2" = yes ]; then
+    jq -nc --arg c "$CWD" --arg a "$1" --arg p "$PDIR/sess1/subagents/workflows/$3/agent-$1.jsonl" \
+      '{hook_event_name:"SubagentStop",session_id:"sess1",cwd:$c,agent_id:$a,agent_transcript_path:$p}'
+  else
+    jq -nc --arg c "$CWD" --arg a "$1" --arg t "$PDIR/sess1.jsonl" \
+      '{hook_event_name:"SubagentStop",session_id:"sess1",cwd:$c,agent_id:$a,transcript_path:$t}'
+  fi
+}
+for how in yes no; do
+  ledger_reset; wf_setup wf_run1-abc a5f00 a6f00
+  launch_row wf_run1-abc c4 std main fab-me-plan-author >>"$TASK/ledger.jsonl"
+  printf '%s' "$(wf_payload a5f00 "$how" wf_run1-abc)" | bash "$LEDGER_HOOK" >/dev/null 2>&1
+  check "h2 a workflow agent stopping writes the stop row of its run (path in payload: $how; rows: $(stops))" test "$(stops)" = 1
+  check "h2 that stop row names the run and copies its label (got $(field wf_run1-abc label))" test "$(field wf_run1-abc label)" = fab-me-plan-author
+  printf '%s' "$(wf_payload a6f00 "$how" wf_run1-abc)" | bash "$LEDGER_HOOK" >/dev/null 2>&1
+  check "h2 a second agent of the same run adds no row (path in payload: $how; rows: $(stops))" test "$(stops)" = 1
+done
+ledger_reset; wf_setup wf_other-123 a7f00
+printf '%s' "$(wf_payload a7f00 no wf_other-123)" | bash "$LEDGER_HOOK" >/dev/null 2>&1
+check "h2 an agent of a run the ledger does not name gets no row (rows: $(stops))" test "$(stops)" = 0
+# the mutant is the hook of before: it looks the stopping agent up by its own id and nothing else
+MUT_HOOK=$HOME/ledger-stop-mutant.sh
+perl -pe 's/^if \[ -z "\$ROW" \]; then$/if false; then/' "$LEDGER_HOOK" > "$MUT_HOOK"
+check "h2 the run-lookup mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$LEDGER_HOOK" "$MUT_HOOK"
+ledger_reset; wf_setup wf_run1-abc a5f00
+launch_row wf_run1-abc c4 std main fab-me-plan-author >>"$TASK/ledger.jsonl"
+printf '%s' "$(wf_payload a5f00 no wf_run1-abc)" | bash "$MUT_HOOK" >/dev/null 2>&1
+check "h2 a hook that finds no run for a workflow agent is caught (mutant rows: $(stops))" test "$(stops)" = 0
+
 ledger_reset
 printf '%s' "$(stop_payload a1)" | bash "$LEDGER_HOOK" >/dev/null 2>&1; rc=$?
 check "h2 the hook exits 0" test "$rc" -eq 0
