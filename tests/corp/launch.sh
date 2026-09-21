@@ -63,9 +63,14 @@ sleep 2
 tmux send-keys -t "$tmux_name" "/session:base" Enter
 wait_for 'Base on' 150 || exit 1
 tmux send-keys -t "$tmux_name" "/session:process code full" Enter
-wait_for 'ipeline' 120 || exit 1
+# The process skill replies with one line: the type, the depth and the class. The pane still holds
+# the command just typed, so the wait asks for a depth word and a class token on one line — the
+# typed line carries no class token, and the `Base on (c3)` line above carries no depth word.
+# tests/rebuild/waits.sh executes this rule over both launch scripts.
+wait_for '(lite|std|full).*c[0-9]|c[0-9].*(lite|std|full)' 120 || exit 1
 tmux send-keys -t "$tmux_name" "/session:codex +astra" Enter
-wait_for 'codex|Codex' 120 || exit 1
+# the same rule: `codex` alone stands in the typed line; the reply line starts `Codex: <mode>`
+wait_for 'Codex: ' 120 || exit 1
 sleep 2
 if (( no_prompt )); then
   echo "stopped before the task prompt (--no-prompt)"

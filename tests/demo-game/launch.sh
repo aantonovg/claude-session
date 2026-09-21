@@ -70,11 +70,16 @@ tmux send-keys -t "$tmux_name" "/session:base" Enter
 wait_for 'Base on' 120 || exit 1
 if [[ $mode != none ]]; then
   tmux send-keys -t "$tmux_name" "/session:$mode" Enter
-  wait_for 'mode on|lite|std|full' 90 || exit 1
+  # The process skill replies with one line: the type, the depth and the class. The pane still holds
+  # the command just typed, so the wait asks for a depth word and a class token on one line — the
+  # typed line carries no class token, and the `Base on (c3)` line above carries no depth word.
+  # tests/rebuild/waits.sh executes this rule over both launch scripts.
+  wait_for '(lite|std|full).*c[0-9]|c[0-9].*(lite|std|full)' 90 || exit 1
 fi
 if [[ -n $extra ]]; then
   tmux send-keys -t "$tmux_name" "/session:$extra" Enter
-  wait_for 'codex|Codex' 90 || exit 1
+  # the same rule: `codex` alone stands in the typed line; the reply line starts `Codex: <mode>`
+  wait_for 'Codex: ' 90 || exit 1
 fi
 sleep 2
 tmux send-keys -t "$tmux_name" "Read prompt.md in this directory and do the task in full." Enter

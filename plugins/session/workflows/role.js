@@ -560,6 +560,106 @@ function staleNameHits(line) {
   return hits
 }
 
+// staleFileHits(path, text): the live references to a retired name in one file of the scan scope of
+// tests/rebuild/stale.sh, with the declaration kinds applied. The rule lives here, next to the name
+// list, so the scan of that test is a reader of one rule and the mutants of that test execute it.
+// A declaration is never a reference, and every declaration kind is scoped to the file kind that
+// owns it — a tree-wide escape would drop a live launch that merely stands beside a date or beside
+// the word FAIL:
+//   - a roster line of the shared block (`const NAME = [` inside lib/block.src.js, lib/block.js or a
+//     stamped shared-block region): the retired names are listed there on purpose;
+//   - a line that calls such a launch a FAIL: only in the files that state gate PASS rules, the
+//     scenario set of tests/measure and the tests of tests/rebuild;
+//   - a line that dates its statement: only in the memory files of the user level, where a dated
+//     entry records what happened that day;
+//   - the lines under a `## Version log` heading of a markdown file, until the next heading of that
+//     file: a version log records what a released version shipped;
+//   - a line carrying the marker `stale-ok:` with a reason, and the lines after it up to the next
+//     blank line, under tests/rebuild/ only. Such a line is counted and reported as a mark, by the
+//     line number of the marker itself. A marker outside that scope opts out nothing: the hits
+//     stand and the line is reported, so the test can name the file that tried.
+const STALE_MARK = 'stale-ok:'
+const STALE_BLOCK_BEGIN = '// ---- shared block'
+const STALE_BLOCK_END = '// ---- end shared block'
+const STALE_ROSTER = /^const [A-Z][A-Z0-9_]* = \[/
+const STALE_DATE = /\b\d{4}-\d{2}-\d{2}\b/
+const STALE_LOG_HEAD = /^#+\s+Version log\b/i
+const STALE_FAIL_SCOPE = [/\/tests\/measure\/[a-z0-9-]*scenarios-[0-9.]+\.txt$/, /\/tests\/rebuild\/[a-z0-9-]+\.sh$/]
+const STALE_DATED_SCOPE = [/\/memory\/[^/]+\.md$/]
+const STALE_MARK_SCOPE = [/\/tests\/rebuild\//]
+function staleFileHits(path, text) {
+  const p = String(path == null ? '' : path)
+  const scoped = list => list.some(rx => rx.test(p))
+  const failOk = scoped(STALE_FAIL_SCOPE)
+  const datedOk = scoped(STALE_DATED_SCOPE)
+  const markOk = scoped(STALE_MARK_SCOPE)
+  const isBlock = /lib\/block(\.src)?\.js$/.test(p)
+  const isDoc = /\.md$/.test(p)
+  let inBlock = isBlock
+  let inRoster = false
+  let inLog = false
+  let markAt = 0
+  const hits = []
+  const marks = []
+  const mark = n => { if (marks.indexOf(n) === -1) marks.push(n) }
+  String(text == null ? '' : text).split('\n').forEach((line, i) => {
+    const n = i + 1
+    const s = line.trim()
+    if (!s.length) { markAt = 0; return } // a blank line ends a marked block
+    if (isDoc && /^#+\s/.test(s)) inLog = STALE_LOG_HEAD.test(s)
+    if (inLog) return
+    if (!isBlock) {
+      if (s.indexOf(STALE_BLOCK_END) === 0) { inBlock = false; return }
+      if (s.indexOf(STALE_BLOCK_BEGIN) === 0) { inBlock = true; return }
+    }
+    if (inBlock) {
+      if (inRoster) { if (s.indexOf(']') !== -1) inRoster = false; return }
+      if (STALE_ROSTER.test(s)) { inRoster = s.indexOf(']') === -1; return }
+    }
+    const marked = line.indexOf(STALE_MARK) !== -1
+    if (marked) markAt = n
+    const found = staleNameHits(line)
+    if (!found.length) return
+    if (failOk && /\bFAIL\b/.test(line)) return
+    if (datedOk && STALE_DATE.test(line)) return
+    if (markOk && markAt) { mark(markAt); return }
+    if (marked) mark(n) // a marker where it is not allowed: reported, and the hits stand
+    found.forEach(t => hits.push({ line: n, name: t }))
+  })
+  return { hits, marks }
+}
+
+// echoedWaits(text, vars): the waits of a tmux launch script that its own typed line already
+// satisfies. tests/corp/launch.sh and tests/demo-game/launch.sh prove a mode skill loaded by typing
+// a slash command with `tmux send-keys` and then polling the pane for a line of the reply. The pane
+// holds the typed command too, so a wait pattern that the typed line itself matches returns before
+// the skill answered and proves nothing. Every `wait_for` is read against the last line typed before
+// it; `$var` and `${var}` in the typed line are resolved from <vars>, the values the script uses, so
+// a command assembled from a variable is read the way it reaches the pane. A wait with no typed line
+// before it (the first prompt of the session) is no hit.
+function echoedWaits(text, vars) {
+  const v = vars || {}
+  const subst = s => String(s).replace(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g, (m0, name) =>
+    Object.prototype.hasOwnProperty.call(v, name) ? String(v[name]) : m0)
+  // the quote of a typed line is written \x22 and \x27: a literal quote inside a regexp of this
+  // block opens a string for stripComments(), which reads no regexp literal, and the comment after
+  // it would then be read as code
+  const SEND = /tmux send-keys\b[^\n]*?([\x22\x27])(.*?)\1 Enter/
+  const WAIT = /^\s*wait_for ([\x22\x27])(.*?)\1/
+  let typed = null
+  const hits = []
+  String(text == null ? '' : text).split('\n').forEach((line, i) => {
+    const sent = SEND.exec(line)
+    if (sent) { typed = subst(sent[2]); return }
+    const w = WAIT.exec(line)
+    if (!w || typed == null) return
+    let re
+    try { re = new RegExp(w[2]) } catch (e) { hits.push({ line: i + 1, typed, re: w[2], why: 'no regexp' }); return }
+    if (re.test(typed)) hits.push({ line: i + 1, typed, re: w[2], why: 'the typed line matches' })
+  })
+  return hits
+}
+
 // hintVerdictHits(text): the places where <text> lets a hint decide by itself. A critic gives hints,
 // never verdicts (idea 3.6): a claim is withdrawn only when a fact refutes it, and a hint no fact
 // settles leaves the claim standing, marked as not checked. A text that makes a hint, a critique or
@@ -1952,7 +2052,7 @@ if (typeof module !== 'undefined' && module.exports) {
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
     carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
     phraseGap, OLD_CARRIERS, oldCarrierGap, STALE_AGENTS, STALE_WORKFLOWS, STALE_PATHS,
-    staleNameHits, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
+    staleNameHits, staleFileHits, echoedWaits, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,

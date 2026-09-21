@@ -13,7 +13,9 @@
 # the second run changes nothing (idempotent: a patch whose new text already stands is counted as
 # done, and a file holding both is a failure, because a half-applied patch is neither state).
 #
-# The patches, with their reason:
+# The patches, with their reason. stale-ok: every old pattern below is a name this script removes
+# from the user level, so the lines that carry one are the deletion, never a live reference; the
+# same marker stands over each patch call for the same reason.
 #   skills/tmux-sessions       the waiting carrier is a role of session:role now
 #   skills/russian-plannotator the translation workflow is a role of session:role now
 #   skills/harness-cost        the two rows are measured costs of agents that no longer exist; they
@@ -24,6 +26,7 @@
 #                              .pipeline and .review, and hooks/modes.sh writes .process (U9)
 #   projects/<enc>/memory      the index entry and the two memory files that instruct a translation
 # Credential rule: no keychain entry, login state or ~/.claude.json is read, listed or copied.
+
 set -u
 
 MAIN=${CLAUDE_MAIN_CHECKOUT:-/Users/aleksandr.antonov/projects/claude-session}
@@ -67,19 +70,19 @@ patch() {  # $1 relative path, $2 label, $3 old literal, $4 new literal, $5 perl
   applied
 }
 
-# ---- 1. the waiting carrier ----
+# ---- 1. the waiting carrier ---- stale-ok: the old name is what this patch removes
 patch skills/tmux-sessions/SKILL.md 'tmux-sessions waiter' \
   'session:waiter' \
   '`session:role` with `role: waiter`' \
   's{launches `session:waiter` as a one-agent `Workflow`, sonnet, effort low, label `son-lo-wait-<job>`}{launches the named workflow `session:role` with `role: waiter`, class and submodes from the session base, label `<mod>-<eff>-wait-<job>`}'
 
-# ---- 2. the translation workflow ----
+# ---- 2. the translation workflow ---- stale-ok: the old name is what this patch removes
 patch skills/russian-plannotator/SKILL.md 'russian-plannotator translate' \
   'session:translate-ru' \
   'named workflow `session:role`' \
   's{named workflow `session:translate-ru`, args `\{ file: <absolute path> \}`}{named workflow `session:role`, args `{ role: "translator", in: [<absolute path>], ask: "translate this file into Russian", out: <the same directory>/<name>_ru.<ext> }`}'
 
-# ---- 3. the measured rows of two agents that no longer exist ----
+# ---- 3. the measured rows of two agents that no longer exist ---- stale-ok: the rows name them
 patch skills/harness-cost/SKILL.md 'harness-cost rows' \
   'session:stage-executor' \
   'only after a fresh measurement' \
@@ -93,6 +96,7 @@ patch skills/transcripts-jsonl/SKILL.md 'transcripts-jsonl predicate' \
   's{every stage `agentType` prefixed `session:`}{every stage `agentType` prefixed by a plugin name}'
 
 # ---- 5. the statusline consumer: the keys of the mode file, and the writer it names ----
+# stale-ok: the old keys and the old writer path are what these two patches remove
 patch statusline.sh 'statusline mode keys' \
   '[.base, .codex, .pipeline, .review]' \
   '[.base, .codex, .process]' \
@@ -103,12 +107,14 @@ patch statusline.sh 'statusline writer name' \
   's{hooks/session-modes\.sh}{hooks/modes.sh}g'
 
 # ---- 6. the memory: the index entry and the two files that instruct a translation ----
+# stale-ok: the old workflow name is what this patch removes
 patch "$MEM/MEMORY.md" 'memory index entry' \
   'session:translate-ru' \
   'session:role with role translator' \
   's{\[Translation: session:translate-ru workflow for files, fork for conversation\]}{[Translation: session:role with role translator for files, fork for conversation]};
    s{named workflow session:translate-ru \(size-picked slot\) when the source is on disk}{named workflow session:role with role translator (slot picked by the size argument) when the source is on disk}'
 
+# stale-ok: the old workflow name is what this patch removes
 patch "$MEM/feedback-translation-cold-agent.md" 'memory translation entry' \
   'session:translate-ru' \
   '`session:role` with `role: translator`' \
@@ -117,11 +123,13 @@ patch "$MEM/feedback-translation-cold-agent.md" 'memory translation entry' \
    s{a haiku `size-estimator` measures the file, then a `translator` agent runs on the slot picked by size \(under 1000 tokens: main-model slot; 1000-2000: opus slot; over 2000: sonnet slot\)}{the translator role runs on the opus slot of the class, one slot down at `size: large`}g;
    s{`session:translate-ru`}{`session:role` with `role: translator`}g'
 
+# stale-ok: the old path of the shared block is what this patch removes
 patch skills/workflow-reliability/SKILL.md 'workflow-reliability shared block' \
   'plugins/session/workflows/research.js' \
   'plugins/session/lib/block.src.js' \
   's{canonical copy: `/Users/aleksandr\.antonov/projects/claude-session/plugins/session/workflows/research\.js` lines 8-49\.}{one source, stamped into every script by `bin/build.sh`: `/Users/aleksandr.antonov/projects/claude-session/plugins/session/lib/block.src.js`.}'
 
+# stale-ok: the old workflow name is what this patch removes
 patch "$MEM/feedback-translate-ru-verify-output.md" 'memory verify-output description' \
   'description: session:translate-ru' \
   'description: a translation launch' \
