@@ -4,6 +4,8 @@
 # take arguments and are called by the part that owns them. switch-user.sh runs in its --selftest
 # mode: that mode patches fixtures in a temporary directory of its own and touches no user-level
 # file, so "a patch reaches its file only when all of it applied" is executed by every run here.
+# release-gate.sh runs here only in its --selftest mode (fixture repos in a temporary directory);
+# the gate itself holds only at the release commit and is run once, by hand, right after it.
 # From P6 on text.sh always runs with --with-base: the base text is rewritten, so it is part of the
 # no-model rule like every other text of the new set. The flag is still accepted and changes
 # nothing, so an older command line keeps working.
@@ -19,7 +21,7 @@ for a in "$@"; do
   esac
 done
 
-ORDER="build-sync agents text contracts roles chain stages hooks resume carrier-free toolplugin waits switch-user"
+ORDER="build-sync agents text contracts roles chain stages hooks resume carrier-free toolplugin waits switch-user release-gate"
 ran=0; failed=
 
 for t in $ORDER; do
@@ -28,7 +30,7 @@ for t in $ORDER; do
   ran=$((ran + 1))
   if [ "$t" = text ] && [ -n "$WITH_BASE" ]; then
     bash "$f" "$WITH_BASE"; rc=$?
-  elif [ "$t" = switch-user ]; then
+  elif [ "$t" = switch-user ] || [ "$t" = release-gate ]; then
     bash "$f" --selftest; rc=$?
   else
     bash "$f"; rc=$?

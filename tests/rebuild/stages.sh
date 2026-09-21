@@ -1,6 +1,7 @@
 #!/bin/bash
 # Static oracle of P4: the composite flows are verification-first by construction.
 # Globs: plugins/session/lib/block.js (node), plugins/session/workflows/{make,probe}.js (grep only),
+#        plugins/session/workflows/*.js (s9: usage contracts and workflow() call sites, via node),
 #        plugins/session/lib/build-manifest.json, plugins/session/.claude-plugin/plugin.json,
 #        tests/measure/rebuild-scenarios-0.16.txt.
 # Proves: `stageRange` returns every stage alone, every contiguous range and the whole flow by
@@ -1030,6 +1031,70 @@ if [ -f "$MAKE" ]; then
 else
   fail "s8 plugins/session/workflows/make.js exists"
 fi
+
+# ---- s9: a workflow that launches another passes every argument the callee marks required ----
+# A live run stopped with "args.run ... is required": make.js launched session:chain without the run
+# key chain.js requires. The decision is executed over lib/block.js (usageRequired reads the usage
+# block of the callee, workflowCalls the argument keys of each call site, launchArgGaps compares),
+# over every workflow of the plugin, and re-run over a make.js with `run` dropped from its call.
+cat > "$T/launch.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const dir = process.argv[3]
+const files = process.argv.slice(4)   // callers to check; the contracts always come from `dir`
+const ok = (c, m) => console.log((c ? 'ok ' : 'bad ') + m)
+const contracts = {}
+for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.js'))) {
+  contracts[f.replace(/\.js$/, '')] = b.usageRequired(fs.readFileSync(`${dir}/${f}`, 'utf8'))
+}
+if (process.env.UNIT) {
+  ok(JSON.stringify(contracts.chain) === JSON.stringify(['in', 'ask', 'out', 'run', 'aspects']), `chain contract read as ${contracts.chain}`)
+  ok(b.usageRequired('/* usage:\nrole (required): a b\nx (default 1)\n*/').join() === 'role', 'a bare (required) marks the argument, a default does not')
+  ok(b.usageRequired('no block') === null, 'a source without a usage block has no contract')
+  const g = src => b.launchArgGaps(b.workflowCalls(src), { chain: ['run', 'in'] })
+  ok(g("await workflow('session:chain', { run: 'r', in: [] })").length === 0, 'a call with every required key passes')
+  ok(g("await workflow('/x/y/chain.js', { run: 'r', in: [] })").length === 0, 'a launch by path resolves to the same contract')
+  ok(/misses required run/.test(g("await workflow('session:chain', { in: [] })").join()), 'a missing key is a gap')
+  ok(g("// workflow('session:chain', {})\nconst s = 'workflow(x)'").length === 0, 'a comment or a string is no call')
+  ok(g("await workflow(NAME, { run: 'r', in: [] })").length === 1, 'a callee that is no literal is a gap')
+  ok(g("await workflow('session:chain', { ...o, in: [] })").length === 1, 'a spread is a gap')
+  ok(g("await workflow('session:other', { run: 'r', in: [] })").length === 1, 'a callee with no contract is a gap')
+  ok(g("await workflow('session:chain', {\n  // run: 'r'\n  in: [`${a}-{b}`],\n  x: f({ run: 1 }),\n})").join().includes('misses required run'), 'a commented key or a nested key does not count')
+}
+let calls = 0
+for (const f of files) {
+  const cs = b.workflowCalls(fs.readFileSync(f, 'utf8'))
+  calls += cs.length
+  const gaps = b.launchArgGaps(cs, contracts)
+  const name = f.split('/').pop()
+  if (gaps.length) for (const x of gaps) ok(false, `${name} ${x}`)
+  else ok(true, `${name}: ${cs.length} launch(es), every required argument passed`)
+}
+console.log(`calls ${calls}`)
+JS
+launch_suite() { # launch_suite <out> <caller files...>
+  local out=$1; shift
+  node "$T/launch.js" "$LIB/block.js" "$WF" "$@" > "$out" 2>&1
+}
+UNIT=1 launch_suite "$T/launch.out" "$WF"/role.js "$WF"/chain.js "$WF"/make.js "$WF"/probe.js
+if ! grep -q '^calls ' "$T/launch.out"; then
+  fail "s9 the launch suite printed no summary (node failed): $(head -1 "$T/launch.out")"
+else
+  while IFS= read -r line; do
+    case $line in
+      "ok "*) pass ;;
+      "bad "*) fail "s9 ${line#bad }" ;;
+      "calls "*) ;;
+      *) fail "s9 unexpected output: $line" ;;
+    esac
+  done < "$T/launch.out"
+  check "s9 make.js launches at least one workflow (the check is not vacuous)" grep -q 'make.js: [1-9][0-9]* launch' "$T/launch.out"
+fi
+# the mutant: `run` dropped from the chain launch of make.js — the suite must name the missing key
+perl -ne 'print unless /^\s*run: `\$\{RUNKEY\}-spec`,\s*$/' "$WF/make.js" > "$T/make-norun.js"
+check "s9 the dropped-run mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$WF/make.js" "$T/make-norun.js"
+launch_suite "$T/launch-mutant.out" "$T/make-norun.js"
+check "s9 the launch suite catches make.js launching session:chain without run" grep -q '^bad make-norun.js .*session:chain misses required run' "$T/launch-mutant.out"
 
 if [ "$FAILS" -eq 0 ]; then echo "stages: PASS $N"; exit 0; fi
 echo "stages: FAIL $FAILS failures, $N checks passed"

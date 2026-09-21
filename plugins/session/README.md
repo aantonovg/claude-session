@@ -28,7 +28,10 @@ checks what. Role and aspect texts live one file each and are stamped into the s
 `tests/rebuild/all.sh` runs the static oracles of the rebuild (build sync, agents, texts, contracts,
 roles, chain, stages, hooks, carrier-free process text, tool plugin pattern).
 `tests/workflows/usage-test.sh` checks the contract collector, the SessionStart wiring, the base
-sentences, this README, the change set of the branch and the 0.16.0 version of both version files.
+sentences, this README and the change set of the branch, on every commit.
+`tests/rebuild/release-gate.sh` runs once, right after the release commit, and checks what holds only
+there: both version files at 0.16.0, this section and the 0.16.0 version log line, the subject
+`session 0.16.0: <summary>` of HEAD and a clean tree; its `--selftest` mode runs in `all.sh`.
 
 ## Agents
 

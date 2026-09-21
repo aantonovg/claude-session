@@ -2322,6 +2322,149 @@ function gateDecision(kind, runs) {
   return { kind: kind || null, pass, fail, decision }
 }
 
+// ---- launch contracts: a workflow that launches another passes every required argument ----
+// usageRequired(src) -> [name]: the arguments the usage block (`/* usage:` ... `*/`) of a workflow
+// source marks required, i.e. a line `name (... required ...)`; `a, b (...)` names two arguments.
+function usageRequired(src) {
+  const m = /\/\*\s*usage:([\s\S]*?)\*\//.exec(String(src || ''))
+  if (!m) return null
+  const out = []
+  for (const line of m[1].split('\n')) {
+    const r = /^\s*([a-z][a-z0-9-]*(?:\s*,\s*[a-z][a-z0-9-]*)*)\s*\(([^)]*)\)/.exec(line)
+    if (r && /(^|[\s,])required([\s,]|$)/.test(r[2])) for (const n of r[1].split(',')) out.push(n.trim())
+  }
+  return out
+}
+
+// skipLiteral(code, i) -> index after the string, template or comment that starts at i, or i when
+// none starts there. Templates are walked with their `${ }` parts, nested templates included.
+function skipLiteral(code, i) {
+  const c = code[i]
+  if (c === '/' && code[i + 1] === '/') { const e = code.indexOf('\n', i); return e < 0 ? code.length : e }
+  if (c === '/' && code[i + 1] === '*') { const e = code.indexOf('*/', i + 2); return e < 0 ? code.length : e + 2 }
+  if (c === "'" || c === '"') {
+    let j = i + 1
+    while (j < code.length && code[j] !== c) j += code[j] === '\\' ? 2 : 1
+    return j + 1
+  }
+  if (c === '`') {
+    let j = i + 1
+    while (j < code.length && code[j] !== '`') {
+      if (code[j] === '\\') { j += 2; continue }
+      if (code[j] === '$' && code[j + 1] === '{') { j = skipGroup(code, j + 1); continue }
+      j++
+    }
+    return j + 1
+  }
+  return i
+}
+
+// skipGroup(code, i) -> index after the bracket group that opens at i ({, ( or [).
+function skipGroup(code, i) {
+  let depth = 0, j = i
+  while (j < code.length) {
+    const k = skipLiteral(code, j)
+    if (k !== j) { j = k; continue }
+    const c = code[j]
+    if (c === '{' || c === '(' || c === '[') depth++
+    else if (c === '}' || c === ')' || c === ']') { depth--; if (depth === 0) return j + 1 }
+    j++
+  }
+  return j
+}
+
+// topParts(code, open, close) -> [text]: the comma-separated parts of the group code[open..close),
+// split at its own level only, comments dropped.
+function topParts(code, open, close) {
+  const parts = []
+  let cur = '', j = open + 1
+  while (j < close - 1) {
+    const k = skipLiteral(code, j)
+    if (k !== j) {
+      if (!(code[j] === '/' && (code[j + 1] === '/' || code[j + 1] === '*'))) cur += code.slice(j, k)
+      j = k; continue
+    }
+    const c = code[j]
+    if (c === '{' || c === '(' || c === '[') { const e = skipGroup(code, j); cur += code.slice(j, e); j = e; continue }
+    if (c === ',') { parts.push(cur.trim()); cur = ''; j++; continue }
+    cur += c; j++
+  }
+  if (cur.trim()) parts.push(cur.trim())
+  return parts.filter(p => p !== '')
+}
+
+// workflowCalls(code) -> [{ line, callee, keys, spread, problem }]: every `workflow(` call of the
+// code. callee is the string literal of the first argument (a name like `session:chain` or a
+// path), keys the top-level keys of the object literal in the second. A callee that is no string
+// literal, or arguments that are no object literal, cannot be checked and carry a problem instead.
+function workflowCalls(code) {
+  const src = String(code || '')
+  const calls = []
+  // a call is looked for in code only: strings, templates and comments are blanked out first
+  // (same length, newlines kept), so a comment that says `workflow(` is no call
+  let masked = ''
+  for (let j = 0; j < src.length;) {
+    const k = skipLiteral(src, j)
+    if (k === j) { masked += src[j]; j++; continue }
+    masked += src.slice(j, k).replace(/[^\n]/g, ' ')
+    j = k
+  }
+  const re = /(^|[^A-Za-z0-9_$.])workflow\s*\(/g
+  let m
+  let from = 0
+  while ((m = re.exec(masked))) {
+    const at = m.index + m[1].length
+    if (at < from) continue
+    const open = src.indexOf('(', at)
+    const close = skipGroup(src, open)
+    from = close
+    const line = src.slice(0, at).split('\n').length
+    const args = topParts(src, open, close)
+    const call = { line, callee: null, keys: [], spread: false, problem: null }
+    const q = /^(['"`])([^'"`$]*)\1$/.exec(args[0] || '')
+    if (!q) call.problem = 'callee is not a string literal'
+    else call.callee = q[2]
+    const obj = (args[1] || '').trim()
+    if (!obj.startsWith('{') || !obj.endsWith('}')) call.problem = call.problem || 'arguments are not an object literal'
+    else {
+      for (const p of topParts(obj, 0, obj.length)) {
+        if (p.startsWith('...')) { call.spread = true; continue }
+        const k = /^(?:['"]([^'"]+)['"]|([A-Za-z_$][\w$]*))\s*(:|$)/.exec(p)
+        if (k) call.keys.push(k[1] || k[2])
+      }
+    }
+    calls.push(call)
+  }
+  return calls
+}
+
+// calleeName(callee) -> the workflow file stem: `session:chain` -> chain, `/x/chain.js` -> chain.
+function calleeName(callee) {
+  const s = String(callee || '')
+  if (/[/\\]/.test(s) || /\.js$/.test(s)) return s.split(/[/\\]/).pop().replace(/\.js$/, '')
+  const c = /^session:([a-z][a-z0-9-]*)$/.exec(s)
+  if (c) return c[1]
+  return /^[a-z][a-z0-9-]*$/.test(s) ? s : null
+}
+
+// launchArgGaps(calls, contracts) -> [text]: one line per call that cannot be shown to pass every
+// argument its callee's usage block marks required. contracts: { stem: [required names] }. A
+// callee with no known contract, a spread and an unreadable call are gaps too: unchecked is no pass.
+function launchArgGaps(calls, contracts) {
+  const gaps = []
+  for (const c of calls || []) {
+    const at = `line ${c.line}`
+    if (c.problem) { gaps.push(`${at}: ${c.problem}`); continue }
+    const name = calleeName(c.callee)
+    const req = name && contracts ? contracts[name] : null
+    if (!Array.isArray(req)) { gaps.push(`${at}: ${c.callee} has no usage contract`); continue }
+    if (c.spread) { gaps.push(`${at}: ${c.callee} arguments carry a spread, keys unknown`); continue }
+    const miss = req.filter(r => !c.keys.includes(r))
+    if (miss.length) gaps.push(`${at}: ${c.callee} misses required ${miss.join(' ')}`)
+  }
+  return gaps
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
@@ -2345,6 +2488,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PROCESS_STAGES, STAGE_OFF, ledgerRows, resumeState, resumeLine, intentStopDue, intentStopRow, unnamedStopRow,
     GATE_KINDS, scenarioKind, gateDecision,
     DEFAULT_ASPECTS, ASPECTS_HEAD, defaultAspects, intentAspects,
+    usageRequired, workflowCalls, calleeName, launchArgGaps,
   }
 }
 // ---- end shared block ----

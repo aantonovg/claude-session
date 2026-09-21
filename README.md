@@ -28,7 +28,9 @@ script body.
 0.16.0 rebuilds the plugin from zero: the class `c1`-`c5` plus its submodes is the only source of a
 model and an effort. `tests/rebuild/all.sh` runs the static oracles of the rebuild, and
 `tests/workflows/usage-test.sh` checks the contract collector, the SessionStart wiring, the base
-sentences, the READMEs and the 0.16.0 version of both version files. Details: the section
+sentences and the READMEs on every commit; `tests/rebuild/release-gate.sh` runs once, right after
+the release commit, and checks what holds only there (both version files at 0.16.0, the version log
+line, the commit subject, a clean tree). Details: the section
 "The 0.16 set" of `plugins/session/README.md`.
 
 Reference (classes, cache facts, compact prices, measurements): `plugins/session/README.md`.
