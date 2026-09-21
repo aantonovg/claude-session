@@ -1,7 +1,9 @@
 #!/bin/bash
 # Runs every static test of tests/rebuild/ that exists at this moment, in order, and stops at none:
 # it reports each result and fails when any failed. stale.sh and verdicts.sh are left out, they
-# take arguments and are called by the part that owns them.
+# take arguments and are called by the part that owns them. switch-user.sh runs in its --selftest
+# mode: that mode patches fixtures in a temporary directory of its own and touches no user-level
+# file, so "a patch reaches its file only when all of it applied" is executed by every run here.
 # From P6 on text.sh always runs with --with-base: the base text is rewritten, so it is part of the
 # no-model rule like every other text of the new set. The flag is still accepted and changes
 # nothing, so an older command line keeps working.
@@ -17,7 +19,7 @@ for a in "$@"; do
   esac
 done
 
-ORDER="build-sync agents text contracts roles chain stages hooks carrier-free toolplugin waits"
+ORDER="build-sync agents text contracts roles chain stages hooks carrier-free toolplugin waits switch-user"
 ran=0; failed=
 
 for t in $ORDER; do
@@ -26,6 +28,8 @@ for t in $ORDER; do
   ran=$((ran + 1))
   if [ "$t" = text ] && [ -n "$WITH_BASE" ]; then
     bash "$f" "$WITH_BASE"; rc=$?
+  elif [ "$t" = switch-user ]; then
+    bash "$f" --selftest; rc=$?
   else
     bash "$f"; rc=$?
   fi

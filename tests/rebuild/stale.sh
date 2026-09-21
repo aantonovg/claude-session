@@ -1,6 +1,8 @@
 #!/bin/bash
 # Static oracle of part 9: no live reference to a name of the 0.15 set survives, inside the repo or
-# in the user-level assets.
+# in the user-level assets, and no live text of the plugin still routes by the design part 9 deleted
+# (group s4, oldDesignHits() of the shared block: prose that names "the pipeline", a gate letter of
+# the old flow or "the review's own artifacts" carries no qualified name and passes group s1).
 #
 #   tests/rebuild/stale.sh <dir>
 #
@@ -207,17 +209,24 @@ check "s2 a marked block ends at the blank line: exactly the line after it is a 
   bash -c 'out=$(node "$1" "$2" "$3"); [ "$(printf %s "$out" | grep -c "names the retired")" = 1 ] &&
     printf %s "$out" | grep -q ":5 names the retired"' _ "$T/scan.js" "$BLOCK" "$T/l-markblock"
 
-# the version log of a markdown file ends at its next heading, or one log heading would silence the
-# rest of the file
-# stale-ok: the fixture written below is a version log and a section after it
-mkdir -p "$T/plugins/session"
-{ printf '%s\n' '## Version log' '- 0.15.4 the pipeline skill: /session:pipeline full' '' '## Modes'
-  printf '%s\n' 'The mode file is written by hooks/session-modes.sh at every start.'
-} > "$T/plugins/session/f-log.md"
-printf '%s\n' "$T/plugins/session/f-log.md" > "$T/l-log"
-check "s2 a version log is a declaration and the heading after it ends the log" \
+# the version log ends at the next heading of its file, or one log heading would silence the rest of
+# the file, to the end of it when the section is the last one; and it is a declaration in a README or
+# a CHANGELOG only, the two file kinds that write a released version down. The very same section in
+# an ordinary document of the product tree is no escape: both hits stand there.
+# stale-ok: the two fixtures written below are a version log and a section after it
+mkdir -p "$T/plugins/session" "$T/plugins/session/skills"
+LOGDOC() { { printf '%s\n' '## Version log' '- 0.15.4 the pipeline skill: /session:pipeline full' '' '## Modes'
+  printf '%s\n' 'The mode file is written by hooks/session-modes.sh at every start.'; } > "$1"; }
+LOGDOC "$T/plugins/session/README.md"
+printf '%s\n' "$T/plugins/session/README.md" > "$T/l-log"
+check "s2 a version log of a README is a declaration and the heading after it ends the log" \
   bash -c 'out=$(node "$1" "$2" "$3"); [ "$(printf %s "$out" | grep -c "names the retired")" = 1 ] &&
     printf %s "$out" | grep -q ":5 names the retired"' _ "$T/scan.js" "$BLOCK" "$T/l-log"
+LOGDOC "$T/plugins/session/skills/f-log.md"
+printf '%s\n' "$T/plugins/session/skills/f-log.md" > "$T/l-log-prod"
+check "s2 the same version log in an ordinary document of the tree is no escape" \
+  bash -c 'out=$(node "$1" "$2" "$3"); [ "$(printf %s "$out" | grep -c "names the retired")" = 2 ]' \
+  _ "$T/scan.js" "$BLOCK" "$T/l-log-prod"
 
 # the roster rule holds inside the shared block only: the same roster line in an ordinary file is a
 # hit, or any file could hide a reference behind a capitalised array name
@@ -273,6 +282,68 @@ check "s2 the mutant that lets any file carry the marker is caught" \
 mut logsticky "s|inLog = STALE_LOG_HEAD\.test\(s\)|inLog = inLog \|\| STALE_LOG_HEAD.test(s)|"
 check "s2 the mutant whose version log never ends is caught" \
   bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/logsticky.js" "$T/l-log"
+mut logwide "s|const STALE_LOG_SCOPE = \[.*\]|const STALE_LOG_SCOPE = [/./]|"
+check "s2 the mutant that lets any document open a version log is caught" \
+  bash -c 'out=$(node "$1" "$2" "$3"); [ "$(printf %s "$out" | grep -c "names the retired")" = 1 ]' \
+  _ "$T/scan.js" "$T/logwide.js" "$T/l-log-prod"
+
+# ---- s4: no live text of the plugin still routes by the deleted design ----
+# staleNameHits() counts qualified names only. Prose that tells its reader what "the pipeline" does,
+# which gate letter ends it or which artifacts "the review's own" are carries no qualified name, so
+# it passed the scan above while instructing the session to use a skill this part deleted — which is
+# what skills/codex carried after P9. oldDesignHits() of the shared block is that rule, executed here
+# over the same file list, with the fixtures and the mutant below.
+cat > "$T/design.js" <<'JS'
+const fs = require('fs')
+const b = require(process.argv[2])
+const files = fs.readFileSync(process.argv[3], 'utf8').split('\n').filter(x => x.length)
+const hits = []
+for (const path of files) {
+  let text
+  try { text = fs.readFileSync(path, 'utf8') } catch (e) {
+    hits.push(`${path}:0 unreadable: ${e.message}`)
+    continue
+  }
+  if (text.indexOf('\u0000') !== -1) continue // binary
+  b.oldDesignHits(path, text).forEach(h => hits.push(`${path}:${h.line} routes by the deleted design: ${h.phrase}`))
+}
+hits.slice(0, 25).forEach(h => console.log(h))
+if (hits.length > 25) console.log(`... ${hits.length - 25} more`)
+process.exit(hits.length ? 1 : 0)
+JS
+if node "$T/design.js" "$BLOCK" "$T/files"; then pass
+else fail "s4 no live text of the plugin routes by the deleted design"; fi
+
+# executed, not read: the prose of the plugin is a hit, the same line outside the plugin's prose is
+# none (a review of the rebuild and a dated plan quote the old design on purpose), and the live uses
+# of the word `pipeline` stay clean
+mkdir -p "$T/plugins/session/skills/codex" "$T/docs"
+DESIGNLINE='A job stays on Claude when it writes the pipeline'"'"'s own artifacts, and in pipeline Gate F closes it.'
+printf '%s\n' "$DESIGNLINE" > "$T/plugins/session/skills/codex/f-design.md"
+printf '%s\n' "$T/plugins/session/skills/codex/f-design.md" > "$T/l-design"
+check "s4 a sentence of the plugin prose that routes by the deleted design is a hit" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/design.js" "$BLOCK" "$T/l-design"
+printf '%s\n' "$DESIGNLINE" > "$T/docs/f-design.md"
+printf '%s\n' "$T/docs/f-design.md" > "$T/l-design-out"
+check "s4 the same sentence outside the plugin prose is no hit" \
+  node "$T/design.js" "$BLOCK" "$T/l-design-out"
+{ printf '%s\n' 'A relay runs as `pipeline()` stages of the same workflow.'
+  printf '%s\n' 'The object of the task can be a deployment pipeline, a certificate or a DNS record.'
+  printf '%s\n' '`tools/pipeline-cost.py` joins the rows of a run by label.'
+} > "$T/plugins/session/skills/f-live.md"
+printf '%s\n' "$T/plugins/session/skills/f-live.md" > "$T/l-design-live"
+check "s4 the live uses of the word pipeline are clean" \
+  node "$T/design.js" "$BLOCK" "$T/l-design-live"
+printf '%s\n' 'The closure of a task is Gate F of the flow.' > "$T/plugins/session/skills/f-gate.md"
+printf '%s\n' "$T/plugins/session/skills/f-gate.md" > "$T/l-design-gate"
+check "s4 a gate letter of the old flow is a hit of its own" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/design.js" "$BLOCK" "$T/l-design-gate"
+mut nogate 's|/\\bGate \[A-F\]\\b/|/zzGateF/|'
+check "s4 the mutant that drops the gate letters is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/design.js" "$T/nogate.js" "$T/l-design-gate"
+mut nodesignscope 's|const OLD_DESIGN_SCOPE = \[.*\]|const OLD_DESIGN_SCOPE = [/zznothing/]|'
+check "s4 the mutant that scans no plugin prose at all is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/design.js" "$T/nodesignscope.js" "$T/l-design"
 
 # ---- s3: the marker is allowed under tests/rebuild/ only ----
 marked=$(STALE_MARKS=1 node "$T/scan.js" "$BLOCK" "$T/files" 2>/dev/null | sed -n 's/^marked //p')

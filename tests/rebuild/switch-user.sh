@@ -33,14 +33,21 @@ MAIN=${CLAUDE_MAIN_CHECKOUT:-/Users/aleksandr.antonov/projects/claude-session}
 ENC=$(printf '%s' "$MAIN" | tr '/.' '--')
 MEM=projects/$ENC/memory
 
+SELFTEST=0
 DIR=${1:-}
-if [ -z "$DIR" ]; then
-  echo "switch-user: no argument; want <claude-dir> (the copy, or ~/.claude at the switch)" >&2
-  exit 2
-fi
-if [ ! -d "$DIR" ]; then
-  echo "switch-user: FAIL no such directory: $DIR" >&2
-  exit 1
+if [ "$DIR" = --selftest ]; then
+  SELFTEST=1
+  DIR=$(mktemp -d) || exit 1
+  trap 'rm -rf "$DIR"' EXIT
+else
+  if [ -z "$DIR" ]; then
+    echo "switch-user: no argument; want <claude-dir> (the copy, or ~/.claude at the switch), or --selftest" >&2
+    exit 2
+  fi
+  if [ ! -d "$DIR" ]; then
+    echo "switch-user: FAIL no such directory: $DIR" >&2
+    exit 1
+  fi
 fi
 
 N=0; DONE=0; FAILS=0
@@ -64,11 +71,63 @@ patch() {  # $1 relative path, $2 label, $3 old literal, $4 new literal, $5 perl
     fail "$label: neither the old pattern nor the new text is in $rel"
     return
   fi
-  if ! perl -0777 -i -pe "$expr" "$f"; then fail "$label: perl failed on $rel"; return; fi
-  if ! grep -qF -- "$new" "$f"; then fail "$label: the new text is missing from $rel after the patch"; return; fi
-  if grep -qF -- "$old" "$f"; then fail "$label: the old pattern still stands in $rel after the patch"; return; fi
+  # The edit runs on a copy and reaches the file only when every statement of it hit: a patch whose
+  # expression is several statements over text that drifted would else write one half (the new
+  # sentence) and leave the other (the old rows) — a state that is neither, that this run reports as
+  # "the old pattern still stands" and that every later run reports as "both ... stand in", with no
+  # way back to either side. On a copy the file stays in its old state, so the run can be repeated
+  # after the expression is repaired.
+  local tmp=$f.switch-user.new
+  if ! cp "$f" "$tmp"; then fail "$label: cannot write beside $rel"; return; fi
+  if ! perl -0777 -i -pe "$expr" "$tmp"; then fail "$label: perl failed on $rel"; rm -f "$tmp"; return; fi
+  if ! grep -qF -- "$new" "$tmp"; then
+    fail "$label: the new text is missing from $rel after the patch; $rel is unchanged"
+    rm -f "$tmp"; return
+  fi
+  if grep -qF -- "$old" "$tmp"; then
+    fail "$label: the old pattern still stands after the patch; $rel is unchanged"
+    rm -f "$tmp"; return
+  fi
+  if ! mv "$tmp" "$f"; then fail "$label: cannot replace $rel"; rm -f "$tmp"; return; fi
   applied
 }
+
+# ---- --selftest: patch() is atomic and idempotent, executed over fixtures of its own ----
+# The rows patch below is two statements over text taken from the research. Text drifts, and a run
+# where statement 1 matches nothing while statement 2 writes its sentence would leave a file that is
+# neither the old state nor the new one. This mode runs exactly that case and the ordinary one, so
+# the property is executed instead of read. It touches no user-level file: every fixture lives in a
+# temporary directory of its own.
+if [ "$SELFTEST" -eq 1 ]; then
+  sn=0; sf=0
+  sok() { sn=$((sn + 1)); }
+  sbad() { echo "FAIL selftest $1"; sf=$((sf + 1)); }
+  ROWS='s{^\| a \| 10,446 \|\n\| b \| 7,966 \|\n}{}m;
+        s{^(\| c \| 3,177 \|)$}{$1\n\nonly after a fresh measurement}m'
+  mkdir -p "$DIR/skills/drift" "$DIR/skills/clean"
+  # the drifted file: the rows statement 1 looks for are not there, statement 2 would still write
+  printf '%s\n' '| a | 10,999 |' '| b | 7,966 |' '| c | 3,177 |' > "$DIR/skills/drift/SKILL.md"
+  before=$(cat "$DIR/skills/drift/SKILL.md")
+  out=$(patch skills/drift/SKILL.md 'drifted rows' 'a | 10,446' 'only after a fresh measurement' "$ROWS")
+  case $out in *"the old pattern still stands"*|*"neither the old pattern nor the new text"*) sok ;;
+    *) sbad "a drifted two-statement patch is not reported: $out" ;; esac
+  if [ "$before" = "$(cat "$DIR/skills/drift/SKILL.md")" ]; then sok
+  else sbad "the drifted file was written anyway: half of the patch stands in it"; fi
+  # the ordinary file: the patch applies once and the second run changes nothing
+  printf '%s\n' '| a | 10,446 |' '| b | 7,966 |' '| c | 3,177 |' > "$DIR/skills/clean/SKILL.md"
+  out=$(patch skills/clean/SKILL.md 'clean rows' 'a | 10,446' 'only after a fresh measurement' "$ROWS")
+  case $out in '') sok ;; *) sbad "the ordinary patch reported a failure: $out" ;; esac
+  after=$(cat "$DIR/skills/clean/SKILL.md")
+  case $after in *'only after a fresh measurement'*) sok ;; *) sbad "the new text is missing" ;; esac
+  case $after in *'10,446'*) sbad "the old rows still stand" ;; *) sok ;; esac
+  out=$(patch skills/clean/SKILL.md 'clean rows again' 'a | 10,446' 'only after a fresh measurement' "$ROWS")
+  case $out in '') sok ;; *) sbad "the second run reported a failure: $out" ;; esac
+  if [ "$after" = "$(cat "$DIR/skills/clean/SKILL.md")" ]; then sok
+  else sbad "the second run changed the file"; fi
+  if [ "$sf" -eq 0 ]; then echo "switch-user: PASS selftest $sn checks"; exit 0; fi
+  echo "switch-user: FAIL selftest $sf failure(s), $sn checks passed"
+  exit 1
+fi
 
 # ---- 1. the waiting carrier ---- stale-ok: the old name is what this patch removes
 patch skills/tmux-sessions/SKILL.md 'tmux-sessions waiter' \

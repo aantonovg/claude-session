@@ -22,7 +22,7 @@ comes from the launch prompt, which a workflow builds out of the role text of `l
 
 | agent | tools | used by |
 |---|---|---|
-| `tools-read-write` | Read, Write | the authors, the critic, the triage, the coverage check, the synthesis, the translation |
+| `tools-read-write` | Read, Glob, Write | the authors, the critic, the triage, the coverage check, the synthesis, the translation |
 | `tools-read-bash` | Read, Bash | the evidence roles, the executor, the waiter, the codex shim |
 | `tools-read-write-bash` | Read, Write, Bash | the researcher |
 | `tools-edit` | Bash, Read, Edit, Write | the code and test authors, the fixer |

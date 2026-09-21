@@ -764,7 +764,10 @@ check "a7 two notices are not there yet" bash -c '! bash "$1" --finished "$2" 2 
 check "a7 an agent notice is no workflow finish notice" bash -c '! bash "$1" --finished "$2" >/dev/null' _ "$RUNNER" "$T/running.jsonl"
 check "a7 a workflow still running has not finished" bash -c '[ "$(bash "$1" --finished "$2" 2>/dev/null; true)" = 0 ]' _ "$RUNNER" "$T/running.jsonl"
 check "a7 no transcript, nothing finished" bash -c '! bash "$1" --finished "$2/none.jsonl" >/dev/null 2>&1' _ "$RUNNER" "$T"
-check "a7 the runner gates a prompt on that notice" grep -Fq 'wait_finished "$GWANT"' "$RUNNER"
+check "a7 the runner gates a prompt on that notice" grep -Fq 'wait_finished "$gwant"' "$RUNNER"
+# one `finish` line per gated prompt: the runner looks the count up by the index of the prompt it is
+# about to send, so a scenario that reads a result twice gates twice
+check "a7 the runner reads a gate per prompt index" grep -Fq 'awk -v i="$pi"' "$RUNNER"
 check "a7 the runner marks a run on an uncommitted tree" grep -Fq 'COMMIT=$COMMIT+dirty' "$RUNNER"
 # a verdict of a run on an uncommitted tree describes no commit: it never stands in for HEAD
 mkdir -p "$T/verdicts/base/20260101-000000"

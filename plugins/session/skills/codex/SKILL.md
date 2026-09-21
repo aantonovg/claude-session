@@ -19,7 +19,7 @@ Two axes, multiplied:
 
 | heavy axis (critic, decision review, upscale agent: document critique only, never code review) | executor axis (repo research, harness, packages, mechanical checks) |
 |---|---|
-| `none` — Claude agents / forks as in the base or pipeline | `none` — forks on the main model |
+| `none` — Claude agents / forks as in the base or the process skill | `none` — forks on the main model |
 | `sol` — replace with `sol-medium` / `sol-high` (5 / 3 tool calls) | `luna` — executor fork jobs → `luna-high` |
 | `astra` — replace with `astra-medium` / `astra-high` (5 / 3 tool calls); sol not used | `terra` — as luna, plus opus-low-class executor jobs → `terra-high` |
 | `+sol` — dual review: keep the Claude upscale agent, pair `sol` at the same effort | |
@@ -63,7 +63,7 @@ session; after the process skill of the base set when one is loaded.
 3. Astra modes need `astra` in the plugin's `skills/codex/proxy-prompt.md` (one grep on `$CODEX_BIN/../skills/codex/proxy-prompt.md`); missing →
    run on the sol set and say "astra pending".
 4. Reply with one line: "Codex: <mode> (heavy <…>, exec <…>); fallbacks <…>."
-5. Exchange directory: `<task dir>/codex/` when pipeline / review has a task directory
+5. Exchange directory: `<task dir>/codex/` when the process skill has a task directory (the path in `tasks/current`)
    (`mkdir -p` right after it exists); otherwise
    `$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/`, created at the first codex job.
    Prompt and output files live there. Two sessions never share an exchange directory; a
@@ -108,23 +108,23 @@ permission for codex edits in that task.
 
 - Heavy effort by job budget, within the mode's set only (`sol` mode: sol; `astra` mode:
   astra): critic (reasoning over given files) → `<set>-medium`; decision review
-  (pipeline full path only; standard has a low fork check, fast none) and the hardest
+  (depth `full` only; `std` has a low fork check, `lite` none) and the hardest
   document review or generation on request → `<set>-high`. Heavy models and any medium/high effort generate or critique documents
   only, within 5 tool calls at medium and 3 at high; they never review code or read the
-  repository. There is no final review and no code review at all: in pipeline Gate F is a
-  mechanical closure check by a low fork. A package without a formal verifier is authored
+  repository. There is no final review and no code review at all: the closure stage is a
+  mechanical check by a low fork. A package without a formal verifier is authored
   by opus-low (`terra-high` in terra mode) and not reviewed; luna-high writes only
   packages that have a verifier. Executors fixed at `luna-high` (`terra-high` for the
   heavy executor jobs in terra mode).
 - A job stays on Claude when it needs MCP (Jira, GitLab, Confluence), writes the
-  pipeline's or review's own artifacts (`task.md`, split files, `ledger*`, `evidence/`,
-  `reviews/<stage>.md`) or needs a skill (codex sees no SKILL.md; the prompt file names
+  task file group's own artifacts (`intent.md`, `specification.md`,
+  `scenarios.md`, `task.md` at depth `lite`, `ledger.jsonl`, `evidence/`, `reviews/`) or needs a skill (codex sees no SKILL.md; the prompt file names
   the SKILL.md path to read, or the job stays on Claude). Codex writes only into the
   repository (executor jobs, including their commits), the exchange directory and, in
   dual review, `reviews/<stage>-codex.md`.
-- Codex jobs are Workflow calls like the base's cold agents and the pipeline's cold stages
-  (critic, cold researcher, waiter); the pipeline's ban on other Workflow stages is lifted
-  exactly for them, one agent per job.
+- Codex jobs are Workflow calls like the base's cold agents and the stages the process
+  skill delegates (critic, researcher, waiter); its rule that a stage runs through one of
+  the named carriers of the session is lifted exactly for them, one agent per job.
 - Dual review (`+sol`, `+astra`): at every review point (plan critique, verification-plan critique, closure review) the Claude upscale agent of
   the main session's model (opus-medium / opus-high in an opus session, fable-medium /
   fable-high in a fable session) and the codex agent of the same effort (sol-me with
@@ -137,7 +137,7 @@ permission for codex edits in that task.
 
 ## Forbidden
 
-- No codex agent for a job that needs MCP, the pipeline's or review's own artifacts or a
+- No codex agent for a job that needs MCP, the task file group's own artifacts or a
   skill; no inline task text in the shim prompt (file only); no reading of a codex output
   file by the main session or by a relay fork; no fork to write a prompt file.
 - No effort or model outside the sets above; no `danger-full-access` or bypass flags (the
