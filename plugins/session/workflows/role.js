@@ -572,8 +572,11 @@ function staleNameHits(line) {
 //     scenario set of tests/measure and the tests of tests/rebuild;
 //   - a line that dates its statement: only in the memory files of the user level, where a dated
 //     entry records what happened that day;
-//   - the lines under a `## Version log` heading of a markdown file, until the next heading of that
-//     file: a version log records what a released version shipped;
+//   - the lines under a `## Version log` heading, until the next heading of that file, and only in
+//     a `README.md` or a `CHANGELOG.md`: a version log records what a released version shipped, and
+//     those two file kinds are where a released version is written down. Without that scope any
+//     `.md` of the product tree could open a version-log heading and silence every line after it,
+//     to the end of the file when the section is the last one;
 //   - a line carrying the marker `stale-ok:` with a reason, and the lines after it up to the next
 //     blank line, under tests/rebuild/ only. Such a line is counted and reported as a mark, by the
 //     line number of the marker itself. A marker outside that scope opts out nothing: the hits
@@ -587,6 +590,7 @@ const STALE_LOG_HEAD = /^#+\s+Version log\b/i
 const STALE_FAIL_SCOPE = [/\/tests\/measure\/[a-z0-9-]*scenarios-[0-9.]+\.txt$/, /\/tests\/rebuild\/[a-z0-9-]+\.sh$/]
 const STALE_DATED_SCOPE = [/\/memory\/[^/]+\.md$/]
 const STALE_MARK_SCOPE = [/\/tests\/rebuild\//]
+const STALE_LOG_SCOPE = [/(?:^|\/)README\.md$/, /(?:^|\/)CHANGELOG\.md$/]
 function staleFileHits(path, text) {
   const p = String(path == null ? '' : path)
   const scoped = list => list.some(rx => rx.test(p))
@@ -594,7 +598,7 @@ function staleFileHits(path, text) {
   const datedOk = scoped(STALE_DATED_SCOPE)
   const markOk = scoped(STALE_MARK_SCOPE)
   const isBlock = /lib\/block(\.src)?\.js$/.test(p)
-  const isDoc = /\.md$/.test(p)
+  const logOk = /\.md$/.test(p) && scoped(STALE_LOG_SCOPE)
   let inBlock = isBlock
   let inRoster = false
   let inLog = false
@@ -606,7 +610,7 @@ function staleFileHits(path, text) {
     const n = i + 1
     const s = line.trim()
     if (!s.length) { markAt = 0; return } // a blank line ends a marked block
-    if (isDoc && /^#+\s/.test(s)) inLog = STALE_LOG_HEAD.test(s)
+    if (logOk && /^#+\s/.test(s)) inLog = STALE_LOG_HEAD.test(s)
     if (inLog) return
     if (!isBlock) {
       if (s.indexOf(STALE_BLOCK_END) === 0) { inBlock = false; return }
@@ -629,14 +633,55 @@ function staleFileHits(path, text) {
   return { hits, marks }
 }
 
+// oldDesignHits(path, text): the sentences of a live text of this plugin that still route by the
+// design part 9 deleted. staleNameHits() above counts qualified forms only — a launch name under
+// the prefix, a path of a deleted directory — so prose that tells its reader what "the pipeline"
+// does, which gate letter
+// ends it, or which artifacts "the review's own" are passes that rule while instructing a reader to
+// use a skill that no longer exists — which is what the codex skill did after P9 deleted the old
+// set. Such a sentence is an instruction, so it is read here as a phrase, and only in the prose of
+// the plugin: markdown under `plugins/session/skills/`, `plugins/session/lib/` and
+// `plugins/session/base/`. A bare `pipeline` is never a hit: `pipeline()` is a call of the harness,
+// `tools/pipeline-cost.py` a live tool, and a deployment pipeline an ordinary object of a task
+// (`skills/process/ops.md`). Every phrase below names the old design by its grammar instead — the
+// definite article, the possessive, the gate letters of the old flow.
+const OLD_DESIGN_SCOPE = [/\/plugins\/session\/(?:skills|lib|base)\/.*\.md$/]
+const OLD_DESIGN_PHRASES = [
+  /\bthe pipeline\b/i, // "as in the base or pipeline", "the pipeline's cold stages"
+  /\bpipeline(?:'s|s')\b/i,
+  /\bin pipeline\b/i,
+  /\bor pipeline\b/i,
+  /\bpipeline (?:full|standard|fast)\b/i, // the paths of the old flow, named as a depth
+  /\bpipeline\s*\/\s*review\b/i,
+  /\breview(?:'s|s')\s+own\b/i,
+  /\bthe review skill\b/i,
+  /\bsplit files?\b/i, // the split documents of the old task directory
+  /\bGate [A-F]\b/, // the gate letters of the old flow; the new one has no lettered gate
+]
+function oldDesignHits(path, text) {
+  const p = String(path == null ? '' : path)
+  if (!OLD_DESIGN_SCOPE.some(rx => rx.test(p))) return []
+  const hits = []
+  String(text == null ? '' : text).split('\n').forEach((line, i) => {
+    OLD_DESIGN_PHRASES.forEach(rx => {
+      const m = rx.exec(line)
+      if (m) hits.push({ line: i + 1, phrase: m[0].trim() })
+    })
+  })
+  return hits
+}
+
 // echoedWaits(text, vars): the waits of a tmux launch script that its own typed line already
 // satisfies. tests/corp/launch.sh and tests/demo-game/launch.sh prove a mode skill loaded by typing
 // a slash command with `tmux send-keys` and then polling the pane for a line of the reply. The pane
-// holds the typed command too, so a wait pattern that the typed line itself matches returns before
-// the skill answered and proves nothing. Every `wait_for` is read against the last line typed before
-// it; `$var` and `${var}` in the typed line are resolved from <vars>, the values the script uses, so
-// a command assembled from a variable is read the way it reaches the pane. A wait with no typed line
-// before it (the first prompt of the session) is no hit.
+// holds the typed command too, so a wait pattern that a typed line matches returns before the skill
+// answered and proves nothing. The poller of both scripts greps the last 20 non-blank lines of the
+// pane, so not only the line typed last stands there: every `wait_for` is read against the last
+// ECHO_WINDOW typed lines before it, and a hit names the latest of them the pattern matches. `$var`
+// and `${var}` in a typed line are resolved from <vars>, the values the script uses, so a command
+// assembled from a variable is read the way it reaches the pane. A wait with no typed line before it
+// (the first prompt of the session) is no hit.
+const ECHO_WINDOW = 20 // the pane window the poller of those scripts reads, in non-blank lines
 function echoedWaits(text, vars) {
   const v = vars || {}
   const subst = s => String(s).replace(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g, (m0, name) =>
@@ -646,16 +691,18 @@ function echoedWaits(text, vars) {
   // it would then be read as code
   const SEND = /tmux send-keys\b[^\n]*?([\x22\x27])(.*?)\1 Enter/
   const WAIT = /^\s*wait_for ([\x22\x27])(.*?)\1/
-  let typed = null
+  const typed = []
   const hits = []
   String(text == null ? '' : text).split('\n').forEach((line, i) => {
     const sent = SEND.exec(line)
-    if (sent) { typed = subst(sent[2]); return }
+    if (sent) { typed.push(subst(sent[2])); if (typed.length > ECHO_WINDOW) typed.shift(); return }
     const w = WAIT.exec(line)
-    if (!w || typed == null) return
+    if (!w || !typed.length) return
+    const last = typed[typed.length - 1]
     let re
-    try { re = new RegExp(w[2]) } catch (e) { hits.push({ line: i + 1, typed, re: w[2], why: 'no regexp' }); return }
-    if (re.test(typed)) hits.push({ line: i + 1, typed, re: w[2], why: 'the typed line matches' })
+    try { re = new RegExp(w[2]) } catch (e) { hits.push({ line: i + 1, typed: last, re: w[2], why: 'no regexp' }); return }
+    const echoed = typed.filter(t => re.test(t))
+    if (echoed.length) hits.push({ line: i + 1, typed: echoed[echoed.length - 1], re: w[2], why: 'a typed line of the pane window matches' })
   })
   return hits
 }
@@ -2052,7 +2099,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
     carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
     phraseGap, OLD_CARRIERS, oldCarrierGap, STALE_AGENTS, STALE_WORKFLOWS, STALE_PATHS,
-    staleNameHits, staleFileHits, echoedWaits, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
+    staleNameHits, staleFileHits, oldDesignHits, OLD_DESIGN_PHRASES, echoedWaits,
+    HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
@@ -2076,7 +2124,7 @@ const ROLE_TEXT = {
   "scenario-author": "Scenario author. You write the wanted behavior as text scenarios, before any test exists. The specification is the level above you: every requirement, invariant and constraint it carries needs at least one scenario, negative ones included.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nWrite one file, `{out}`, and nothing else. Pick the scenario form yourself \u2014 Gherkin, EARS, plain one-liners or any other \u2014 and keep one form through the file. Each scenario names the starting state, the action and the decisive observable result. Give no scenario an id, and never number them for a later test name to quote: coverage is checked by reading the two lists, and an id link between two texts drifts apart as soon as one of them changes.\n\nCover the negatives: what must not happen, what must fail, what must stay untouched. End the file with the requirements you found no scenario for, and why.\n\nNever write a test, never change a file of the repository.\n\nReturn: the output path, the scenario count, the uncovered requirements, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "code-author": "Code author. The tests already state what the change must do. You change the code until they pass, and nothing else.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the inputs first, then change only the files the task names. Run the check the task names after every step; when the task names no check, say so in your return instead of inventing one. A test you cannot make pass is a finding: report it with the failing line verbatim, never weaken the test, never mark it skipped, never rewrite it to match the code.\n\nSmallest change that passes: no refactor the task did not ask for, no new abstraction for one caller, no new file where an edit was asked, no commit, no push.\n\nList every changed path in `{out}`, one per line, and write nothing else into it.\n\nReturn: the changed paths, the decisive line of the last check run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "test-author": "Test author. You turn the scenario list into executable tests. The scenarios are the level above you: every scenario gets a test, and no test stands without a scenario.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nRead the scenario file first. Write the tests in the harness the repository already uses, with the assertions the scenario states and the decisive value in the failure message. Name a test after what it proves, never after a scenario id or number. A scenario you cannot express as a test is reported, not silently dropped.\n\nWrite the tests so they fail before the change and pass after it: a test that passes against the unchanged code proves nothing. Run them, and report the failure you see now as evidence that they bite.\n\nNever change the code under test, never relax an assertion to make a run green.\n\nList every test file you wrote in `{out}`, one path per line, and write nothing else into it.\n\nReturn: the test paths, the test count, the scenarios you could not express, the decisive line of the run verbatim, then the last line `DONE` or `BLOCKED: <reason>`.\n",
-  "coverage-checker": "Coverage checker. You read two lists \u2014 the wanted scenarios and the tests that exist \u2014 and report where they do not meet. You judge no quality: a badly written test that covers its scenario is covered.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nMatch by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.\n\nWrite one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into \"the scenario list is missing it\" and \"the test proves nothing anybody asked for\"; and the pairs where the test covers only part of its scenario, with the part left out.\n\nNever write a test, never change a file under test.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
+  "coverage-checker": "Coverage checker. You read two lists \u2014 the wanted scenarios and the tests that exist \u2014 and report where they do not meet. You judge no quality: a badly written test that covers its scenario is covered.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nAn input that names a directory stands for the files inside it: list that directory and take every file it holds as an entry of that side.\n\nMatch by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.\n\nWrite one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into \"the scenario list is missing it\" and \"the test proves nothing anybody asked for\"; and the pairs where the test covers only part of its scenario, with the part left out.\n\nNever write a test, never change a file under test.\n\nReturn: the output path, the three counts, then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "closure-author": "Closure author. A run is over and you close it: what ran, what the checks said, and what stands open. You add no work of your own and no verdict the inputs do not carry.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nThe task text above carries the stage list, the verdicts and the open points of the run; the files carry what each stage wrote, and they stand in the directory {out}. Read the files before you summarise them, and quote a check result the way the run stated it, never the way you read a log.\n\nYour return is the report, and nothing else carries it: write no file, create nothing, change nothing. A subagent of this harness returns its findings as text, so a report put into a file reaches nobody.\n\nThe report holds: the stages that ran and the levels the depth folded away; the verdict of every check, with the line the run printed; every open point \u2014 a ceiling that ended a stage, an unverified area, a row nobody settled \u2014 as unfinished work, in the words it was handed to you; and the path of every file the run wrote, so the next reader opens the evidence instead of this summary.\n\nNever drop an open point, never soften one into a sentence that sounds finished, never invent a result no input carries. Never change a file the run produced, never start work of your own, never commit.\n\nReturn: the report itself, then the last line `DONE` or `BLOCKED: <reason>`. An empty return is a run that states nothing about itself.\n",
   "critic": "Critic. You read the object below in a clean context and point at the places where an error may hide. You give hints, never verdicts: what you suspect is settled later by facts, not by your confidence.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nTool-call budget: at most 12 calls, and no call that changes anything. Read the object, then stop reading and write. Spending the budget on a wide tour costs more than it finds; read what the task points at.\n\nAt most 5 hints, the strongest first. Every hint carries: the aspect it comes from; the place (file and line range, or document section); the error you suspect, in one sentence; the severity (high, medium, low); and the one piece of evidence that would settle it \u2014 a command to run, a file to read, a value to compare. A hint nobody could settle is not a hint, drop it.\n\nNo praise, no summary of what the object does, no style remark, no restatement of a rule the object already follows. When the task names a version from before the change, a shape that already stands in it is no finding of this change: hint at what this change brought.\n\nWrite the hint list into `{out}` in that shape and change nothing else.\n\nReturn: the output path and the hint count by severity, then the hints themselves \u2014 one line per hint, nothing else on the line:\n\n`HINT | reliability | slug.js:4 | high | the cut can land on a dash and leave a trailing one | run slug('ab cd', 3) and look at the tail`\n\nOnly those lines are read: a hint that stands in `{out}` but on no line of your return is a hint nobody got, and a count is no hint. Then the last line `DONE` or `BLOCKED: <reason>`.\n",
   "evidence-researcher": "Evidence researcher. One group of hints, many cheap queries, one answer per hint: confirmed, refuted or undetermined. You decide nothing about what to change; you bring the facts that decide it.\n\nInputs (absolute paths):\n{in}\n\nTask:\n{ask}\n\nFor every hint of the group, one answer under that hint's own id: run the check the hint names, read the code path around the place, and reproduce the failure when the hint claims one. A failure, or a shape, that already stands in the unchanged base version is not a finding of this change \u2014 say so, with both runs or both places quoted.\n\nAnswer each hint with `confirmed`, `refuted` or `undetermined`, every answer carrying its pointer: file and line, command and its decisive output line, or commit hash. `confirmed` needs a fact of the object that holds this one hint up; a hint the files and the runs neither hold up nor settle is `undetermined`, never `confirmed`, and no hint is confirmed for sounding right. `undetermined` is a real answer and better than a guess; it says what you tried and what would settle it.\n\nA hint that calls something needless, duplicated or absent is refuted as soon as a fact stands against it: a caller, a test, or a rule of the object's own documents that needs exactly that thing. Look for one before you confirm such a hint, and quote it with file and line.\n\nKeep two kinds of failure apart: a failure of the object under review, and a failure of your own run (a tool, an access, a sandbox limit). The second one is never a finding about the object; report it in its own list.\n\nWrite the answers into `{out}` and change nothing under review. You have no Write tool: create `{out}` with a shell redirect, and write no other file.\n\nReturn: the output path and the counts (confirmed, refuted, undetermined, harness failures), then your answers themselves \u2014 one line per hint id, nothing else on the line:\n\n`EVIDENCE | g1.h2 | refuted | base:no | check.js:2 calls slug(s, 12), so the argument the hint calls needless has a caller`\n\nEvery hint id of your group gets its own such line, in that order of fields. Only those lines are read: a count, a summary, and one verdict written over a whole group settle no hint and reach nobody, and an answer that stands in `{out}` but on no line of your return is an answer nobody got. Then the last line `DONE` or `BLOCKED: <reason>`.\n",

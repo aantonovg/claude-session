@@ -22,8 +22,8 @@ Executors are fixed at `high`: `luna-high` replaces sonnet-low, `terra-high` rep
 | at most 5 tool calls, pure reasoning over given files (critic) | `sol-medium`, `astra-medium` | opus-medium |
 | hardest document review (decision contract), a gate that must not fail silently, 3 tool calls | `sol-high`, `astra-high` | fable-medium / high |
 
-Heavy runs per path follow the pipeline's heavy document cycle (generate → review →
-evidence → fix, once): fast 0 heavy runs, standard 1 (the review), full ≤ 3 for the
+Heavy runs per depth follow the key-document cycle of the process skill (generate → review →
+evidence → fix, once): `lite` 0 heavy runs, `std` 1 (the review), `full` ≤ 3 for the
 decision contract (generate, review, fix) and only the review for the ledger; sol / astra
 fill exactly those slots, never more.
 
@@ -47,15 +47,16 @@ the commit itself; the main session reads only the shim's `LAST LINE`; `done` wi
 passing harness closes the package: no fork reads the diff, no fork re-runs the tests, no
 review. `partial` or a failing harness → one more codex run with the failure packet (the
 failing lines, the hypothesis), never an opus fork; after the second failure the package
-goes to the pipeline's loop guard (failure packet into the ledger, a low fork diagnoses
+goes to the loop guard of the process skill (failure packet into the ledger, a low fork diagnoses
 from the failure lines only). A harness build is closed the same way: it must fail on the
 negative control and codex reports it.
 
 ## Admissibility (the stage stays on Claude when any holds)
 
 - MCP needed: Jira, GitLab, Confluence reads or writes.
-- Repository edits under Claude permissions, or writes of the pipeline's own artifacts
-  (`task.md`, split files, `ledger*`, `evidence/`, `reviews/<stage>.md`). Codex writes only
+- Repository edits under Claude permissions, or writes of the task file group's own
+  artifacts (`intent.md`, `specification.md`, `task.md` at depth `lite`, `ledger.jsonl`,
+  `evidence/`, `reviews/`). Codex writes only
   into the exchange area `<task dir>/codex/` and, in dual review, `reviews/<stage>-codex.md`
   (the main session sets `CODEX OUTPUT FILE` to that path). A codex
   package that edits code is allowed only when the user said so for this task: codex edits

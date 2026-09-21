@@ -435,9 +435,22 @@ check "k12 README section /reload-plugins or restart" bash -c 'grep -q "/reload-
 pre=$(awk '/^## Version log/{exit} {print}' "$RD")
 check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
 
-# k13: changed paths, no version bump (suite pass itself is the rest of k13)
-bad=$(git -C "$REPO" status --porcelain -uall | cut -c4- | grep -vxE 'README\.md|\.claude-plugin/marketplace\.json|\.claude/workflows/(memory-gc|skill-author|test-session)\.js|\.claude/skills/plugin-release/SKILL\.md|docs/tool-plugin/.*|plugins/session/\.claude-plugin/plugin\.json|plugins/session/README\.md|plugins/session/lib/.*|plugins/session/bin/.*|plugins/session/agents/.*\.md|plugins/session/hooks/.*\.sh|plugins/session/workflows/.*\.js|plugins/session/base/.*|plugins/session/skills/.*|plugins/session/monitors/.*|tests/rebuild/.*|tests/measure/.*|tests/monitors/.*|tests/workflows/usage-test\.sh|tests/codex/wrapper-test\.sh|tests/corp/launch\.sh|tests/demo-game/launch\.sh|tests/session-modes-hook\.sh' | tr '\n' ' ')
-check "k13 changed paths within allowed list (extra: $bad)" test -z "$bad"
+# k13: the change set of this branch, and no version bump (suite pass itself is the rest of k13)
+# The change set is read against the branch point, never against the working tree alone: the parts
+# of the rebuild commit as they land, so `git status` is empty right after a commit and a check over
+# it would pass over nothing. A per-file allow list says nothing here either — the rebuild rewrites
+# the whole plugin — so what is asserted is what must NOT move: the records of past runs, the
+# reviews that are read-only input of this branch, and the cost tools nobody was asked to touch;
+# plus the outer bound, that no path outside the product, test and doc tree of this repo changed.
+BASEREF=$(git -C "$REPO" merge-base main HEAD 2>/dev/null)
+check "k13 the branch point against main is known" test -n "$BASEREF"
+changed=$( { [ -n "$BASEREF" ] && git -C "$REPO" diff --name-only "$BASEREF" HEAD
+             git -C "$REPO" status --porcelain -uall | cut -c4-; } | sort -u | grep -v '^$')
+check "k13 the change set of the branch is not empty (nothing to check otherwise)" test -n "$changed"
+frozen=$(printf '%s\n' "$changed" | grep -E '^(reviews/|docs/measurements/|docs/plans/|tests/corp/results/|tests/demo-game/results/|tools/)' | tr '\n' ' ')
+check "k13 no record, review or cost-tool path in the change set (extra: $frozen)" test -z "$frozen"
+bad=$(printf '%s\n' "$changed" | grep -vE '^(README\.md|CLAUDE\.md|\.claude-plugin/|\.claude/|docs/|plugins/session/|tests/)' | tr '\n' ' ')
+check "k13 change set within the product, test and doc tree (extra: $bad)" test -z "$bad"
 check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
 
 if [ "$FAILS" -eq 0 ]; then

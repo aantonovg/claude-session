@@ -101,9 +101,21 @@ mut() { # mut <name> <perl expression>
 mut novars "s|Object\.prototype\.hasOwnProperty\.call\(v, name\) \? String\(v\[name\]\) : m0|m0|"
 check "w4 the mutant that leaves a variable unresolved is caught" \
   bash -c 'node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$T/novars.js" "$T/f-var.sh" "$VARS"
-mut notyped "s|if \(sent\) \{ typed = subst\(sent\[2\]\); return \}|if (sent) { return }|"
+mut notyped "s|if \(sent\) \{ typed\.push.*return \}|if (sent) { return }|"
 check "w4 the mutant that forgets the typed line is caught" \
   bash -c 'node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$T/notyped.js" "$T/f-echo.sh" "$VARS"
+# the pane window: the poller greps the last 20 non-blank lines, so a wait an EARLIER typed line
+# satisfies is a hit too — a rule read against the line typed last would call this fixture clean
+{ printf '%s\n' 'tmux send-keys -t "$s" "/session:process code full" Enter'
+  printf '%s\n' "wait_for 'c[0-9]' 90 || exit 1"
+  printf '%s\n' 'tmux send-keys -t "$s" "ready" Enter'
+  printf '%s\n' "wait_for 'process' 90 || exit 1"
+} > "$T/f-window.sh"
+check "w4 a wait an earlier typed line of the window satisfies is a hit" \
+  bash -c '! node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/f-window.sh" "$VARS"
+mut lasttyped "s|const echoed = typed\.filter\(t => re\.test\(t\)\)|const echoed = [typed[typed.length - 1]].filter(t => re.test(t))|"
+check "w4 the mutant that reads the line typed last only is caught" \
+  bash -c 'node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$T/lasttyped.js" "$T/f-window.sh" "$VARS"
 
 if [ "$FAILS" -eq 0 ]; then echo "waits: PASS $N checks"; exit 0; fi
 echo "waits: FAIL $FAILS failures, $N checks passed"

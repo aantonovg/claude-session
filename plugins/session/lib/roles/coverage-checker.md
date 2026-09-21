@@ -6,6 +6,8 @@ Inputs (absolute paths):
 Task:
 {ask}
 
+An input that names a directory stands for the files inside it: list that directory and take every file it holds as an entry of that side.
+
 Match by meaning, by reading both lists. There is no id link between them and you must not propose one: a scenario id inside a test name drifts apart from the scenario as soon as one of the two changes.
 
 Write one file, `{out}`: scenarios with no test, each with the scenario text; tests with no scenario, each with its path and name, split into "the scenario list is missing it" and "the test proves nothing anybody asked for"; and the pairs where the test covers only part of its scenario, with the part left out.

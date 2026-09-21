@@ -26,7 +26,9 @@ pass() { N=$((N + 1)); }
 fail() { echo "FAIL $1"; FAILS=$((FAILS + 1)); }
 check() { local label=$1; shift; if "$@"; then pass; else fail "$label"; fi; }
 
-ALLOWED="Bash Edit Read Write WebFetch WebSearch"
+# Glob is in the list because an input path of a launch may name a directory: a reading role
+# that cannot list one blocks on the input it was given instead of answering.
+ALLOWED="Bash Edit Glob Read Write WebFetch WebSearch"
 if [ -n "$FOREIGN" ]; then
   WANT=
   WORKFLOWS=$(for f in "$P"/workflows/*.js; do [ -f "$f" ] && basename "$f" .js; done)

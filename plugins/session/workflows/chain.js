@@ -575,8 +575,11 @@ function staleNameHits(line) {
 //     scenario set of tests/measure and the tests of tests/rebuild;
 //   - a line that dates its statement: only in the memory files of the user level, where a dated
 //     entry records what happened that day;
-//   - the lines under a `## Version log` heading of a markdown file, until the next heading of that
-//     file: a version log records what a released version shipped;
+//   - the lines under a `## Version log` heading, until the next heading of that file, and only in
+//     a `README.md` or a `CHANGELOG.md`: a version log records what a released version shipped, and
+//     those two file kinds are where a released version is written down. Without that scope any
+//     `.md` of the product tree could open a version-log heading and silence every line after it,
+//     to the end of the file when the section is the last one;
 //   - a line carrying the marker `stale-ok:` with a reason, and the lines after it up to the next
 //     blank line, under tests/rebuild/ only. Such a line is counted and reported as a mark, by the
 //     line number of the marker itself. A marker outside that scope opts out nothing: the hits
@@ -590,6 +593,7 @@ const STALE_LOG_HEAD = /^#+\s+Version log\b/i
 const STALE_FAIL_SCOPE = [/\/tests\/measure\/[a-z0-9-]*scenarios-[0-9.]+\.txt$/, /\/tests\/rebuild\/[a-z0-9-]+\.sh$/]
 const STALE_DATED_SCOPE = [/\/memory\/[^/]+\.md$/]
 const STALE_MARK_SCOPE = [/\/tests\/rebuild\//]
+const STALE_LOG_SCOPE = [/(?:^|\/)README\.md$/, /(?:^|\/)CHANGELOG\.md$/]
 function staleFileHits(path, text) {
   const p = String(path == null ? '' : path)
   const scoped = list => list.some(rx => rx.test(p))
@@ -597,7 +601,7 @@ function staleFileHits(path, text) {
   const datedOk = scoped(STALE_DATED_SCOPE)
   const markOk = scoped(STALE_MARK_SCOPE)
   const isBlock = /lib\/block(\.src)?\.js$/.test(p)
-  const isDoc = /\.md$/.test(p)
+  const logOk = /\.md$/.test(p) && scoped(STALE_LOG_SCOPE)
   let inBlock = isBlock
   let inRoster = false
   let inLog = false
@@ -609,7 +613,7 @@ function staleFileHits(path, text) {
     const n = i + 1
     const s = line.trim()
     if (!s.length) { markAt = 0; return } // a blank line ends a marked block
-    if (isDoc && /^#+\s/.test(s)) inLog = STALE_LOG_HEAD.test(s)
+    if (logOk && /^#+\s/.test(s)) inLog = STALE_LOG_HEAD.test(s)
     if (inLog) return
     if (!isBlock) {
       if (s.indexOf(STALE_BLOCK_END) === 0) { inBlock = false; return }
@@ -632,14 +636,55 @@ function staleFileHits(path, text) {
   return { hits, marks }
 }
 
+// oldDesignHits(path, text): the sentences of a live text of this plugin that still route by the
+// design part 9 deleted. staleNameHits() above counts qualified forms only — a launch name under
+// the prefix, a path of a deleted directory — so prose that tells its reader what "the pipeline"
+// does, which gate letter
+// ends it, or which artifacts "the review's own" are passes that rule while instructing a reader to
+// use a skill that no longer exists — which is what the codex skill did after P9 deleted the old
+// set. Such a sentence is an instruction, so it is read here as a phrase, and only in the prose of
+// the plugin: markdown under `plugins/session/skills/`, `plugins/session/lib/` and
+// `plugins/session/base/`. A bare `pipeline` is never a hit: `pipeline()` is a call of the harness,
+// `tools/pipeline-cost.py` a live tool, and a deployment pipeline an ordinary object of a task
+// (`skills/process/ops.md`). Every phrase below names the old design by its grammar instead — the
+// definite article, the possessive, the gate letters of the old flow.
+const OLD_DESIGN_SCOPE = [/\/plugins\/session\/(?:skills|lib|base)\/.*\.md$/]
+const OLD_DESIGN_PHRASES = [
+  /\bthe pipeline\b/i, // "as in the base or pipeline", "the pipeline's cold stages"
+  /\bpipeline(?:'s|s')\b/i,
+  /\bin pipeline\b/i,
+  /\bor pipeline\b/i,
+  /\bpipeline (?:full|standard|fast)\b/i, // the paths of the old flow, named as a depth
+  /\bpipeline\s*\/\s*review\b/i,
+  /\breview(?:'s|s')\s+own\b/i,
+  /\bthe review skill\b/i,
+  /\bsplit files?\b/i, // the split documents of the old task directory
+  /\bGate [A-F]\b/, // the gate letters of the old flow; the new one has no lettered gate
+]
+function oldDesignHits(path, text) {
+  const p = String(path == null ? '' : path)
+  if (!OLD_DESIGN_SCOPE.some(rx => rx.test(p))) return []
+  const hits = []
+  String(text == null ? '' : text).split('\n').forEach((line, i) => {
+    OLD_DESIGN_PHRASES.forEach(rx => {
+      const m = rx.exec(line)
+      if (m) hits.push({ line: i + 1, phrase: m[0].trim() })
+    })
+  })
+  return hits
+}
+
 // echoedWaits(text, vars): the waits of a tmux launch script that its own typed line already
 // satisfies. tests/corp/launch.sh and tests/demo-game/launch.sh prove a mode skill loaded by typing
 // a slash command with `tmux send-keys` and then polling the pane for a line of the reply. The pane
-// holds the typed command too, so a wait pattern that the typed line itself matches returns before
-// the skill answered and proves nothing. Every `wait_for` is read against the last line typed before
-// it; `$var` and `${var}` in the typed line are resolved from <vars>, the values the script uses, so
-// a command assembled from a variable is read the way it reaches the pane. A wait with no typed line
-// before it (the first prompt of the session) is no hit.
+// holds the typed command too, so a wait pattern that a typed line matches returns before the skill
+// answered and proves nothing. The poller of both scripts greps the last 20 non-blank lines of the
+// pane, so not only the line typed last stands there: every `wait_for` is read against the last
+// ECHO_WINDOW typed lines before it, and a hit names the latest of them the pattern matches. `$var`
+// and `${var}` in a typed line are resolved from <vars>, the values the script uses, so a command
+// assembled from a variable is read the way it reaches the pane. A wait with no typed line before it
+// (the first prompt of the session) is no hit.
+const ECHO_WINDOW = 20 // the pane window the poller of those scripts reads, in non-blank lines
 function echoedWaits(text, vars) {
   const v = vars || {}
   const subst = s => String(s).replace(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g, (m0, name) =>
@@ -649,16 +694,18 @@ function echoedWaits(text, vars) {
   // it would then be read as code
   const SEND = /tmux send-keys\b[^\n]*?([\x22\x27])(.*?)\1 Enter/
   const WAIT = /^\s*wait_for ([\x22\x27])(.*?)\1/
-  let typed = null
+  const typed = []
   const hits = []
   String(text == null ? '' : text).split('\n').forEach((line, i) => {
     const sent = SEND.exec(line)
-    if (sent) { typed = subst(sent[2]); return }
+    if (sent) { typed.push(subst(sent[2])); if (typed.length > ECHO_WINDOW) typed.shift(); return }
     const w = WAIT.exec(line)
-    if (!w || typed == null) return
+    if (!w || !typed.length) return
+    const last = typed[typed.length - 1]
     let re
-    try { re = new RegExp(w[2]) } catch (e) { hits.push({ line: i + 1, typed, re: w[2], why: 'no regexp' }); return }
-    if (re.test(typed)) hits.push({ line: i + 1, typed, re: w[2], why: 'the typed line matches' })
+    try { re = new RegExp(w[2]) } catch (e) { hits.push({ line: i + 1, typed: last, re: w[2], why: 'no regexp' }); return }
+    const echoed = typed.filter(t => re.test(t))
+    if (echoed.length) hits.push({ line: i + 1, typed: echoed[echoed.length - 1], re: w[2], why: 'a typed line of the pane window matches' })
   })
   return hits
 }
@@ -2055,7 +2102,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
     carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
     phraseGap, OLD_CARRIERS, oldCarrierGap, STALE_AGENTS, STALE_WORKFLOWS, STALE_PATHS,
-    staleNameHits, staleFileHits, echoedWaits, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
+    staleNameHits, staleFileHits, oldDesignHits, OLD_DESIGN_PHRASES, echoedWaits,
+    HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,

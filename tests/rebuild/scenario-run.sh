@@ -28,12 +28,15 @@
 # Scenario file format (free text, no id inside a test name):
 #     <key>  base: <arguments or (none)>   prompts: "first prompt" "second prompt"
 #         setup: <one shell line, run inside the scratch project>
-#         finish: <prompt index> <how many workflow finish notices>
+#         finish: <prompt index> <how many workflow finish notices>   (one line per gated prompt)
 #         PASS: <the rule the judge applies>
 #
 # `finish` is the gate against a prompt racing a launch: that prompt is sent only after the
 # transcript holds that many workflow finish notices, so a prompt that reads a result never runs
-# while the workflow is still working. Without the field no prompt waits.
+# while the workflow is still working. Without the field no prompt waits. A block may carry several
+# `finish` lines, one per prompt that reads a result; a scenario that clears its context in the
+# middle counts the notices of the transcript that runs at that moment, since `/clear` starts a new
+# one.
 #
 # Credential rule: real HOME, nothing read or copied from ~/.claude, ~/.claude.json or a keychain.
 set -u
@@ -150,6 +153,11 @@ if name == 'prompts':
     # one NUL after every prompt, none joined: the reader loops over the whole stream
     tail = text.split('prompts:', 1)[1] if 'prompts:' in text else ''
     sys.stdout.write(''.join(p + '\x00' for p in re.findall(r'"((?:[^"\\]|\\.)*)"', tail)))
+elif name == 'finish':
+    # every `finish` line of the block, not the first one only: a scenario that reads a result twice
+    # gates twice, and a second gate line read as absent would let the last prompt race its launch
+    for m in re.finditer(r'(?m)^\s*finish:\s*(.*)$', text):
+        print(m.group(1).strip())
 else:
     m = re.search(r'(?m)^\s*%s:\s*(.*)$' % re.escape(name), text)
     print(m.group(1).strip() if m else '')
@@ -235,15 +243,14 @@ for key in $KEYS; do
   # the gate of the `finish` field: the named prompt waits for the workflow finish notices, so a
   # prompt that reads a result never races the launch it reads
   FINISH=$(field "$key" finish)
-  GIDX=$(awk '{print $1}' <<<"$FINISH")
-  GWANT=$(awk '{print ($2 == "" ? 1 : $2)}' <<<"$FINISH")
   pi=0
   for p in ${PROMPTS[@]+"${PROMPTS[@]}"}; do
     [ -n "$p" ] || continue
     pi=$((pi + 1))
-    if [ -n "$GIDX" ] && [ "$GIDX" = "$pi" ]; then
-      if wait_finished "$GWANT"; then log "$key: prompt $pi gated on $GWANT workflow finish notice(s): seen"
-      else log "$key: prompt $pi waited for $GWANT workflow finish notice(s), none within $IDLE_S s"; fi
+    gwant=$(awk -v i="$pi" '$1 == i {print ($2 == "" ? 1 : $2); exit}' <<<"$FINISH")
+    if [ -n "$gwant" ]; then
+      if wait_finished "$gwant"; then log "$key: prompt $pi gated on $gwant workflow finish notice(s): seen"
+      else log "$key: prompt $pi waited for $gwant workflow finish notice(s), none within $IDLE_S s"; fi
     fi
     send "$p"
     wait_idle || log "$key: turn cap $IDLE_S s hit"
