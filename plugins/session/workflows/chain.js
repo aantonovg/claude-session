@@ -591,6 +591,10 @@ const STALE_ROSTER = /^const [A-Z][A-Z0-9_]* = \[/
 const STALE_DATE = /\b\d{4}-\d{2}-\d{2}\b/
 const STALE_LOG_HEAD = /^#+\s+Version log\b/i
 const STALE_FAIL_SCOPE = [/\/tests\/measure\/[a-z0-9-]*scenarios-[0-9.]+\.txt$/, /\/tests\/rebuild\/[a-z0-9-]+\.sh$/]
+// the sentence form the FAIL escape was written for: a line that calls such a launch a FAIL verdict.
+// The bare word is not enough — every test script of tests/rebuild prints FAIL in its own fail() and
+// label lines, so a line holding the word anywhere would let a live retired launch through unseen.
+const STALE_FAIL_VERDICT = [/\b(?:is|are|counts as|reads as)\s+a\s+FAIL\b/, /\bFAIL\s+on\b/]
 const STALE_DATED_SCOPE = [/\/memory\/[^/]+\.md$/]
 const STALE_MARK_SCOPE = [/\/tests\/rebuild\//]
 const STALE_LOG_SCOPE = [/(?:^|\/)README\.md$/, /(?:^|\/)CHANGELOG\.md$/]
@@ -627,7 +631,7 @@ function staleFileHits(path, text) {
     if (marked) markAt = n
     const found = staleNameHits(line)
     if (!found.length) return
-    if (failOk && /\bFAIL\b/.test(line)) return
+    if (failOk && STALE_FAIL_VERDICT.some(rx => rx.test(line))) return
     if (datedOk && STALE_DATE.test(line)) return
     if (markOk && markAt) { mark(markAt); return }
     if (marked) mark(n) // a marker where it is not allowed: reported, and the hits stand
@@ -692,7 +696,11 @@ function echoedWaits(text, vars) {
   // the quote of a typed line is written \x22 and \x27: a literal quote inside a regexp of this
   // block opens a string for stripComments(), which reads no regexp literal, and the comment after
   // it would then be read as code
-  const SEND = /tmux send-keys\b[^\n]*?([\x22\x27])(.*?)\1 Enter/
+  // the typed text is the argument after the options, never the first quoted word of the line: a
+  // pane target in quotes (`-t "$name"`) is no typed line, and reading from its quote gave a typed
+  // text of `$name" "<the real command>` — junk that matched no pattern of a pane the session wrote.
+  // `-t` takes its value, the other flags stand alone, and `--` ends the options.
+  const SEND = /tmux send-keys\b(?:\s+-t\s+(?:[\x22][^\x22]*[\x22]|[\x27][^\x27]*[\x27]|[^\s\x22\x27]+)|\s+-[A-Za-z-]+|\s+--)*\s+([\x22\x27])(.*?)\1 Enter/
   const WAIT = /^\s*wait_for ([\x22\x27])(.*?)\1/
   const typed = []
   const hits = []
@@ -898,6 +906,18 @@ function isBlocked(ret) { return ret == null || /^BLOCKED:/.test(lastLine(ret).t
 function blockedLine(why) {
   const w = String(why == null ? '' : why).trim() || 'no reason'
   return /^BLOCKED:/.test(w) ? w : `BLOCKED: ${w}`
+}
+
+// blockGap(stage, why): the gap line of a run that stopped at a stage. A block is a gap of the run
+// like any other: everything below that stage is undone and the reason nobody answered is open work.
+// Without this line a run that ended blocked came back with `blocked` set and an empty gap list, and
+// the session read that list out as "Gaps: none" — a deliberate contradiction nobody could satisfy
+// reported to the user as nothing at all. Every result builder of this block writes it, so the
+// reason travels in `gap` whichever flow stopped.
+function blockGap(stage, why) {
+  const name = String(stage == null ? '' : stage).trim() || 'unnamed'
+  const w = String(why == null ? '' : why).trim().replace(/^BLOCKED:\s*/, '')
+  return `the ${name} stage stopped this run: ${w || 'no reason'} — everything below it is undone, and that is open work of this run`
 }
 
 // namesOut(text, out): does this text name the output file? The stage asks for the absolute path,
@@ -1729,6 +1749,10 @@ function chainResult(s) {
   const und = T.undetermined
   const open = T.unanswered
   const base = o.base || 'the base version'
+  // a chain that stopped at a stage carries that stage and its reason as a gap too (the same rule as
+  // the make and probe builders): a return with a blocked line and an empty gap list reads as clean
+  const gap = (o.gap || []).slice()
+  if (o.blocked) gap.push(blockGap(o.stage, blockedLine(o.blocked)))
   const res = {
     out: o.out == null ? null : o.out,
     form: o.form,
@@ -1743,7 +1767,7 @@ function chainResult(s) {
     harness: T.harness.map(r => `${r.id}: ${r.pointer}`),
     onBase: T.onBase.map(r => `${r.id}: reproduces on ${base}, no finding of this change`),
     evidence: o.evidence || [],
-    gap: o.gap || [],
+    gap,
     blockedStages: o.blockedStages || [],
     status: chainStatus({
       form: o.form, groups: groups.length, confirmed: conf.length, fixing: Number(o.fixing || 0),
@@ -1861,13 +1885,16 @@ function controlTree(ret) {
 
 // cycleState(depth, used): the fix cycles of A30 as a ceiling of the fix stage. When it is hit the
 // stage ends and `gap` is what the result carries; nothing is retried in silence.
+// CYCLE_CEILING_HEAD opens that gap line, and makeStatus() finds it by this head to put the ceiling
+// sentence into the status itself.
+const CYCLE_CEILING_HEAD = 'the fix cycle ceiling of '
 function cycleState(depth, used) {
   const room = ceiling(depth).cycles
   const n = Number(used)
   if (!Number.isFinite(n) || n < 0) throw new Error(`cycleState needs a cycle count, got ${used}`)
   const hit = ceilingHit(depth, 'cycles', n)
   const gap = hit
-    ? `the fix cycle ceiling of ${room} at depth ${depth} ended the stage: what the check still fails is a gap, not another round`
+    ? `${CYCLE_CEILING_HEAD}${room} at depth ${depth} ended the stage: what the check still fails is a gap, not another round`
     : null
   return { room, used: n, hit, gap }
 }
@@ -1965,11 +1992,15 @@ function makeStatus(s) {
   const gapText = gap.length
     ? ` ${gap.length} gap(s) stand in this return and in the closing report it carries: they are unfinished work, not a silent retry.`
     : ''
+  // the ceiling sentence: a fix loop the ceiling cut says so in the status itself, in the words of its
+  // gap, so the one line a caller reads out names the ceiling and not only a count of gaps
+  const ceil = gap.filter(g => String(g).indexOf(CYCLE_CEILING_HEAD) === 0)[0]
+  const ceilText = ceil ? ` ${ceil[0].toUpperCase()}${ceil.slice(1)}.` : ''
   const folded = o.folded || []
   const foldText = folded.length
     ? ` The depth folded ${folded.join(', ')} into the short form: those levels were not written as files of their own.`
     : ''
-  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${treeText}${keyText}${foldText}${gapText}${stopped}`
+  return `${Number(o.done || 0)} of ${Number(o.planned || 0)} stage(s) ran (${o.range || ''}), ${runText}.${ctl}${treeText}${keyText}${foldText}${ceilText}${gapText}${stopped}`
 }
 function makeResult(s) {
   const o = s || {}
@@ -1990,6 +2021,9 @@ function makeResult(s) {
   const reportOk = report !== ''
   if (!reportOk) gap.push(o.reportGap || 'the closing report came back empty: this run states nothing about itself')
   const blocked = o.blocked ? blockedLine(o.blocked) : null
+  // a run that stopped carries the stage and its reason as a gap: `blocked` alone left the gap list
+  // empty, and an empty list is read out as "nothing is open"
+  if (blocked) gap.push(blockGap(o.stage, blocked))
   const run = o.run == null ? null : String(o.run)
   // the oracle stages of this range: with one of them in the range the check decides the result,
   // without one the promise of the range is that every stage of it ran
@@ -2072,6 +2106,9 @@ function probeResult(s) {
   // ceiling never seated: the synthesis was written over less material than the question asked for
   for (const s of lost) gap.push(`${s} — that direction brought nothing, so the answer rests on less material than the question asked for`)
   const blocked = o.blocked ? blockedLine(o.blocked) : null
+  // the same rule as in the make flow: a stage that stopped the run is a gap of it, never a blocked
+  // line beside an empty gap list
+  if (blocked) gap.push(blockGap(o.stage, blocked))
   const ok = !blocked && !!o.out && bundles.length > 0 && !!o.critique && !!o.synthesis
     && lost.length === 0 && cut.length === 0
   const res = {
@@ -2106,7 +2143,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
-    blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
+    blockedLine, blockGap, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,
     LAYOUT, taskDirOf, outForm, taskEntry, taskKeys, taskPath, runStem, writeHint, liteTarget, roleOut, roleOutPath,
     HINT_CAP, SEVERITY_ORDER, keyedFields, placeOf, placeText, parseHints, capHints, hintsOverlap, groupHints,
     maxSeverity, chainForm, pickAspects, criticSplit, parseEvidence, dedupeAnswers, splitFailures,

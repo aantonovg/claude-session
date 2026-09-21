@@ -42,7 +42,8 @@
 # lines after it up to the next blank line, it is counted and printed by the line of the marker
 # itself, and it is allowed under tests/rebuild/ only, so no file of the product tree can opt out.
 #
-# Excluded paths, each a dated record of a past run or a past plan rather than a live reference, and
+# Excluded paths, each a path prefix of the tracked tree (never a substring match), each a dated
+# record of a past run or a past plan rather than a live reference, and
 # each asserted to match at least one tracked file, so an exclusion that outlived its files is a
 # failure of this test and not a silent hole. Deviation from the plan's P9 list, stated once: the
 # plan names three of them (docs/measurements, tests/corp/results, tests/demo-game/results); the
@@ -121,13 +122,26 @@ JS
 git -C "$REPO" ls-files > "$T/tracked" || { echo "stale: FAIL git ls-files failed in $REPO" >&2; exit 1; }
 check "s0 the tracked tree is not empty" test -s "$T/tracked"
 printf '%s\n' "$EXCLUDE" > "$T/exclude"
+# Every exclusion is a path prefix, never a substring: a substring match dropped any file whose path
+# merely carried one of these names further down (`plugins/x/docs/plans/y.md`, `my-reviews/r.md`), so
+# the scope of the scan was wider than the list says and a live reference could sit in the hole.
+strip_excluded() { # strip_excluded <exclude file> <path list>: the lines no exclusion prefixes
+  awk 'NR == FNR { if (length($0)) ex[++n] = $0; next }
+       { for (i = 1; i <= n; i++) if (index($0, ex[i]) == 1) next; print }' "$1" "$2"
+}
 # an exclusion that matches no tracked file has outlived its files: it is a failure, never a hole
 while IFS= read -r ex; do
   [ -n "$ex" ] || continue
-  check "s0 the exclusion $ex still matches a tracked file" \
-    grep -q -F -- "$ex" "$T/tracked"
+  check "s0 the exclusion $ex still prefixes a tracked file" \
+    awk -v p="$ex" 'index($0, p) == 1 { f = 1; exit } END { exit(f ? 0 : 1) }' "$T/tracked"
 done < "$T/exclude"
-grep -v -F -f "$T/exclude" "$T/tracked" | sed "s|^|$REPO/|" > "$T/files"
+# executed, not read: the same rule over a fixture list, one path that opens with an exclusion and one
+# that only carries it further down
+printf '%s\n' 'docs/plans/a.md' 'plugins/x/docs/plans/b.md' 'reviews/r.md' 'my-reviews/r.md' > "$T/probe-list"
+kept=$(strip_excluded "$T/exclude" "$T/probe-list" | tr '\n' ' ')
+check "s0 an exclusion is a path prefix, never a substring (kept: $kept)" \
+  test "$kept" = "plugins/x/docs/plans/b.md my-reviews/r.md "
+strip_excluded "$T/exclude" "$T/tracked" | sed "s|^|$REPO/|" > "$T/files"
 find "$DIR" -type f >> "$T/files"
 COUNT=$(wc -l < "$T/files" | tr -d ' ')
 check "s0 the scan list holds the tree and the copy (got $COUNT files, $DIRFILES of them under the copy)" \
@@ -189,6 +203,14 @@ mk no-decl 'A session:dev run blocked on git and the resume replayed the cached 
 for c in decl-fail decl-date decl-mark; do
   check "s2 the $c line is a declaration inside its scope" node "$T/scan.js" "$BLOCK" "$T/l-$c"
 done
+# the FAIL escape covers the verdict sentence only. Every test of this directory prints the word in
+# its own fail() and label lines, so a line that merely holds it is no declaration: a live retired
+# launch written on such a line is a hit, inside the scope as well as outside it.
+# stale-ok: the fixture line below quotes a retired launch name on a fail label
+LABELLINE='echo "FAIL s9: a session:dev launch stood in the transcript" >&2'
+mkat label-fail "tests/rebuild/f-label.sh" "$LABELLINE"
+check "s2 a retired launch on a fail label line is a hit, not a FAIL declaration" \
+  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/l-label-fail"
 for c in fail-prod date-prod mark-prod no-decl; do
   check "s2 the $c line is a hit outside that scope" \
     bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/l-$c"
@@ -273,6 +295,9 @@ check "s2 the mutant that drops the mode keys of the old state file is caught" \
 mut failwide "s|const STALE_FAIL_SCOPE = \[.*\]|const STALE_FAIL_SCOPE = [/./]|"
 check "s2 the mutant that widens the FAIL escape to every file is caught" \
   bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/failwide.js" "$T/l-fail-prod"
+mut failword "s|const STALE_FAIL_VERDICT = \[.*\]|const STALE_FAIL_VERDICT = [/\\\\bFAIL\\\\b/]|"
+check "s2 the mutant whose FAIL escape takes the bare word is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/failword.js" "$T/l-label-fail"
 mut datewide "s|const STALE_DATED_SCOPE = \[.*\]|const STALE_DATED_SCOPE = [/./]|"
 check "s2 the mutant that widens the date escape to every file is caught" \
   bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/datewide.js" "$T/l-date-prod"

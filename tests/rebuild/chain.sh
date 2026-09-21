@@ -323,6 +323,10 @@ eq(blk.harness, res.harness, 'a blocked stage still returns the harness failures
 eq(blk.evidence, res.evidence, 'a blocked stage still returns the evidence files')
 eq(blk.status, res.status, 'a blocked stage still returns the status sentence')
 ck(!('blocked' in res), 'a run that reached the end carries no blocked line')
+// a block is a gap of the run: a blocked line beside an empty gap list was read out as "nothing open"
+ck((blk.gap || []).filter(g => /the triage stage stopped this run: the judge stopped/.test(g)).length === 1,
+   `a blocked stage stands in the gap list with its reason (${(blk.gap || []).join(' ;; ')})`)
+eq(res.gap, ['g7: no seat'], 'a run that reached the end adds no gap for a block')
 
 // --- two answer lines for one group: the stronger evidence wins, and one list holds the group ---
 const dup = b.parseEvidence([
@@ -584,6 +588,7 @@ the status promises another round|the status states that the chain ran one round
 the result drops the undetermined rows|the result carries the undetermined rows|s/undetermined: und\.map/undetermined: [].map/
 the result mixes the harness failures in|the result keeps the harness failures apart|s/harness: T\.harness\.map/harness: [].map/
 the result does not name the base version|names the base version of an on-base row|s/o\.base \|\| 'the base version'/'the base version'/
+a blocked chain returns its block beside an empty gap list|a blocked stage stands in the gap list with its reason|s/if \(o\.blocked\) gap\.push\(blockGap/if (false) gap.push(blockGap/
 a blocked stage drops every row it knows|a blocked stage still returns the open rows|s/if \(o\.blocked\) res\.blocked = blockedLine\(o\.blocked\)/if (o.blocked) return { blocked: blockedLine(o.blocked) }/
 two answers for one group stay two|two answer lines for one group give one answer|s/const cur = out\.filter\(x => x\.id === a\.id\)\[0\]/const cur = null/
 one verdict settles every hint of its group|one verdict over a group of several hints settles no hint|s/hints\.length === 1 \? all\.filter\(x => x\.id === g\.id\)\[0\] : null/all.filter(x => x.id === g.id)[0]/
@@ -778,6 +783,43 @@ printf 'base gone PASS 20260101-000000 %s\n' 00000000000000000000000000000000000
 VERDICTS_ROOT=$T/verdicts bash "$VERD" base:gone > "$T/v2.out" 2> "$T/v2.err"
 check "a7 a verdict of a commit outside this history fails" bash -c 'grep -q "not HEAD and not an ancestor" "$1"' _ "$T/v2.err"
 check "a7 verdicts.sh tells a verdict of HEAD from one of an older commit" grep -Fq 'PASS at HEAD' "$VERD"
+
+# a finish gate that times out is an environment error, executed: the runner goes through its real
+# loop over a fixture scenario whose second prompt is gated on a notice that never comes. tmux and
+# sleep are stubs (no session starts, nothing waits) and HOME is a temp directory, so the run
+# touches no user file. The gated prompt is never sent, the key gets no verdict line and the run
+# ends non-zero; a mutant runner that only logs the wait, as the runner once did, fails the readings.
+G=$T/gate
+mkdir -p "$G/bin" "$G/home" "$G/m/tests/rebuild"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexit 0\n' "$G/tmux.log" > "$G/bin/tmux"
+printf '#!/bin/sh\nexit 0\n' > "$G/bin/sleep"
+chmod +x "$G/bin/tmux" "$G/bin/sleep"
+printf '%s\n' 'gated  prompts: "first prompt" "second prompt"' '    base: (none)' '    finish: 2 1' '    PASS: nothing is read' > "$G/scen.txt"
+# the mutant sits in a tree of its own beside the real scenario-env.sh, so it resolves its helpers
+ln -s "$REPO/tests/rebuild/scenario-env.sh" "$G/m/tests/rebuild/scenario-env.sh"
+perl -pe 's/ERRORS=\$\(\(ERRORS \+ 1\)\); GATE_LOST=1; break/:/' "$RUNNER" > "$G/m/tests/rebuild/scenario-run.sh"
+gate_run() { # gate_run <runner> <name>: one fixture run; exit code, output and typed lines kept under $G
+  : > "$G/tmux.log"
+  HOME=$G/home PATH="$G/bin:$PATH" VERDICTS_ROOT=$G/root-$2 SCENARIOS=$G/scen.txt IDLE_S=10 RUN_TS=gate \
+    bash "$1" gated > "$G/$2.out" 2>&1
+  echo $? > "$G/$2.rc"
+  cp "$G/tmux.log" "$G/$2.tmux"
+}
+gate_ok() { # gate_ok <name>: every reading of a timed-out gate holds; prints the first that does not
+  local d=$G/root-$1/base/gate
+  [ "$(cat "$G/$1.rc")" != 0 ] || { echo "the run exited 0"; return 1; }
+  grep -q 'first prompt' "$G/$1.tmux" || { echo "the ungated prompt was never sent"; return 1; }
+  ! grep -q 'second prompt' "$G/$1.tmux" || { echo "the gated prompt was sent"; return 1; }
+  ! grep -qs '^base gated ' "$d/verdicts.txt" || { echo "the key got a verdict line"; return 1; }
+  grep -q 'done (1 environment error' "$d/result.log" || { echo "the timeout is not counted"; return 1; }
+}
+gate_run "$RUNNER" real
+check "a7 a finish gate that timed out sends nothing more, writes no verdict and ends non-zero ($(gate_ok real))" gate_ok real
+check "a7 the gate mutant is really a mutation" bash -c '! cmp -s "$1" "$2"' _ "$RUNNER" "$G/m/tests/rebuild/scenario-run.sh"
+gate_run "$G/m/tests/rebuild/scenario-run.sh" mutant
+check "a7 the mutant ran the loop and typed the gated prompt" grep -q 'second prompt' "$G/mutant.tmux"
+why=$(gate_ok mutant)
+check "a7 a runner that sends the gated prompt anyway is caught (reading: ${why:-none failed})" test -n "$why"
 
 if [ "$FAILS" -eq 0 ]; then echo "chain: PASS $N"; exit 0; fi
 echo "chain: FAIL $FAILS failures, $N checks passed"

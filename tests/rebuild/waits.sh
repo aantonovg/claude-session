@@ -86,6 +86,13 @@ check "w3 a wait for a line the typed command does not carry is clean" \
 } > "$T/f-var.sh"
 check "w3 a command assembled from a variable is read resolved" \
   bash -c '! node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/f-var.sh" "$VARS"
+# the typed text is the argument after the quoted pane target, never a text read from the target's
+# own quote: a wait anchored on the whole typed command must see that command
+{ printf '%s\n' 'tmux send-keys -t "$s" "/session:base" Enter'
+  printf '%s\n' "wait_for '^/session:base\$' 90 || exit 1"
+} > "$T/f-target.sh"
+check "w3 the typed text is the argument after a quoted pane target" \
+  bash -c '! node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/f-target.sh" "$VARS"
 printf '%s\n' "wait_for 'anything' 90 || exit 1" > "$T/f-first.sh"
 check "w3 a wait before the first typed line is no hit" \
   node "$T/scan.js" "$BLOCK" "$T/f-first.sh" "$VARS"
@@ -101,6 +108,9 @@ mut() { # mut <name> <perl expression>
 mut novars "s|Object\.prototype\.hasOwnProperty\.call\(v, name\) \? String\(v\[name\]\) : m0|m0|"
 check "w4 the mutant that leaves a variable unresolved is caught" \
   bash -c 'node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$T/novars.js" "$T/f-var.sh" "$VARS"
+mut fromquote 's/-t\\s\+\(\?:/-t\\s+(?!)(?:/'
+check "w4 the mutant that reads the pane target's quote as the typed text is caught" \
+  bash -c 'node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$T/fromquote.js" "$T/f-target.sh" "$VARS"
 mut notyped "s|if \(sent\) \{ typed\.push.*return \}|if (sent) { return }|"
 check "w4 the mutant that forgets the typed line is caught" \
   bash -c 'node "$1" "$2" "$3" "$4" > /dev/null' _ "$T/scan.js" "$T/notyped.js" "$T/f-echo.sh" "$VARS"
