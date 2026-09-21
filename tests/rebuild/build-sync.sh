@@ -241,6 +241,13 @@ sys.exit(1 if missing else 0)
 # ---- b6: tests/rebuild/verdicts.sh reads verdicts the way the plan states ----
 V=$REPO/tests/rebuild/verdicts.sh
 HEADSHA=$(git -C "$REPO" rev-parse HEAD)
+# every key asked below has a kind, so a refusal comes from the verdicts, never from a missing kind
+for k in good stale other-not-asked nosuch abc a.c loose; do
+  printf '%s  prompts: "x"\n    kind: machine, because fixture\n' "$k"
+done > "$T/scen.txt"
+printf '%s  prompts: "x"\n    kind: judgment, because fixture\n' jkey j2 j3 j4 >> "$T/scen.txt"
+printf '%s  prompts: "x"\n    kind: machine, because fixture\n' mold >> "$T/scen.txt"
+export VERDICTS_SCENARIOS=$T/scen.txt
 VR=$T/verdicts; mkdir -p "$VR/base/20260101-000000" "$VR/base/20260102-000000" "$VR/base/20260103-000000"
 printf 'base stale PASS 20260101-000000 %s\nbase good PASS 20260101-000000 %s\n' "$HEADSHA" "$HEADSHA" > "$VR/base/20260101-000000/verdicts.txt"
 printf 'base stale FAIL 20260102-000000 %s\n' "$HEADSHA" > "$VR/base/20260102-000000/verdicts.txt"
@@ -255,6 +262,51 @@ check "b6 a key is matched literally, not as a regex" bash -c '! VERDICTS_ROOT="
 printf 'base loose PASS 20260103-000000 0000000000000000000000000000000000000000\n' >> "$VR/base/20260103-000000/verdicts.txt"
 check "b6 a PASS whose commit is not an ancestor of HEAD fails" bash -c '! VERDICTS_ROOT="$1" bash "$2" base:loose' _ "$VR" "$V"
 check "b6 no argument fails" bash -c '! VERDICTS_ROOT="$1" bash "$2"' _ "$VR" "$V"
+
+# ---- b8: the kind of a key picks the rule; gateDecision() of lib/block.js decides ----
+# judgment: 2 PASS out of at most 3 runs on the current code, 2 FAIL fail, fewer runs unsettled.
+# machine: the newest run on the current code; a PASS of an older commit with other code never counts.
+OLD=
+for c in $(git -C "$REPO" rev-list --max-count=50 HEAD); do
+  git -C "$REPO" diff --quiet "$c" HEAD -- plugins/session tests || { OLD=$c; break; }
+done
+JR=$T/jv; for i in 1 2 3 4 5; do mkdir -p "$JR/base/2026010$i-000000"; done
+vl() { printf 'base %s %s 2026010%s-000000 %s\n' "$1" "$2" "$3" "$4" >> "$JR/base/2026010$3-000000/verdicts.txt"; }
+vl jkey PASS 1 "$HEADSHA"                                   # one PASS only
+vl j2 PASS 1 "$HEADSHA"; vl j2 FAIL 2 "$HEADSHA"; vl j2 PASS 3 "$HEADSHA"; vl j2 FAIL 4 "$HEADSHA"
+vl j3 FAIL 1 "$HEADSHA"; vl j3 PASS 2 "$HEADSHA"; vl j3 FAIL 3 "$HEADSHA"
+vl j4 PASS 1 "$OLD"; vl j4 PASS 2 "$HEADSHA"               # the older PASS never counts
+vl mold PASS 1 "$OLD"
+vl good PASS 5 "$HEADSHA"
+kline() { env VERDICTS_ROOT=$JR ${3:+VERDICTS_BLOCK=$3} bash "$V" "base:$1" 2>/dev/null | grep "^verdicts: base:$1 kind" | sed "s/^verdicts: base:$1 //"; }
+check "b8 an older commit with other code exists in this history" test -n "$OLD"
+check "b8 judgment with one PASS is unsettled [$(kline jkey)]" test "$(kline jkey)" = "kind judgment PASS 1 FAIL 0 decision unsettled"
+check "b8 judgment with one PASS exits non-zero" bash -c '! VERDICTS_ROOT="$1" bash "$2" base:jkey >/dev/null 2>&1' _ "$JR" "$V"
+check "b8 judgment settles at the second PASS of three runs [$(kline j2)]" test "$(kline j2)" = "kind judgment PASS 2 FAIL 2 decision PASS"
+check "b8 judgment settled at 2 PASS exits 0" bash -c 'VERDICTS_ROOT="$1" bash "$2" base:j2 >/dev/null 2>&1' _ "$JR" "$V"
+check "b8 judgment settles at the second FAIL [$(kline j3)]" test "$(kline j3)" = "kind judgment PASS 1 FAIL 2 decision FAIL"
+check "b8 judgment counts no run of superseded code [$(kline j4)]" test "$(kline j4)" = "kind judgment PASS 1 FAIL 0 decision unsettled"
+check "b8 machine passes on one PASS at HEAD [$(kline good)]" test "$(kline good)" = "kind machine PASS 1 FAIL 0 decision PASS"
+check "b8 machine with only a PASS of an older commit is unsettled [$(kline mold)]" test "$(kline mold)" = "kind machine PASS 0 FAIL 0 decision unsettled"
+check "b8 machine with only a PASS of an older commit exits non-zero" bash -c '! VERDICTS_ROOT="$1" bash "$2" base:mold >/dev/null 2>&1' _ "$JR" "$V"
+# the two mutants of gateDecision(): judgment passing on 1 PASS, machine passing on an older commit
+bmut() { # <out> <python regex> <replacement>
+  python3 - "$REPO/plugins/session/lib/block.js" "$1" "$2" "$3" <<'PY'
+import re, sys
+s = open(sys.argv[1]).read(); m, n = re.subn(sys.argv[3], sys.argv[4], s, count=1)
+open(sys.argv[2], 'w').write(m); sys.exit(0 if n == 1 else 1)
+PY
+}
+bmut "$T/mj.js" 'if \(p === 2\) \{' 'if (p === 1) {'; check "b8 mutant judgment on 1 PASS applied" test $? -eq 0
+check "b8 mutant judgment on 1 PASS is caught" test "$(kline jkey "" "$T/mj.js")" != "kind judgment PASS 1 FAIL 0 decision unsettled"
+bmut "$T/mm.js" '\.filter\(r => r && r\.current\)' '.filter(r => r)'; check "b8 mutant machine on an older commit applied" test $? -eq 0
+check "b8 mutant machine on an older commit is caught" test "$(kline mold "" "$T/mm.js")" != "kind machine PASS 0 FAIL 0 decision unsettled"
+check "b8 scenarioKind reads the kind of every scenario of the real file" node -e '
+  const b = require(process.argv[1]), t = require("fs").readFileSync(process.argv[2], "utf8")
+  const keys = t.split("\n").filter(l => /^[A-Za-z][A-Za-z0-9_-]*\s.*prompts:/.test(l)).map(l => l.split(/\s/)[0])
+  const bad = keys.filter(k => !b.scenarioKind(t, k)); if (!keys.length || bad.length) { console.log(bad.join(" ")); process.exit(1) }
+  for (const k of ["coverage", "aspect-approval"]) if (b.scenarioKind(t, k) !== "judgment") process.exit(1)' \
+  "$REPO/plugins/session/lib/block.js" "$REPO/tests/measure/rebuild-scenarios-0.16.txt"
 
 # ---- b7: scenario-run.sh --verdict names the commit the run started at ----
 # No session and no tmux here: only the --verdict path over a run directory laid out by hand.

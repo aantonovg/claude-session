@@ -15,11 +15,12 @@
 # record that a launch finished; the resume rule of the process reads it instead of any marker
 # an agent writes into its own file.
 #
-# Only agents the ledger already names get a stop row: any other subagent that
-# stops while tasks/current points at this task (forks of other work, workflow
-# agents launched without a row) is ignored, and a second stop for the same id is
-# ignored too - the row is the evidence of one launch, never a counter. One more row, once per
-# task: the intent stop row {ts, stage:"intent", event:"stop", depth}, at the end of this file.
+# Agents the ledger names get a stop row. A launch row that kept agent_id null is closed by the
+# first stop whose transcript head names the task directory, and that stop row carries the row's
+# stage and step (unnamedStopRow() of lib/block.js). Any other subagent that stops while
+# tasks/current points at this task (forks of other work) is ignored, and a second stop for the
+# same id is ignored too - the row is the evidence of one launch, never a counter. One more row,
+# once per task: the intent stop row {ts, stage:"intent", event:"stop", depth}.
 
 INPUT=$(cat)
 # The row shape above is built with jq and cannot be built without it. A machine with no jq loses
@@ -49,6 +50,19 @@ launch_row() {
     fromjson? | select(type == "object") | select(.agent_id == $a) | select(has("event") | not)
   ' "$LEDGER" 2>/dev/null | tail -1
 }
+BLOCKJS=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/lib/block.js
+# The intent stop row: no launch writes the intent, so its row is written here, once, at the first
+# stop row of the task. The decision is intentStopDue() of lib/block.js (nothing is launched at std
+# or full before the user confirmed the intent); this glue only reads the files. No node, no row.
+intent_row() {
+  command -v node >/dev/null 2>&1 && [ -f "$BLOCKJS" ] || return 0
+  node -e '
+    const b = require(process.argv[1]), fs = require("fs"), d = process.argv[2]
+    const led = fs.readFileSync(d + "/ledger.jsonl", "utf8")
+    if (b.intentStopDue(led, fs.readdirSync(d))) process.stdout.write(JSON.stringify(b.intentStopRow(led, process.argv[3])) + "\n")
+  ' "$BLOCKJS" "$DIR" "$1" >> "$LEDGER" 2>/dev/null
+  return 0
+}
 ROW=$(launch_row "$AID")
 # An agent of a workflow launch stops under its own id, while the launch row holds the id of the
 # run (`wf_...`), the only id the launch result gives. The run is the directory the agent's
@@ -63,14 +77,29 @@ if [ -z "$ROW" ]; then
     SID0=$(field session_id); TP=$(field transcript_path)
     if [ -n "$TP" ]; then BASE=${TP%.jsonl}
     elif [ -n "$SID0" ]; then BASE=$HOME/.claude/projects/$ENC/$SID0
-    else exit 0; fi
+    else BASE=; fi
     for f in "$BASE"/subagents/workflows/*/agent-"$AID".jsonl; do
-      [ -f "$f" ] && { RUN=$(basename "$(dirname "$f")"); break; }
+      [ -n "$BASE" ] && [ -f "$f" ] && { RUN=$(basename "$(dirname "$f")"); ATP=$f; break; }
     done
   fi
-  [ -n "$RUN" ] || exit 0
-  ROW=$(launch_row "$RUN")
-  [ -n "$ROW" ] || exit 0
+  [ -n "$RUN" ] && ROW=$(launch_row "$RUN")
+  if [ -z "$ROW" ]; then
+    # No launch row names this agent or its run: the launch row may have kept agent_id null.
+    # unnamedStopRow() of lib/block.js decides whether this stop closes such a row; no node, no row.
+    [ -f "$ATP" ] && [ -f "$BLOCKJS" ] && command -v node >/dev/null 2>&1 || exit 0
+    OUT=$(head -c 65536 "$ATP" 2>/dev/null | node -e '
+      const b = require(process.argv[1]), fs = require("fs")
+      const r = b.unnamedStopRow(fs.readFileSync(process.argv[2], "utf8"), process.argv[3], process.argv[4],
+        fs.readFileSync(0, "utf8"), process.argv[5])
+      if (r) process.stdout.write(JSON.stringify(r))
+    ' "$BLOCKJS" "$LEDGER" "${RUN:-$AID}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$DIR" 2>/dev/null)
+    [ -n "$OUT" ] || exit 0
+    printf '%s\n' "$OUT" >> "$LEDGER"
+    SID=$(field session_id)
+    [ -n "$SID" ] && [ ! -f "$DIR/session" ] && printf '%s\n' "$SID" > "$DIR/session"
+    intent_row "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    exit 0
+  fi
   AID=$RUN
 fi
 DONE=$(jq -c -R --arg a "$AID" '
@@ -89,16 +118,5 @@ OUT=$(printf '%s' "$ROW" | jq -c --arg a "$AID" --arg ts "$TS" '
 ' 2>/dev/null)
 [ -n "$OUT" ] || exit 0
 printf '%s\n' "$OUT" >> "$LEDGER"
-
-# The intent stop row: no launch writes the intent, so its row is written here, once, at the first
-# stop row of the task. The decision is intentStopDue() of lib/block.js (nothing is launched at std
-# or full before the user confirmed the intent); this glue only reads the files. No node, no row.
-BLOCKJS=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/lib/block.js
-if command -v node >/dev/null 2>&1 && [ -f "$BLOCKJS" ]; then
-  node -e '
-    const b = require(process.argv[1]), fs = require("fs"), d = process.argv[2]
-    const led = fs.readFileSync(d + "/ledger.jsonl", "utf8")
-    if (b.intentStopDue(led, fs.readdirSync(d))) process.stdout.write(JSON.stringify(b.intentStopRow(led, process.argv[3])) + "\n")
-  ' "$BLOCKJS" "$DIR" "$TS" >> "$LEDGER" 2>/dev/null
-fi
+intent_row "$TS"
 exit 0
