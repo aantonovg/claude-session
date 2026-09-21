@@ -9,7 +9,7 @@
 # Fails on a dirty tree and on any missing item; never skips a check.
 set -u
 
-REL=0.16.0
+REL=0.16.1
 
 gate() {  # $1 repo root; prints one FAIL line per missing item and a summary, returns 0/1
   local repo=$1 n=0 fails=0
