@@ -381,6 +381,10 @@ done
 # which matches qualified forms only and needs the user-level copy as its argument: the three
 # scripts of part 9 run here in order, over a copy of their own under this test's temp dir, so this
 # file still answers the question "does any old name survive" on its own.
+# What is asserted of switch-user.sh is its repository-owned targets (the user-level skills and
+# statusline.sh) plus its idempotency: the memory notes under projects/<enc>/memory are the user's,
+# free to be deleted or rewritten (the 2026-09-21 cleanup did both), and switch-user.sh skips such a
+# note, so no check here depends on a live note still carrying the text of the switch.
 UC=$T/user-copy
 check "k9 user-copy.sh builds the copy of the user-level assets" \
   bash -c 'bash "$1" "$2" > /dev/null' _ "$REPO/tests/rebuild/user-copy.sh" "$UC"

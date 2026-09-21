@@ -8,6 +8,7 @@ M=$REPO/plugins/session/monitors
 T=$(mktemp -d) || exit 1
 mkdir -p "$T/tmp" "$T/bin" "$T/data"
 export TMPDIR=$T/tmp CLAUDE_SESSION_ID=pingtest PING_INTERVAL=2 PING_STEP=1
+export SESSION_PID_TEST=$$  # pid key inside the scratch TMPDIR, no claude ancestor needed
 export FAKE_DATE=$T/fake-date
 
 PID1=""; PID2=""; MID=""
@@ -49,7 +50,9 @@ no_ping() {  # $1 count before, $2 seconds, [$3 log] -> 0 when count unchanged
 }
 alive() { kill -0 "$1" 2>/dev/null; }
 
-DATEF=$TMPDIR/session-ping-date-pingtest
+PAUSEF=$(sh "$M/session-pid.sh" | head -n1)
+DATEF=$(printf '%s\n' "$PAUSEF" | sed 's/session-ping-pause-/session-ping-date-/')
+if [ -z "$PAUSEF" ]; then echo "FAIL empty pid key from session-pid.sh"; exit 1; fi
 
 # Static checks (AC 3, 4, 5)
 grep -q 3420 "$M/ping.sh" || fail "static: default interval 3420 missing in ping.sh"
@@ -76,6 +79,14 @@ for doc in "$B_MD" "$S_MD"; do
   if grep -qiE 'run_in_background.*(ping|keep-warm)|(ping|keep-warm).*run_in_background' "$doc"; then fail "docs: run_in_background ping text in $name"; fi
   if grep -qiF 're-arm' "$doc"; then fail "docs: re-arm text in $name"; fi
 done
+
+# J: the state key is the claude pid even with CLAUDE_SESSION_ID set.
+got=$(sh "$M/session-pid.sh")
+if [ "$(printf '%s\n' "$got" | wc -l | tr -d ' ')" = 1 ] \
+  && printf '%s\n' "$got" | grep -q "^$TMPDIR/session-ping-pause-[0-9][0-9]*$" \
+  && ! printf '%s\n' "$got" | grep -q "$CLAUDE_SESSION_ID"; then
+  pass "J pid key only, CLAUDE_SESSION_ID ignored"
+else fail "J pid key only, CLAUDE_SESSION_ID ignored (got [$got])"; fi
 
 # I: runtime defaults via PING_DRY_RUN: unset PING_INTERVAL gives 3420, invalid PING_STEP gives 60.
 mkdir -p "$T/empty"
@@ -160,8 +171,8 @@ while [ -n "$OP" ] && alive "$OP" && [ "$SECONDS" -lt "$end" ]; do sleep 0.5; do
 if [ "$O0" = 1 ] && ! alive "$OP"; then pass "O orphaned ping.sh exits"
 else fail "O orphaned ping.sh exits (started [$O0], pid [$OP])"; fi
 
-if [ "$FAILS" -eq 0 ] && [ "$N" -eq 10 ]; then
+if [ "$FAILS" -eq 0 ] && [ "$N" -eq 11 ]; then
   echo "ping-test: PASS $N"; exit 0
 fi
-echo "ping-test: FAIL $FAILS failures, $N/10 cases passed"
+echo "ping-test: FAIL $FAILS failures, $N/11 cases passed"
 exit 1

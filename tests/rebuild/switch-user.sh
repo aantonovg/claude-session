@@ -13,6 +13,12 @@
 # the second run changes nothing (idempotent: a patch whose new text already stands is counted as
 # done, and a file holding both is a failure, because a half-applied patch is neither state).
 #
+# Exception, the note class (6th argument of patch): the memory notes under projects/<enc>/memory are
+# the user's live notes, free to be deleted or rewritten at any time (the 2026-09-21 memory cleanup
+# removed two of them and rewrote the index). A note that is absent, or that carries neither the old
+# pattern nor the new text, is skipped and left exactly as it stands — never re-created, never
+# rewritten, never a failure. Only the repository-owned targets (skills, statusline.sh) are required.
+#
 # The patches, with their reason. stale-ok: every old pattern below is a name this script removes
 # from the user level, so the lines that carry one are the deletion, never a live reference; the
 # same marker stands over each patch call for the same reason.
@@ -50,15 +56,20 @@ else
   fi
 fi
 
-N=0; DONE=0; FAILS=0
+N=0; DONE=0; SKIPPED=0; FAILS=0
 ok() { N=$((N + 1)); }
 applied() { N=$((N + 1)); DONE=$((DONE + 1)); }
+skip() { echo "SKIP $1"; SKIPPED=$((SKIPPED + 1)); }
 fail() { echo "FAIL $1"; FAILS=$((FAILS + 1)); }
 
-patch() {  # $1 relative path, $2 label, $3 old literal, $4 new literal, $5 perl expression
-  local rel=$1 label=$2 old=$3 new=$4 expr=$5
+patch() {  # $1 relative path, $2 label, $3 old literal, $4 new literal, $5 perl expression,
+           # $6 non-empty: the target is a live user note, absent or rewritten is a skip
+  local rel=$1 label=$2 old=$3 new=$4 expr=$5 note=${6:-}
   local f=$DIR/$rel
-  if [ ! -f "$f" ]; then fail "$label: no file $rel under $DIR"; return; fi
+  if [ ! -f "$f" ]; then
+    if [ -n "$note" ]; then skip "$label: no file $rel (a note the user may delete; not re-created)"; return; fi
+    fail "$label: no file $rel under $DIR"; return
+  fi
   if grep -qF -- "$new" "$f"; then
     if grep -qF -- "$old" "$f"; then
       fail "$label: both the old pattern and the new text stand in $rel"
@@ -68,6 +79,10 @@ patch() {  # $1 relative path, $2 label, $3 old literal, $4 new literal, $5 perl
     return
   fi
   if ! grep -qF -- "$old" "$f"; then
+    if [ -n "$note" ]; then
+      skip "$label: $rel carries neither text (the note was rewritten); left as it stands"
+      return
+    fi
     fail "$label: neither the old pattern nor the new text is in $rel"
     return
   fi
@@ -124,6 +139,15 @@ if [ "$SELFTEST" -eq 1 ]; then
   case $out in '') sok ;; *) sbad "the second run reported a failure: $out" ;; esac
   if [ "$after" = "$(cat "$DIR/skills/clean/SKILL.md")" ]; then sok
   else sbad "the second run changed the file"; fi
+  # the note class: a note the user deleted, and a note the user rewrote, are skipped and never written
+  out=$(patch "notes/gone.md" 'gone note' 'a | 10,446' 'only after a fresh measurement' "$ROWS" note)
+  case $out in "SKIP gone note: no file"*) sok ;; *) sbad "an absent note is not skipped: $out" ;; esac
+  if [ ! -e "$DIR/notes/gone.md" ]; then sok; else sbad "an absent note was re-created"; fi
+  mkdir -p "$DIR/notes"
+  printf '%s\n' 'the user rewrote this note' > "$DIR/notes/kept.md"
+  out=$(patch notes/kept.md 'rewritten note' 'a | 10,446' 'only after a fresh measurement' "$ROWS" note)
+  case $out in "SKIP rewritten note: "*"carries neither text"*) sok ;; *) sbad "a rewritten note is not skipped: $out" ;; esac
+  case $(cat "$DIR/notes/kept.md") in 'the user rewrote this note') sok ;; *) sbad "a rewritten note was written anyway" ;; esac
   if [ "$sf" -eq 0 ]; then echo "switch-user: PASS selftest $sn checks"; exit 0; fi
   echo "switch-user: FAIL selftest $sf failure(s), $sn checks passed"
   exit 1
@@ -171,7 +195,7 @@ patch "$MEM/MEMORY.md" 'memory index entry' \
   'session:translate-ru' \
   'session:role with role translator' \
   's{\[Translation: session:translate-ru workflow for files, fork for conversation\]}{[Translation: session:role with role translator for files, fork for conversation]};
-   s{named workflow session:translate-ru \(size-picked slot\) when the source is on disk}{named workflow session:role with role translator (slot picked by the size argument) when the source is on disk}'
+   s{named workflow session:translate-ru \(size-picked slot\) when the source is on disk}{named workflow session:role with role translator (slot picked by the size argument) when the source is on disk}' note
 
 # stale-ok: the old workflow name is what this patch removes
 patch "$MEM/feedback-translation-cold-agent.md" 'memory translation entry' \
@@ -180,7 +204,7 @@ patch "$MEM/feedback-translation-cold-agent.md" 'memory translation entry' \
   's{the session:translate-ru named workflow}{the session:role workflow with role translator}g;
    s{`plugins/session/workflows/translate-ru\.js` in the session plugin, args `\{file, out\?, class\?, submodes\?\}`}{args `{role, in, ask, out, class?, submodes?, size?}`}g;
    s{a haiku `size-estimator` measures the file, then a `translator` agent runs on the slot picked by size \(under 1000 tokens: main-model slot; 1000-2000: opus slot; over 2000: sonnet slot\)}{the translator role runs on the opus slot of the class, one slot down at `size: large`}g;
-   s{`session:translate-ru`}{`session:role` with `role: translator`}g'
+   s{`session:translate-ru`}{`session:role` with `role: translator`}g' note
 
 # stale-ok: the old path of the shared block is what this patch removes
 patch skills/workflow-reliability/SKILL.md 'workflow-reliability shared block' \
@@ -192,11 +216,11 @@ patch skills/workflow-reliability/SKILL.md 'workflow-reliability shared block' \
 patch "$MEM/feedback-translate-ru-verify-output.md" 'memory verify-output description' \
   'description: session:translate-ru' \
   'description: a translation launch' \
-  's{description: session:translate-ru returns out without checking the file exists}{description: a translation launch can return out without the file existing}'
+  's{description: session:translate-ru returns out without checking the file exists}{description: a translation launch can return out without the file existing}' note
 
 if [ "$FAILS" -eq 0 ]; then
-  echo "switch-user: PASS $N patch(es) in place, $DONE applied in this run ($DIR)"
+  echo "switch-user: PASS $N patch(es) in place, $DONE applied in this run, $SKIPPED note(s) skipped ($DIR)"
   exit 0
 fi
-echo "switch-user: FAIL $FAILS failure(s), $N patch(es) in place ($DIR)"
+echo "switch-user: FAIL $FAILS failure(s), $N patch(es) in place, $SKIPPED note(s) skipped ($DIR)"
 exit 1
