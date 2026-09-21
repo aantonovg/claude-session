@@ -1,0 +1,1 @@
+{"hook_event_name":"SubagentStop","session_id":"9f23b1b2-f17c-4d7d-b8f9-73985bfc4508","cwd":"@CWD@","transcript_path":"@PROJDIR@/9f23b1b2-f17c-4d7d-b8f9-73985bfc4508.jsonl","agent_id":"ab4d7e3b85c01fe32","agent_transcript_path":"@PROJDIR@/9f23b1b2-f17c-4d7d-b8f9-73985bfc4508/subagents/workflows/wf_71063446-f6e/agent-ab4d7e3b85c01fe32.jsonl","stop_hook_active":false}

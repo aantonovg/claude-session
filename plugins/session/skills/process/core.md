@@ -60,10 +60,11 @@ that appends the stop row, `hooks/ledger-stop.sh`: a field added or renamed is c
 
 `label` is the launch label, whose prefix carries the resolved cell of the class table, so the
 ledger proves after the fact which cell each stage ran on. `agent_id` is the one field that cannot
-be known before the launch: it is filled in from the launch result in the same turn the launch
-returns, and a row left without one is a defect fixed in that turn, because that hook finds the
-launch row by that id and writes nothing when it finds none. A launch whose result carries no id
-keeps the field null; rows with no stop row end at the next row of the same kind. The ledger is
+be known before the launch: it is filled in from the launch result when the row is written after
+the result is in hand, and otherwise stays null. A written row is never rewritten: that hook binds
+the stop of a launch whose row has no id to the oldest such row, when the launched work names the
+task directory, and that stop row names the stage. Rows with no stop row end at the next row of
+the same kind. The ledger is
 also the count the ceilings are read against, and the loop guard reads it to see the same check
 fixed twice.
 

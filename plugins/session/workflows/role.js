@@ -2177,12 +2177,13 @@ function ledgerRows(text) {
 }
 const stopIds = rows => new Set(rows.filter(r => r.event === 'stop' && r.agent_id).map(r => r.agent_id))
 // The stages that have a stop row: a launch row of the stage whose agent_id has a stop row, or the
-// intent stop row, which names its stage itself because no launch writes the intent.
+// stop row that names its stage itself: the intent stop row (no launch writes the intent) and the
+// stop row bound to a launch row without an id (unnamedStopRow()).
 function stoppedStages(rows) {
   const stopped = stopIds(rows)
   const done = new Set()
   for (const r of rows) {
-    if (r.event === 'stop' && r.stage === 'intent') done.add('intent')
+    if (r.event === 'stop' && PROCESS_STAGES.includes(r.stage)) done.add(r.stage)
     else if (!r.event && r.agent_id && stopped.has(r.agent_id) && PROCESS_STAGES.includes(r.stage)) done.add(r.stage)
   }
   return done
@@ -2215,6 +2216,30 @@ function intentStopDue(ledgerText, files) {
   if (rows.some(r => r.event === 'stop' && r.stage === 'intent')) return false
   const stopped = stopIds(rows)
   return rows.some(r => !r.event && r.agent_id && stopped.has(r.agent_id) && r.stage !== 'intent')
+    || rows.some(r => r.event === 'stop' && r.agent_id && r.stage && r.stage !== 'intent')
+}
+// unnamedStopRow(ledgerText, id, ts, agentHead, taskDir): the stop row of a launch whose row carries
+// no agent_id. The session writes the launch row before the launch, and filling the id in afterwards
+// is an edit of a written row that a permission check may deny (gate run base/20260921-084315: the
+// row kept agent_id null, the finished launch got no stop row, and the resume line after a clear
+// named no stage done). hooks/ledger-stop.sh calls this only when no launch row names the stopping
+// agent or its run. The stop binds to the oldest launch row without an id and without a bound stop
+// row, and names that row's stage and step, so the reader counts the stage done; it binds only when
+// the head of the agent's transcript names the task directory, so work of another task or of no task
+// never closes a row. null: nothing to write (no such row, no match, or a stop of this id stands).
+function unnamedStopRow(ledgerText, id, ts, agentHead, taskDir) {
+  const rows = ledgerRows(ledgerText)
+  const dir = String(taskDir || '').replace(/\/+$/, '')
+  if (!id || !dir || String(agentHead || '').indexOf(dir + '/') === -1) return null
+  if (rows.some(r => r.agent_id === id)) return null
+  const key = r => `${r.stage}#${r.step}`
+  const bound = new Set(rows.filter(r => r.event === 'stop' && r.agent_id && r.stage).map(key))
+  const open = rows.filter(r => !r.event && !r.agent_id && r.stage && !bound.has(key(r)))
+  if (!open.length) return null
+  const l = open[0]
+  const out = { ts: ts, agent_id: id, event: 'stop', stage: l.stage }
+  for (const k of ['step', 'class', 'depth', 'slot', 'label']) if (l[k] != null) out[k] = l[k]
+  return out
 }
 function intentStopRow(ledgerText, ts) {
   const depth = taskDepth(ledgerRows(ledgerText))
@@ -2256,6 +2281,47 @@ function resumeLine(dir, ledgerText, files, intentText) {
   return out.join(' ')
 }
 
+// ---- the gate over behavior verdicts ----
+// tests/rebuild/verdicts.sh reads the kind of a scenario out of tests/measure/rebuild-scenarios-0.16.txt
+// and the verdict of every recorded run of it, and decides here. judgment: the PASS rule rests on the
+// model's reading of content, so one run proves little; 2 PASS out of at most 3 runs pass, 2 FAIL
+// fail, and fewer runs are unsettled. machine: the rule rests only on what hooks and scripts write,
+// so the newest run decides. Only runs on the current code count (run.current, set by the caller
+// from the commit of the run).
+const GATE_KINDS = ['judgment', 'machine']
+// scenarioKind(text, key): the kind line of that scenario's block, or null.
+function scenarioKind(text, key) {
+  let on = false
+  for (const l of String(text == null ? '' : text).split('\n')) {
+    if (l && !/^[\s#]/.test(l)) { if (on) break; on = l.split(/\s/)[0] === key; continue }
+    const m = on && l.match(/^\s+kind:\s*([a-z]+)\b/)
+    if (m) return GATE_KINDS.includes(m[1]) ? m[1] : null
+  }
+  return null
+}
+// gateDecision(kind, runs): runs oldest first, each {verdict: 'PASS'|'FAIL', current: bool}.
+// Returns {kind, pass, fail, decision} with the counts over the current runs and a decision of
+// PASS, FAIL, unsettled, or no kind.
+function gateDecision(kind, runs) {
+  const cur = (runs || []).filter(r => r && r.current).map(r => r.verdict)
+  const pass = cur.filter(v => v === 'PASS').length
+  const fail = cur.filter(v => v === 'FAIL').length
+  let decision = 'unsettled'
+  if (kind === 'machine') {
+    const last = cur[cur.length - 1]
+    if (last === 'PASS' || last === 'FAIL') decision = last
+  } else if (kind === 'judgment') {
+    let p = 0, f = 0
+    for (const v of cur.slice(0, 3)) {
+      if (v === 'PASS') p++
+      if (v === 'FAIL') f++
+      if (p === 2) { decision = 'PASS'; break }
+      if (f === 2) { decision = 'FAIL'; break }
+    }
+  } else decision = 'no kind'
+  return { kind: kind || null, pass, fail, decision }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
@@ -2276,7 +2342,8 @@ if (typeof module !== 'undefined' && module.exports) {
     MAKE_STAGES, stageRange, stageOn, makePlan, runVerdict, negativeControl, cycleState,
     fixerState, fixerDone, keyCheckState, controlTree, stageStop, makeStatus, makeResult,
     probeStatus, probeResult,
-    PROCESS_STAGES, STAGE_OFF, ledgerRows, resumeState, resumeLine, intentStopDue, intentStopRow,
+    PROCESS_STAGES, STAGE_OFF, ledgerRows, resumeState, resumeLine, intentStopDue, intentStopRow, unnamedStopRow,
+    GATE_KINDS, scenarioKind, gateDecision,
     DEFAULT_ASPECTS, ASPECTS_HEAD, defaultAspects, intentAspects,
   }
 }

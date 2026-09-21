@@ -10,6 +10,9 @@
 #    criteria and aspects lines, its default aspect table equals defaultAspects() of lib/block.js,
 #    intentAspects() reads the approved line back (with a mutant), and SKILL.md cites the form and
 #    the resume line.
+# r4 the real clear of gate run base/20260921-084315 replayed from fixtures/resume-clear through both
+#    hooks: a launch row left with agent_id null still gets its stop row and the resume line names
+#    the stage done; a block.js that binds no such row fails the replay.
 # A throwaway HOME for the hook scripts: no session starts, no credential, keychain or account file
 # is read or copied. Temp dirs only, no network, under 10 s.
 set -u
@@ -59,6 +62,16 @@ eq('lite next', b.resumeState(lite, ['task.md']).next, 'result')
 const line = b.resumeLine('/x/tasks/d', led, ['intent.md'], 'Review aspects: simplicity')
 for (const want of ['Open task: /x/tasks/d', 'Next stage: specification', 'The intent is confirmed', 'intent, subtasks', 'Approved review aspects: simplicity'])
   if (line.indexOf(want) === -1) bad.push(`line lacks [${want}]: ${line}`)
+// a launch row the session left without an id (gate run base/20260921-084315)
+const nul = { ts: 't', stage: 'subtasks', step: 1, depth: 'std', label: 'x', agent_id: null }
+const head = '{"message":{"content":"out: /h/tasks/d/subtasks.md"}}'
+const u = b.unnamedStopRow(J([nul]), 'wf_9', 'T', head, '/h/tasks/d/')
+eq('unnamed stop row', u, { ts: 'T', agent_id: 'wf_9', event: 'stop', stage: 'subtasks', step: 1, depth: 'std', label: 'x' })
+eq('unnamed: another task dir binds nothing', b.unnamedStopRow(J([nul]), 'wf_9', 'T', head, '/h/tasks/e'), null)
+eq('unnamed: a bound row binds nothing twice', b.unnamedStopRow(J([nul, u]), 'wf_8', 'T', head, '/h/tasks/d'), null)
+eq('unnamed: a stop of this id stands', b.unnamedStopRow(J([nul, { ts: 't', stage: 'x', agent_id: 'wf_9' }]), 'wf_9', 'T', head, '/h/tasks/d'), null)
+eq('unnamed: the bound stage is done', b.resumeState(J([nul, u]), ['intent.md']).done, ['subtasks'])
+eq('unnamed: due after the bound stop', b.intentStopDue(J([nul, u]), ['intent.md']), true)
 // the intent form
 eq('default aspects std', b.defaultAspects('std'), ['reliability', 'simplicity'])
 eq('default aspects full', b.defaultAspects('full'), ['reliability', 'simplicity', 'testability'])
@@ -82,6 +95,7 @@ PY
 mutant "next stage off by one" 'i > lastIdx' 'i >= lastIdx'
 mutant "intent row written twice" "if \(rows\.some\(r => r\.event === 'stop' && r\.stage === 'intent'\)\) return false" ''
 mutant "launch row counted without its stop row" 'stopped\.has\(r\.agent_id\) && PROCESS_STAGES' 'PROCESS_STAGES'
+mutant "unnamed stop bound without the task dir" "if \(!id \|\| !dir \|\| String\(agentHead \|\| ''\)\.indexOf\(dir \+ '/'\) === -1\) return null" ''
 mutant "aspects note kept" "replace\(/\\\\\(\[\^\)\]\*\\\\\)/g, ' '\)" "replace(/x^/g, ' ')"
 
 # ---- r2: the hooks, over a throwaway HOME ----
@@ -116,6 +130,49 @@ check "r2 startup: no resume line" bash -c '! printf "%s" "$1" | grep -q "Open t
 echo "$T/nowhere" > "$(dirname "$D")/current"
 check "r2 a dead pointer: no resume line" bash -c '! printf "%s" "$1" | grep -q "Open task:"' _ "$(ctx clear)"
 HOME=$REAL_HOME; export HOME
+
+# ---- r4: the real clear of gate run base/20260921-084315 (commit e97f51c), replayed ----
+# fixtures/resume-clear holds that run's task directory as it stood at the clear (the launch row the
+# session wrote before the launch, with agent_id null, and nothing after it), its tasks/current
+# pointer, the first record of the one agent's transcript, and the two hook inputs rebuilt from the
+# transcript (SubagentStop of agent ab4d7e3b85c01fe32 of run wf_71063446-f6e, SessionStart clear).
+# Paths are relocated through @TASKDIR@, @PROJDIR@ and @CWD@. The run saw "No stage has a stop row
+# yet. Next stage: intent." although subtasks.md had been written by a finished launch.
+FX=$REPO/tests/rebuild/fixtures/resume-clear
+replay() { # <plugin root> <home>: prints the resume line after the stop and the clear
+  local root=$1 h=$2 cwd enc pd td
+  cwd=$h/proj/project-resume; mkdir -p "$cwd"
+  enc=$(printf '%s' "$cwd" | sed 's#[^A-Za-z0-9-]#-#g'); pd=$h/.claude/projects/$enc
+  td=$pd/tasks/2026-09-21-slug-max-length
+  mkdir -p "$td" "$pd/9f23b1b2-f17c-4d7d-b8f9-73985bfc4508/subagents/workflows/wf_71063446-f6e"
+  cp -R "$FX/task/." "$td/"
+  rel() { sed -e "s|@TASKDIR@|$td|g" -e "s|@PROJDIR@|$pd|g" -e "s|@CWD@|$cwd|g" "$1"; }
+  rel "$FX/current" > "$pd/tasks/current"
+  rel "$FX/agent-ab4d7e3b85c01fe32.jsonl" > "$pd/9f23b1b2-f17c-4d7d-b8f9-73985bfc4508/subagents/workflows/wf_71063446-f6e/agent-ab4d7e3b85c01fe32.jsonl"
+  rel "$FX/subagent-stop.json" | HOME=$h bash "$root/hooks/ledger-stop.sh"
+  rel "$FX/session-start-clear.json" | HOME=$h bash "$root/hooks/modes.sh" 2>/dev/null \
+    | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null | grep '^Open task:'
+  printf 'STOPROWS %s\n' "$(jq -rc 'select(.event=="stop") | .stage // "-"' "$td/ledger.jsonl" 2>/dev/null | tr '\n' ' ')"
+}
+r4ok() { # <replay output>: the finished launch has its stop row and the line names subtasks done
+  printf '%s' "$1" | grep -q 'STOPROWS subtasks intent ' \
+    && printf '%s' "$1" | grep -q 'Stages with a stop row, done: intent, subtasks; last: subtasks\.' \
+    && printf '%s' "$1" | grep -q 'Next stage: specification\.' \
+    && printf '%s' "$1" | grep -q 'The intent is confirmed'
+}
+export -f r4ok
+out=$(replay "$P" "$T/h4")
+check "r4 the real clear: stop row for the null-id launch, resume line names subtasks done [$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-400)]" r4ok "$out"
+# the same replay over a plugin copy whose block.js binds no launch row without an id: must fail
+mkdir -p "$T/pm/lib"; cp -R "$P/hooks" "$T/pm/hooks"
+python3 - "$BLOCK" "$T/pm/lib/block.js" <<'PY'
+import re, sys
+s = open(sys.argv[1]).read()
+m, n = re.subn(r"const open = rows\.filter\(", "const open = [].filter(", s, count=1)
+open(sys.argv[2], 'w').write(m); sys.exit(0 if n == 1 else 1)
+PY
+check "r4 mutant no binding applied" test $? -eq 0
+check "r4 mutant no binding is caught by the replay" bash -c '! r4ok "$1"' _ "$(replay "$T/pm" "$T/h4m")"
 
 # ---- r3: the intent form and the two statements of the skill ----
 check "r3 skills/process/intent-form.md exists" test -f "$FORM"
