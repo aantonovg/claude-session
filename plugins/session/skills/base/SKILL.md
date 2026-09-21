@@ -142,6 +142,8 @@ A fork never polls or waits: at most 3 short checks (one Bash call ≤120 s each
 
 Default long wait: the fork starts the job detached, always ending with its exit code and the done-file, whatever the outcome — `mkdir -p <dir> && rm -f <dir>/rc <dir>/done`, the job written to `<dir>/job.sh`, then `nohup sh -c 'sh <dir>/job.sh; echo $? > <dir>/rc; touch <dir>/done' > <log> 2>&1 &`, or a loop that exits on the condition and ends the same way — and returns the three paths (`<log>`, `<dir>/rc`, `<dir>/done`). Main session waits on the file: a `Monitor`, or one `run_in_background` Bash `until [ -f <dir>/done ]; do sleep 60; done; cat <dir>/rc; tail -n 20 <log>`; that output is the report source, no further call.
 
+A `Monitor` lives at most 30 min and never ends silently: at its deadline the main session gets one `Monitor expired … no events delivered` notice. Done-file still absent then: start the `Monitor` again, or switch to the `run_in_background` until-loop.
+
 A wait that needs judgment (permission prompts in a tmux pane, branching on what appears) goes to the waiting role of a named launch, started by the MAIN session. Its prompt carries: condition, poll command shape (~120 s, each call under 150 s), total budget, dialog rules, facts wanted, word limit, never print secrets. Its mandate: babysit our own test sessions, confirm routine work inside the test directory, refuse and report anything outside (other paths, deletions, pushes, settings or plugin changes).
 
 Main session may start async work with `run_in_background` and be woken by completion. Inside a fork: forbidden.
