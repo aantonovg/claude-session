@@ -12,6 +12,12 @@ needed. It fixes no carrier: which carrier does a stage is read from the usage c
 session was given at its start and again after a compact. A newly enabled plugin widens what a
 stage can do, with no edit of this page.
 
+A context line that starts `Open task:` means this session resumes a task after a clear, a compact
+or a resume: the intent gate and every stage the line lists with a stop row are done. Continue at
+the stage it names next, in that task directory, and ask the user nothing those stages, `intent.md`
+or `decisions.md` already settled; an open point a done stage wrote goes on with its recommended
+option and is named in the closure report. Skip steps 3 to 5 below.
+
 ## Start (do this now)
 
 0. Read `core.md` next to this file first: task directory, ledger, cost rules, harness gate,
@@ -35,7 +41,8 @@ stage can do, with no edit of this page.
 4. At `std` and `full` no stage starts before the user confirmed the intent text and the quality
    criteria, and nothing at all is launched before that word: the intent text, the criteria and the
    open decisions are your own writing in chat, never a job you send away, because this level
-   answers to the user alone. Between the task and the confirmation the turn holds no launch and no
+   answers to the user alone. The confirmation always uses the form of `intent-form.md` next to
+   this file, its `Review aspects` line included, written into `intent.md` and shown in chat. Between the task and the confirmation the turn holds no launch and no
    task file of a later stage. At `lite` the work starts at once, on your own reading of the
    request.
 5. Create the task directory and write the pointer, one command (`core.md`, "Task directory").
@@ -59,7 +66,7 @@ which it drops, stands in `core.md`, "Task directory", and nowhere else.
 | `verification-plan` — the oracle of every invariant, and the plan of the work | `verification-plan.md`, `implementation-plan.md` | every invariant has an oracle row: `existing`, `missing` or `no possible`; the plan names the steps and their order | folded into the intent level | yes | yes |
 | `checks` — tests or control calls, ladder level c | `tests.md` | coverage read from the two lists; no scenario id in a test name | – | yes | yes, plus the negative control |
 | `result` — the code, the document, the state, ladder levels a and b | `changes`, `runs` | the oracle is run and the run reports PASS | yes | yes | yes |
-| `review` — only where no oracle is possible, ladder level e | `reviews`, `evidence` | evidence chain over the approved aspects, its facts written into `evidence`; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |
+| `review` — only where no oracle is possible, ladder level e | `reviews`, `evidence` | evidence chain over the aspects of the `Review aspects` line of `intent.md` and no other, its facts written into `evidence`; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |
 | `coverage` — scenarios without tests, tests without scenarios | `coverage.md` | both lists are written out, empty ones said so | – | yes | yes |
 | `closure` — what was done, what stays open | `report.md` | gaps, hit ceilings and unverified areas named | short | yes | yes |
 
