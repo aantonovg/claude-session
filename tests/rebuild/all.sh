@@ -17,7 +17,7 @@ for a in "$@"; do
   esac
 done
 
-ORDER="build-sync agents text contracts roles chain stages hooks carrier-free toolplugin"
+ORDER="build-sync agents text contracts roles chain stages hooks carrier-free toolplugin waits"
 ran=0; failed=
 
 for t in $ORDER; do

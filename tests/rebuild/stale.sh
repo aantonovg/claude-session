@@ -12,29 +12,33 @@
 # Scope (the plan's scope rule): the whole tracked tree, `git ls-files`, plus every file under
 # <dir>. It is the only tree-wide test.
 #
-# What counts as a retired name is not a pattern list of this file: it is staleNameHits() of the
-# shared block, executed here over lib/block.js, so the retired names live in one place with the
-# rest of the rosters and the rule is tested by mutation below instead of read. Only qualified forms
-# count (`session:<old name>`, an `agentType`/`subagent_type` value, `/session:pipeline`,
-# `/session:review`, a path of a deleted file, the five `stage-<x>` stems, the two mode keys of the
-# old state file the U9 answer line reports). The bare words `research`, `review`, `build`,
-# `waiter`, `translator` and `web-researcher` are live names of the new set and never match alone.
+# Neither what counts as a retired name nor what counts as a declaration is a pattern list of this
+# file: both are staleFileHits() of the shared block, executed here over lib/block.js, so the rule
+# lives in one place with the rosters and is tested by the mutants below instead of read. Only
+# qualified forms count (`session:<old name>`, an `agentType`/`subagent_type` value, the two retired
+# slash commands, a path of a deleted file, the five `stage-<x>` stems, the two mode keys of the old
+# state file the U9 answer line reports). The bare words `research`, `review`, `build`, `waiter`,
+# `translator` and `web-researcher` are live names of the new set and never match alone.
 #
-# Three kinds of line are a declaration that a name is retired, never a reference to it:
+# Four kinds of line are a declaration that a name is retired, never a reference to it, and each one
+# is scoped to the file kind that owns it: a tree-wide escape would drop a live launch that merely
+# stands beside a date or beside the word FAIL (the scopes are in the shared block, with the rule):
 #   - a roster of the shared block: a line inside a `const NAME = [` array literal, read only inside
 #     lib/block.src.js, lib/block.js and the stamped shared-block region of a workflow. The carrier
 #     roster and OLD_CARRIERS list the retired names on purpose, which is what makes
 #     tests/rebuild/carrier-free.sh catch a process text that names one;
-#   - a line that calls such a launch a FAIL: the PASS rules of the gate scenarios have to name
-#     every retired carrier, and that sentence is the opposite of a live reference;
-#   - a line that dates its statement (`2026-09-16`): a record of what happened that day, not an
-#     instruction to do it again. This is what keeps the dated memory entries of the user level and
-#     the measurement records readable without a rewrite of the user's history;
-#   - every line under a `## Version log` heading: a version log records what a released version
-#     shipped, which is the same kind of statement as a dated one, and the rebuild rewrites no
-#     released version.
-# A line may also carry the marker `stale-ok:` with a reason; such a line is counted and printed,
-# and the marker is allowed under tests/rebuild/ only, so no file of the product tree can opt out.
+#   - a line that calls such a launch a FAIL, in the files that state gate PASS rules only (the
+#     scenario set of tests/measure, the tests of tests/rebuild): such a sentence has to name every
+#     retired carrier, and it is the opposite of a live reference;
+#   - a line that dates its statement (`2026-09-16`), in the memory files of the user level only: a
+#     record of what happened that day, not an instruction to do it again. This keeps the dated
+#     memory entries readable without a rewrite of the user's history;
+#   - the lines under a `## Version log` heading of a markdown file, up to the next heading of that
+#     file: a version log records what a released version shipped, which is the same kind of
+#     statement as a dated one, and the rebuild rewrites no released version.
+# A line may also carry the marker `stale-ok:` with a reason; the marker covers its own line and the
+# lines after it up to the next blank line, it is counted and printed by the line of the marker
+# itself, and it is allowed under tests/rebuild/ only, so no file of the product tree can opt out.
 #
 # Excluded paths, each a dated record of a past run or a past plan rather than a live reference, and
 # each asserted to match at least one tracked file, so an exclusion that outlived its files is a
@@ -91,10 +95,6 @@ cat > "$T/scan.js" <<'JS'
 const fs = require('fs')
 const b = require(process.argv[2])
 const files = fs.readFileSync(process.argv[3], 'utf8').split('\n').filter(x => x.length)
-const BEGIN = '// ---- shared block'
-const END = '// ---- end shared block'
-const ROSTER = /^const [A-Z][A-Z0-9_]* = \[/
-const DATED = /\b\d{4}-\d{2}-\d{2}\b/
 const hits = []
 const marks = []
 for (const path of files) {
@@ -105,29 +105,9 @@ for (const path of files) {
     continue
   }
   if (text.indexOf('\u0000') !== -1) continue // binary
-  const isBlock = /lib\/block(\.src)?\.js$/.test(path)
-  let inBlock = isBlock
-  let inRoster = false
-  let inLog = false
-  text.split('\n').forEach((line, i) => {
-    const s = line.trim()
-    if (/^#+\s+Version log\b/i.test(s)) inLog = true
-    if (inLog) return
-    if (!isBlock) {
-      if (s.startsWith(END)) { inBlock = false; return }
-      if (s.startsWith(BEGIN)) { inBlock = true; return }
-    }
-    if (inBlock) {
-      if (inRoster) { if (s.indexOf(']') !== -1) inRoster = false; return }
-      if (ROSTER.test(s)) { inRoster = s.indexOf(']') === -1; return }
-    }
-    const found = b.staleNameHits(line)
-    if (!found.length) return
-    if (/\bFAIL\b/.test(line)) return // the line calls such a launch a FAIL
-    if (DATED.test(line)) return // a record of that day, not an instruction
-    if (line.indexOf('stale-ok') !== -1) { marks.push(`${path}:${i + 1}`); return }
-    found.forEach(t => hits.push(`${path}:${i + 1} names the retired ${t}`))
-  })
+  const r = b.staleFileHits(path, text)
+  r.hits.forEach(h => hits.push(`${path}:${h.line} names the retired ${h.name}`))
+  r.marks.forEach(m => marks.push(`${path}:${m}`))
 }
 hits.slice(0, 25).forEach(h => console.log(h))
 if (hits.length > 25) console.log(`... ${hits.length - 25} more`)
@@ -158,8 +138,22 @@ else fail "s1 no live reference to a retired name of the 0.15 set"; fi
 # ---- s2: executed, not read ----
 # Every form of the rule is seen on a line that carries it, and a mutant of the shared block that
 # drops that form stops seeing it. Without this group a broken pattern would print "PASS" over a
-# tree full of old names.
-mk() { printf '%s\n' "$2" > "$T/f-$1.txt"; printf '%s\n' "$T/f-$1.txt" > "$T/l-$1"; }
+# tree full of old names. Every fixture stands at the path of the file kind it speaks for, because
+# the declaration kinds are scoped by path: the very same line is a record in a memory file and a
+# live reference in the product tree, and that difference is checked in both directions below.
+mk() { # mk <name> <line>: a one-line fixture in the product tree, where no escape is in scope
+  mkat "$1" "plugins/session/skills/f-$1.md" "$2"
+}
+mkat() { # mkat <name> <relative path under $T> <line>
+  mkdir -p "$T/$(dirname "$2")"
+  printf '%s\n' "$3" > "$T/$2"
+  printf '%s\n' "$T/$2" > "$T/l-$1"
+}
+SCEN=tests/measure/rebuild-scenarios-0.16.txt # the gate scenarios: the FAIL escape is in scope
+MEMO=projects/enc/memory/note.md              # a memory file of the user level: a date is a record
+TESTF=tests/rebuild/f-marked.sh               # a test of this directory: the marker is in scope
+# stale-ok: every fixture line of this group quotes a retired form on purpose, to prove the scan
+# sees it; the group ends at the blank line below
 mk launch 'Send the research stage to session:research at class c3.'
 mk agenttype "const o = { agentType: 'session:stage-author', phase: 'Plan' }"
 mk slash 'Then run /session:pipeline full and wait for the line.'
@@ -171,22 +165,63 @@ for c in launch agenttype slash path file role statekey; do
   check "s2 the scan sees a retired name of kind $c" \
     bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/l-$c"
 done
+
 # the live names of the new set are no hits, or this test would forbid the plugin its own names
 mk live 'The research carrier, the waiter role and the translator role are launched by name: session:role, session:chain, session:make, session:probe, and the review of a document reads the evidence chain. The build step is bin/build.sh.'
 check "s2 the live names of the new set are clean" node "$T/scan.js" "$BLOCK" "$T/l-live"
-# the three declaration kinds, executed: each must come back clean, and the same line without its
-# declaration must come back as a hit
-mk decl-fail 'A launch of session:build, session:dev, session:research, session:review-fix, session:translate-ru or any session:stage- agent is a FAIL.'
-check "s2 a line that calls such a launch a FAIL is a declaration" node "$T/scan.js" "$BLOCK" "$T/l-decl-fail"
-mk decl-date 'On 2026-09-16 a session:dev run blocked on git and the resume replayed the cached result.'
-check "s2 a line that dates its statement is a record" node "$T/scan.js" "$BLOCK" "$T/l-decl-date"
-mk decl-mark 'mut noold "s/session:review-fix/x/"  # stale-ok: the retired roster, quoted to prove the rule'
-check "s2 a line with the marker is opted out" node "$T/scan.js" "$BLOCK" "$T/l-decl-mark"
+
+# the declaration kinds, executed, each one in three directions: clean inside its scope, a hit in
+# the product tree (the scope is what keeps a live launch beside a date or beside the word FAIL
+# visible), and a hit without the declaration at all
+# stale-ok: the fixture lines of this group quote retired names to prove the scoped escapes
+FAILLINE='A launch of session:build, session:dev, session:research, session:review-fix, session:translate-ru or any session:stage- agent is a FAIL.'
+DATELINE='On 2026-09-16 a session:dev run blocked on git and the resume replayed the cached result.'
+MARKLINE='mut noold "s/session:review-fix/x/"  # stale-ok: the retired roster, quoted to prove the rule'
+mkat decl-fail "$SCEN" "$FAILLINE"
+mkat fail-prod "plugins/session/skills/f-fail.md" "$FAILLINE"
+mkat decl-date "$MEMO" "$DATELINE"
+mkat date-prod "plugins/session/skills/f-date.md" "$DATELINE"
+mkat decl-mark "$TESTF" "$MARKLINE"
+mkat mark-prod "plugins/session/skills/f-mark.md" "$MARKLINE"
 mk no-decl 'A session:dev run blocked on git and the resume replayed the cached result.'
-check "s2 the same line without a date, a FAIL or the marker is a hit" \
-  bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/l-no-decl"
+for c in decl-fail decl-date decl-mark; do
+  check "s2 the $c line is a declaration inside its scope" node "$T/scan.js" "$BLOCK" "$T/l-$c"
+done
+for c in fail-prod date-prod mark-prod no-decl; do
+  check "s2 the $c line is a hit outside that scope" \
+    bash -c '! node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$BLOCK" "$T/l-$c"
+done
+
+# the marker covers the lines after it up to the next blank line, and no further: a patch table or a
+# fixture group is written over several lines, and the line after the blank is a hit again
+# stale-ok: the fixture written below is a marked patch table and one line past its blank line
+mkdir -p "$T/tests/rebuild"
+{ printf '%s\n' '# stale-ok: the patch table below removes these names'
+  printf '%s\n' "patch skills/tmux-sessions/SKILL.md 'session:waiter' \\"
+  printf '%s\n' "  's{session:waiter}{session:role}'"
+  printf '\n'
+  printf '%s\n' 'tmux send-keys -t "$s" "/session:pipeline full" Enter'
+} > "$T/tests/rebuild/f-block.sh"
+printf '%s\n' "$T/tests/rebuild/f-block.sh" > "$T/l-markblock"
+check "s2 a marked block ends at the blank line: exactly the line after it is a hit" \
+  bash -c 'out=$(node "$1" "$2" "$3"); [ "$(printf %s "$out" | grep -c "names the retired")" = 1 ] &&
+    printf %s "$out" | grep -q ":5 names the retired"' _ "$T/scan.js" "$BLOCK" "$T/l-markblock"
+
+# the version log of a markdown file ends at its next heading, or one log heading would silence the
+# rest of the file
+# stale-ok: the fixture written below is a version log and a section after it
+mkdir -p "$T/plugins/session"
+{ printf '%s\n' '## Version log' '- 0.15.4 the pipeline skill: /session:pipeline full' '' '## Modes'
+  printf '%s\n' 'The mode file is written by hooks/session-modes.sh at every start.'
+} > "$T/plugins/session/f-log.md"
+printf '%s\n' "$T/plugins/session/f-log.md" > "$T/l-log"
+check "s2 a version log is a declaration and the heading after it ends the log" \
+  bash -c 'out=$(node "$1" "$2" "$3"); [ "$(printf %s "$out" | grep -c "names the retired")" = 1 ] &&
+    printf %s "$out" | grep -q ":5 names the retired"' _ "$T/scan.js" "$BLOCK" "$T/l-log"
+
 # the roster rule holds inside the shared block only: the same roster line in an ordinary file is a
 # hit, or any file could hide a reference behind a capitalised array name
+# stale-ok: the two roster fixtures below quote retired agent names, once in each kind of file
 mkdir -p "$T/lib" "$T/plain"
 printf "const CARRIER_AGENTS = ['stage-author', 'code-reviewer']\n" > "$T/lib/block.js"
 printf '%s\n' "$T/lib/block.js" > "$T/l-roster"
@@ -209,6 +244,7 @@ mut() { # mut <name> <perl expression>: a mutant of the shared block that drops 
     bash -c 'node -e "require(process.argv[1])" "$1" 2> "$2/mut.err" || { tail -2 "$2/mut.err"; exit 1; }' \
     _ "$T/$1.js" "$T"
 }
+# stale-ok: every mutant below names the retired form it removes from the rule
 mut noagent "s/'stage-reviewer'/'zz-stage-reviewer'/g"
 check "s2 the mutant that renames a retired agent is caught" \
   bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/noagent.js" "$T/l-role"
@@ -221,6 +257,22 @@ check "s2 the mutant that renames a retired path is caught" \
 mut nokey "s/const STALE_STATE_KEYS = \[.*\]/const STALE_STATE_KEYS = ['zznokey']/"
 check "s2 the mutant that drops the mode keys of the old state file is caught" \
   bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/nokey.js" "$T/l-statekey"
+
+# the scope of every escape is mutated too: a mutant that lets an escape run over the whole tree
+# stops seeing the product-tree fixtures above, which is what a line-wide escape would do in the
+# repo
+mut failwide "s|const STALE_FAIL_SCOPE = \[.*\]|const STALE_FAIL_SCOPE = [/./]|"
+check "s2 the mutant that widens the FAIL escape to every file is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/failwide.js" "$T/l-fail-prod"
+mut datewide "s|const STALE_DATED_SCOPE = \[.*\]|const STALE_DATED_SCOPE = [/./]|"
+check "s2 the mutant that widens the date escape to every file is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/datewide.js" "$T/l-date-prod"
+mut markwide "s|const STALE_MARK_SCOPE = \[.*\]|const STALE_MARK_SCOPE = [/./]|"
+check "s2 the mutant that lets any file carry the marker is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/markwide.js" "$T/l-mark-prod"
+mut logsticky "s|inLog = STALE_LOG_HEAD\.test\(s\)|inLog = inLog \|\| STALE_LOG_HEAD.test(s)|"
+check "s2 the mutant whose version log never ends is caught" \
+  bash -c 'node "$1" "$2" "$3" > /dev/null' _ "$T/scan.js" "$T/logsticky.js" "$T/l-log"
 
 # ---- s3: the marker is allowed under tests/rebuild/ only ----
 marked=$(STALE_MARKS=1 node "$T/scan.js" "$BLOCK" "$T/files" 2>/dev/null | sed -n 's/^marked //p')
