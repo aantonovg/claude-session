@@ -13,7 +13,7 @@
       "name": "session",
       "source": "./plugins/session",
       "description": "Session rules as user-invocable skills: base (named workflows, classes and slots, verification first), process (the stages, gates and task files of one task), codex (codex models behind a stage), ask (non-blocking questions). README holds the cache and compact reference.",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "keywords": [
         "session",
         "base",

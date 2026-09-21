@@ -86,6 +86,18 @@ def render_table():
     for cls in sorted(classes['table']):
         row = classes['table'][cls]
         out.append('| %s | %s |' % (cls, ' | '.join(' / '.join(row[k].split('/')) for k in keys)))
+    fixed = classes.get('fixedCells') or {}
+    if fixed:
+        # the fixed seats live inside the generated region too: a main session that reads the base
+        # text sees the cell without opening lib/classes.json
+        seats = []
+        for seat in sorted(fixed):
+            cells = fixed[seat]
+            bits = ['%s %s' % (seat, cells[k]) if k == 'none' else 'under %s %s' % (k, cells[k])
+                    for k in keys if k in cells]
+            seats.append(', '.join(bits))
+        out += ['', 'Fixed seats, which no class and no size move: ' + '; '.join(seats)
+                + '. The longest matching submode row wins.']
     return out
 
 

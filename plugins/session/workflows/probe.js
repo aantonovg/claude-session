@@ -97,7 +97,7 @@ const CLASSES = {
       "no-fable": "ops-me/ops-me/son-hi",
       "no-sonnet no-opus": "fab-lo/fab-lo/fab-lo",
       "no-sonnet no-fable": "ops-me/ops-me/ops-me",
-      "no-opus no-fable": "son-me/son-hi/son-hi"
+      "no-opus no-fable": "son-hi/son-hi/son-hi"
     },
     "c4": {
       "none": "fab-me/ops-hi/son-hi",
@@ -124,6 +124,13 @@ const CLASSES = {
     "c3": "c4",
     "c4": "c5",
     "c5": "c5"
+  },
+  "fixedCells": {
+    "guide": {
+      "none": "son-me",
+      "no-sonnet": "ops-lo",
+      "no-sonnet no-opus": "fab-lo"
+    }
   },
   "roles": {
     "plan-author": {
