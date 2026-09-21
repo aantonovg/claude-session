@@ -435,7 +435,8 @@ check "k12 README section /reload-plugins or restart" bash -c 'grep -q "/reload-
 pre=$(awk '/^## Version log/{exit} {print}' "$RD")
 check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
 
-# k13: the change set of this branch, and no version bump (suite pass itself is the rest of k13)
+# k13: the change set of this branch, and the two version files agree (suite pass itself is the
+# rest of k13; the bump to 0.16.0 is asserted by k14)
 # The change set is read against the branch point, never against the working tree alone: the parts
 # of the rebuild commit as they land, so `git status` is empty right after a commit and a check over
 # it would pass over nothing. A per-file allow list says nothing here either — the rebuild rewrites
@@ -452,6 +453,31 @@ check "k13 no record, review or cost-tool path in the change set (extra: $frozen
 bad=$(printf '%s\n' "$changed" | grep -vE '^(README\.md|CLAUDE\.md|\.claude-plugin/|\.claude/|docs/|plugins/session/|tests/)' | tr '\n' ' ')
 check "k13 change set within the product, test and doc tree (extra: $bad)" test -z "$bad"
 check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
+
+# k14: the 0.16.0 release (P10 of the rebuild). Both version files carry 0.16.0 and nothing of the
+# previous release; the description and the keywords of both carry no mode word of the old set
+# (pipeline, review and its fast/standard levels, the old workflow names); the plugin README
+# carries a section for the new set that names this test, and its version log opens with 0.16.0.
+PJ=$P/.claude-plugin/plugin.json
+MJ=$REPO/.claude-plugin/marketplace.json
+REL=0.16.0
+check "k14 plugin.json version $REL" python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1]))["version"]==sys.argv[2] else 1)' "$PJ" "$REL"
+check "k14 marketplace.json session version $REL" python3 -c 'import json,sys; m=[p["version"] for p in json.load(open(sys.argv[1]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[sys.argv[2]] else 1)' "$MJ" "$REL"
+check "k14 no 0.15.18 left in the version files" bash -c '! grep -Fq "0.15.18" "$1" "$2"' _ "$PJ" "$MJ"
+oldword='(^|[^a-z-])(pipeline|pipeline-codex|review|reviews|review-fix|translate-ru|fast|standard|stage-[a-z]+)([^a-z-]|$)'
+meta=$(python3 -c 'import json,sys
+p=json.load(open(sys.argv[1])); m=[x for x in json.load(open(sys.argv[2]))["plugins"] if x["name"]=="session"]
+for d in [p]+m:
+    print(d.get("description","")); print(" ".join(d.get("keywords",[])))' "$PJ" "$MJ" 2>/dev/null)
+check "k14 description and keywords of both files readable" test -n "$meta"
+check "k14 description and keywords carry no old mode word" bash -c '! grep -Eiq "$1" <<<"$2"' _ "$oldword" "$meta"
+rsec=$(awk '/^## The 0\.16 set/{f=1; print; next} f&&/^## /{exit} f{print}' "$RD")
+check "k14 README section The 0.16 set" test -n "$rsec"
+check "k14 README 0.16 section names the four workflows" bash -c 'for w in role chain make probe; do grep -q "session:$w" <<<"$1" || exit 1; done' _ "$rsec"
+check "k14 README 0.16 section usage-test.sh sentence" grep -Fq 'tests/workflows/usage-test.sh' <<<"$rsec"
+check "k14 README 0.16 section static suite sentence" grep -Fq 'tests/rebuild/all.sh' <<<"$rsec"
+firstlog=$(awk '/^## Version log/{f=1; next} f&&/^[0-9]/{print; exit}' "$RD")
+check "k14 README version log opens with $REL" grep -q "^$REL: " <<<"$firstlog"
 
 if [ "$FAILS" -eq 0 ]; then
   echo "usage-test: PASS $N"; exit 0

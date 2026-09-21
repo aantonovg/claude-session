@@ -13,6 +13,23 @@ regenerates `skills/base/SKILL.md` and every other target of `lib/build-manifest
 | `session:ask` | ask without blocking: options document, Plannotator in the background, continue on reversible defaults (model-invocable) | - |
 | `session:reset-counter` | clears the statusline mode counters after a rewind (user only) | - |
 
+## The 0.16 set
+
+0.16.0 rebuilds the plugin from zero around one rule: the class `c1`-`c5` plus its submodes is the
+only source of a model and an effort, read through the table `bin/build.sh` renders from
+`lib/classes.json`; no agent, role, aspect or skill text names either. Four named workflows carry
+the work, each launched by name from its SessionStart contract line: `session:role` (one role of the
+catalog in `lib/roles/`, one agent), `session:chain` (critics by aspect, evidence, triage, fixer),
+`session:make` (spec, scenarios, tests, code, executor, fixer) and `session:probe` (parallel
+research, critique, synthesis). Five tool-set agents (`tools-*`) carry the tools, the process skill
+carries the stages and gates of one task and names no carrier, and `lib/verification.md` decides who
+checks what. Role and aspect texts live one file each and are stamped into the scripts by
+`bin/build.sh`; the decisions a test must see live as pure functions in `lib/block.src.js`.
+`tests/rebuild/all.sh` runs the static oracles of the rebuild (build sync, agents, texts, contracts,
+roles, chain, stages, hooks, carrier-free process text, tool plugin pattern).
+`tests/workflows/usage-test.sh` checks the contract collector, the SessionStart wiring, the base
+sentences, this README, the change set of the branch and the 0.16.0 version of both version files.
+
 ## Agents
 
 One agent per tool set, never per job. An agent file carries its tool list, its return shape, the
@@ -196,6 +213,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 
 ## Version log
 
+0.16.0: rebuild from zero: class and submodes the only source of a cell (`lib/classes.json`, rendered by `bin/build.sh`); four named workflows `session:role`, `session:chain`, `session:make`, `session:probe`; five tool-set agents; one process skill with task files under `tasks/current`; verification page `lib/verification.md`; hooks `modes.sh` and `ledger-stop.sh`; the 0.15 agents, workflows and skills are gone; tests `tests/rebuild/all.sh` and `tests/workflows/usage-test.sh`.
 0.15.1: chat replies in A2 English (word list, grammar, verbatim identifiers) in the base Language section; caveman uses common synonyms.
 0.15.2: self-ping rule for long commands in every Bash-capable agent (detach, then `sleep 180` per turn; no background job at turn end).
 0.15.3: every synchronous Bash call in an agent sets `timeout` ≤ 120000; commands that may run over 2 minutes run detached only.
