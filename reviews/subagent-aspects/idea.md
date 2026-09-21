@@ -16,6 +16,34 @@ verifiability ladder and the artifact chain from intent to executable tests (3.5
 3.5.2), depth and class as two independent axes, and quality criteria agreed with the
 user at intent level as the source of the aspect set (3.3).
 
+Revision 4 (2026-09-20), after the user's reading of revision 3: 17 feedback items on
+the fifteen open questions; the remainders are listed in section 9. Changed sections:
+3.2 (fork or workflow is a free choice of the main model; one role workflow with a
+`role` argument), 3.3 (class default `c3`, depth default `full` under a process skill,
+the intent gate only at `std` and above, the aspect set agreed with the user), 3.4
+(class default), 3.5 (the checker is one class step above the author, a key document
+never reaches the user unchecked), 3.5.1 and 3.5.2 (free scenario form, no scenario ids
+in test names), 3.6 (long and short form by depth, `undetermined` goes to the user,
+aspect set approved by the user), 4 (goals 4 and 11), 7 and 8 (rebuild of agents,
+workflows, hooks and process skills from zero under new names, with a cleanup of the old
+ones; one role workflow with a `role` argument; task files under `~/.claude/projects`),
+9 (the decisions and the remaining open questions). After an independent review of this
+revision, further corrections in 3.3 (the `lite` criteria talk is open, not decided),
+3.4 (the checker's class step as a per-stage rule), 3.5 rule 3 and 8.2 (the checker's
+carrier named as a proposal), 3.5.2 (the author uplift left at the neutral "one step",
+free scenario form at `lite`), 3.6 (the `lite` pointer), 5 (the weak-author bullet), 8.5,
+8.8, 8.11 and the closing paragraph of 8 (hooks, coverage report, deletion condition as a
+proposal, first cuts after the rebuild), 9 (the list retitled, two open questions added).
+
+Revision 4, addendum (2026-09-20), two dictated notes of the user after the reading
+(`feedback-rev3-addendum.md`): the connection model (new 3.7: everything is added at user
+level through plugins, a project only takes away through `permissions.deny` and plugin
+disable, a plugin only adds) and the rule that a process skill names no workflow, agent
+or tool (3.3). Made consistent with both: 1 (carrier table), 3.1, 3.3, 4 (goals 9, 12,
+13), 5, 7, 8.5, 8.9, 8.12, 8.13, 9 (decisions 18 and 19, "Still open" 8). From the
+independent review of revision 4: the aspect counts per depth in 3.6 and 8.6 are marked
+as a proposal again and are back in "Still open" 2.
+
 ## 1. Idea in short
 
 The work of a subagent has four independent aspects: which tools it has, which role it
@@ -31,7 +59,7 @@ The idea separates the aspects and gives each one its own carrier:
 | tool set | named lean agent (agent file) |
 | role | workflow (static prompt inside the script) |
 | fixed process on a piece of a task | longer workflow over a pool of agents |
-| process of several roles on a whole task | skill that describes stages and which workflow each stage needs |
+| process of several roles on a whole task | skill that describes stages, task files and user gates; it names no workflow, agent or tool (3.3) |
 
 One setting crosses all four: the class `c1-c5`, set once at session start. It alone
 decides the model and effort of every agent in every workflow.
@@ -82,21 +110,40 @@ the main model, so it is a deterministic script.
   (Read only; Read and Write) to richer ones (Bash, Read, Edit, Write; web; MCP).
 - The agent file holds the tool list and a minimal common contract (return shape,
   BLOCKED rule, working directory rule). It holds no role and no model.
-- Tools that exist only inside one project or a group of projects (project MCP servers,
-  project CLIs) get their agent files in the plugin of that project group, not in the
-  common plugin. The common plugin stays free of project names.
+- Tools beyond the built-in set (MCP servers, project or corporate CLIs) get their agent
+  files in the plugin that carries the tool, together with the workflows, hooks and
+  skills made for it (3.7), not in the common plugin. The common plugin covers built-in
+  tools only and stays free of project names.
 
 ### 3.2 Role at the workflow level
 
 The role lives in the workflow script, not in the agent file. Two kinds of workflows:
 
-- **Short workflow, single agent.** One `agent()` call with a static role prompt and
-  typed arguments (paths, question, output file). The workflow turns a neutral tool-set
-  agent into a role agent: `critic`, `researcher`, `executor`, `translator`, `triage`.
-  The main session launches it by name and passes only arguments.
+- **One role workflow, single agents.** Not one workflow per role: a single workflow
+  takes a `role` argument and carries the whole catalog of single-agent roles (`critic`,
+  `researcher`, `executor`, `translator`, `triage`), each as a static role prompt with
+  typed arguments (paths, question, output file). Its usage contract lists the roles it
+  offers, so one script and one SessionStart line cover them all and maintenance stays in
+  one place. The workflow turns a neutral tool-set agent into a role agent; the main
+  session launches it by name and passes only arguments.
 - **Longer workflow, agents pool.** Several role calls in a fixed flow that solves one
   subtask: author → tests → fixer with a cycle limit; parallel researchers → critique →
-  synthesis; critic → evidence-researchers → triage → fixer. This is aspect 2.4.
+  synthesis; critic → evidence-researchers → triage → fixer. This is aspect 2.4. The same
+  approach applies inside such a composite workflow: one stage may carry several role
+  sets (different tools, different role prompts) chosen by argument, so the number of
+  workflows is far below the number of launch modes.
+- **MCP workflows stay separate.** The two points above hold for built-in tools. A role
+  that needs MCP tools lives in its own workflow, because an MCP server may be absent on
+  a given project and a workflow must not claim tools it cannot get.
+
+**Fork or workflow.** Any task over about two tool calls runs either as a fork subagent
+or as one of the workflows. Which one is a free choice of the main model. A process
+skill may recommend one for a stage; no rule ever fixes the choice, and the class
+`c1-c5` has nothing to do with it. The reasoning the main model uses: a fork is by
+construction the most expensive model, but it has the cheapest start and a rich context,
+which sometimes outweighs the price. More often the right choice is a lower model inside
+a workflow, because the role text is already there and the work may need reading or
+writing many files and many tool calls.
 
 ### 3.3 Process skill
 
@@ -107,9 +154,21 @@ skills already show the working shape, and the new skill keeps it:
   (pipeline: R research, D decision, V verification, I implementation, F closure check,
   C closure). A gate is where the user may review and where a direction change returns
   the task to an earlier stage (a changed assumption goes back to the decision contract).
-- **Workflow per stage.** The skill names which workflow (role or pool) each stage
-  launches and with which arguments. The main session dictates decisions as short
-  bullets; it writes no role text.
+- **No carrier named.** A process skill (pipeline, review and the like) fixes the process
+  only: the stages, the task files each stage reads and writes (ledger, verification
+  plan, implementation plan and the rest of the group below) and the points where the
+  user reviews or clarifies. It never says which workflow, agent or tool solves a stage.
+  For each stage the main model matches the stage's need (research, authoring, run of an
+  oracle, review chain) to the workflows, agents and tools the session has at that
+  moment, read from the usage contracts that plugins inject at session start and after a
+  compact (3.7). The skill may describe how to choose ("these kinds of workflows are
+  available, act through them so, prepare these files, pass these gates") but holds no
+  list of names. Reason: a newly enabled plugin must widen what the process can do with
+  no edit to the process skill; a skill that names carriers keeps working with the
+  built-in tools only. Research is the plain case: with corporate tools connected it may
+  go into metrics, logs, Kubernetes or Slack, and none of that is written in the process
+  skill; tool knowledge lives only in the plugin that carries the tool. The main session
+  dictates decisions as short bullets; it writes no role text.
 - **Several processes.** One process table per task type: code change, investigation,
   document, ops change, review of someone else's MR. Shared rules (task directory,
   ledger, cost rules, harness gate, `Sources` and `Oracles` blocks) live in one core
@@ -117,17 +176,26 @@ skills already show the working shape, and the new skill keeps it:
 - **Depth levels `lite`, `std`, `full`.** A depth is a hard list, not a mood: a step
   marked `–` is not done at all, even when it looks useful. Each depth has ceilings
   (agents, cycles, turns); a hit ceiling ends the stage and the gap goes into the report.
-  The main session proposes class and depth in one line and starts; an argument fixes
-  the depth.
+  Class and depth come from the user or from the defaults below; the main session states
+  them in one line, and at `std` and `full` it starts only after the intent questions.
+  An argument fixes the depth.
+- **Defaults.** When the user names no class, the class is `c3`. When a process skill of
+  the pipeline kind is loaded, the depth defaults to `full`, unless the user lowers it
+  explicitly.
 - **Two independent axes.** Every long process of this kind has a weight `lite`, `std`
   or `full` in addition to the class `c1-c5`. The depth says which stages and artifact
   levels run and with which ceilings; the class says on which model and effort each
   role runs (3.4). Neither is derived from the other: `full` at `c2` (every stage,
   cheap models) and `lite` at `c5` (few stages, strong models) are both valid.
-- **Intent first, with quality criteria.** The first stage of every process fixes the
-  intent with the user (3.5.2). In the same talk the quality criteria of the solution
-  are defined and agreed: which of simplicity, extensibility, reliability, performance,
-  security and the like matter for this task, in which order, and which do not matter.
+- **Intent first, with quality criteria.** At `std` and above the first stage fixes the
+  intent with the user (3.5.2), clarified through questions before anything is built. At
+  depth `lite` there is no intent gate: the main session acts at once on its own reading
+  of the request. In the same talk (at `std` and above; whether the criteria proposal is
+  shown at `lite` is open, section 9) the
+  quality criteria of the solution are defined and agreed: which of simplicity,
+  extensibility, reliability, performance, security and the like matter for this task,
+  in which order, and which do not matter. The main session brings a reasonable default
+  set, cut by depth, and the user may drop criteria or add their own back.
   They are recorded in the task files next to the intent. Every later stage reads them:
   authors as constraints, the review chain as the default source of its aspect critics
   (3.6, "Aspect critics"), triage as the scale for severity.
@@ -141,13 +209,15 @@ skills already show the working shape, and the new skill keeps it:
 - **Harness gate.** Before the work starts, the tools the process needs are
   health-checked; a wanted tool that is unavailable is named in chat, not silently
   skipped.
-- **Limit on main-model improvisation.** The skill tells the main model what to launch
-  and what not to launch: a forbidden list, loop guards (the same check fixed twice →
+- **Limit on main-model improvisation.** The skill limits the process, not the carriers:
+  which stages and files a depth has, what is never done (a forbidden list stated as
+  kinds of action, not as names), loop guards (the same check fixed twice →
   stop and write a failure packet), no extra cycle without the user's word.
 
 ### 3.4 Class drives model and effort
 
-The class `c1-c5` is set at session start and holds for the session. Rules:
+The class `c1-c5` is set at session start and holds for the session; when the user names
+no class, it is `c3`. Rules:
 
 - Every role belongs to a slot (main-model, opus, sonnet). The class row of the base
   table, then the submodes (`no-sonnet`, `no-opus`, `no-fable`), give the model and
@@ -160,6 +230,9 @@ The class `c1-c5` is set at session start and holds for the session. Rules:
   output can be verified (3.5).
 - A critic may raise the task class, never lower it (as in `pipeline`). A raise applies
   to the stages that follow.
+- A checker stage of a key document runs with the class one step up from its author's
+  (3.5, rule 3). This is the only per-stage class step; it does not change the session's
+  class.
 - The label of each agent shows the resolved cell (`<mod>-<eff>-<job>`), so a transcript
   proves the class was followed.
 
@@ -177,13 +250,24 @@ Good tests are always stronger than a good review. From this:
 2. **Output without an oracle gets a stronger author, not a second reader.** For an
    object that only a review could check (a decision contract, a plan, a process
    document, code with no possible verifier), the author runs one step higher than the
-   author of testable code. A second reader of the same class is waste. `pipeline`
-   already applies this to no-verifier packages.
-3. **Review is not a default role.** The target design has no reviewer paired with every
-   author. The one exception: the author is a fork. A fork carries the whole
-   conversation, so its context is biased; its output goes to a clean-context agent.
-   This is why the pipeline's critic is cold: framing, ledger and contracts there are
-   written by forks.
+   author of testable code. The step is read as one class up for that stage
+   (`c3` → `c4`), not one model tier up: raising the tier (sonnet → opus → fable) would
+   be more effective, but for some objects it is far too expensive. The user stated this
+   size for the checker of rule 3; for the author it is an interpretation carried over,
+   still open (section 9). A second reader of the same class is waste. `pipeline` already
+   applies this to no-verifier packages.
+3. **Review is not a default role, but a key document is never unchecked.** The target
+   design has no reviewer paired with every author. The one exception: the author is a
+   fork. A fork carries the whole conversation, so its context is biased; its output
+   goes to a clean-context agent. This is why the pipeline's critic is cold: framing,
+   ledger and contracts there are written by forks. A key document (plan, decision
+   contract) never reaches the user without a check: the user's attention is the most
+   valuable resource and is spent on the final result, or on a stage where the intent is
+   still unclear and needs the user to set the goal. So every key document gets a checker
+   one class step above its author before the user sees it; the stronger author of rule 2
+   does not replace that check. What carries that checker is not settled by the user
+   (proposal: the review chain of 3.6, run with `class` one step above the author's, so
+   the checker is a stage and not a new role); see section 9.
 4. **The plan names the oracle per object.** The verification plan maps each invariant
    or claim to an oracle (`existing oracle`, `missing oracle`, `no possible oracle`, the
    rows of the review contract in `session:review`). The row decides the route: run,
@@ -199,7 +283,7 @@ Objects differ by how strong an oracle they can have. From the best oracle to th
 |---|---|---|---|
 | a | code | tests and benchmarks; almost always possible | an executor runs them; no review |
 | b | infrastructure change, local or remote | the resulting state: GET requests against it, metrics, logs | control calls written before the change, run by an executor before and after it |
-| c | tests and benchmarks | the list of wanted test scenarios, written beforehand as text (Gherkin, EARS or informal) | coverage only: every scenario has a test, no test stands without a scenario. Not a review of quality. Negative control at `full` |
+| c | tests and benchmarks | the list of wanted test scenarios, written beforehand as text in a form the model picks (Gherkin, EARS, plain one-liners or any other) | coverage only: every scenario has a test, no test stands without a scenario. Not a review of quality. Negative control at `full` |
 | d | test scenarios | the fixed specification: goal and subtasks, functional and non-functional requirements, invariants, constraints | traceability: every requirement, invariant and constraint has at least one scenario, negative ones included; gaps go through the evidence chain (3.6) |
 | e | intent: which problem the user wants solved, what to implement, which system to change | only the user | the review process (a critic looks for ambiguity, contradiction, a hidden second goal) and a talk with the user that clarifies intent, goal and subtasks |
 
@@ -207,10 +291,10 @@ The lower the level in the table, the weaker the oracle, the more a check costs 
 more the user is needed. The ladder decides the route of every object in a process: the
 process skill never asks "should this be reviewed", it asks "which level is this".
 
-Coverage at level c can be made mechanical: each scenario gets an id, each test carries
-the id of its scenario in its name or a tag, and a script lists scenarios without a test
-and tests without a scenario. An agent (`coverage-checker`, sonnet slot) reads only the
-residue the script cannot match.
+Coverage at level c is checked by reading, not by a script over ids: scenario ids in
+test names are rejected, because an extra link between two texts drifts apart as soon as
+one of them changes. An agent (`coverage-checker`, sonnet slot) reads the scenario list
+and the tests and reports scenarios without a test and tests without a scenario.
 
 #### 3.5.2 Artifact chain
 
@@ -228,13 +312,13 @@ author of each level: where the check is only a review, the author goes up.
 
 | level | checked against | check | author |
 |---|---|---|---|
-| intent, with quality criteria | the user | dialogue; critic hints on ambiguity; the user confirms the text. User gate at every depth | main session with the user; the text is written on the main-model slot |
+| intent, with quality criteria | the user | dialogue; critic hints on ambiguity; the user confirms the text. User gate at `std` and `full`; at `lite` the main session acts at once on its own reading | main session with the user; the text is written on the main-model slot |
 | subtasks | intent | every part of the goal has a subtask, no subtask lies outside the goal; evidence chain; user gate at `std` and `full` | uplift: main-model slot |
-| requirements, invariants, constraints | intent and subtasks | traceability to subtasks, no contradictions, every non-functional requirement has a measurable form; evidence chain | uplift: one step above the code author |
-| test scenarios as text | the specification | traceability by id: every requirement and invariant has scenarios, negative ones included; mostly a script, critic only for missing cases | uplift: one step above the code author (coverage is checkable, the sense of a scenario is not) |
-| executable tests, control calls | the scenarios | coverage by id; negative control at `full`; no quality review | no uplift: cheap author |
+| requirements, invariants, constraints | intent and subtasks | traceability to subtasks, no contradictions, every non-functional requirement has a measurable form; evidence chain | uplift: one step above the code author (size open, section 9) |
+| test scenarios as text, in a form the model picks | the specification | traceability: every requirement and invariant has scenarios, negative ones included; a reading check, critic only for missing cases | uplift: one step above the code author (size open, section 9; coverage is checkable, the sense of a scenario is not) |
+| executable tests, control calls | the scenarios | coverage by reading the two lists; negative control at `full`; no quality review | no uplift: cheap author |
 | result: code, infrastructure state | the tests, the control calls | executor run | no uplift: the cheapest author the class allows |
-| result with no possible oracle (a document) | the scenarios, as a checklist a reader can answer | evidence chain with aspect critics | uplift: one step above the code author |
+| result with no possible oracle (a document) | the scenarios, as a checklist a reader can answer | evidence chain with aspect critics | uplift: one step above the code author (size open, section 9) |
 
 Two consequences:
 
@@ -247,7 +331,7 @@ Two consequences:
   scenarios, the harness holds the tests. What the pipeline lacks is listed in section 7.
 
 At depth `lite` levels collapse (intent, subtasks and requirements in one short text,
-scenarios as a list of one-liners), but their order and the rule "checked against the
+scenarios in a short form the model picks, for example one-liners), but their order and the rule "checked against the
 level above" stay.
 
 ### 3.6 Review as an evidence chain
@@ -260,13 +344,13 @@ hide. Each point is then proved or refuted by facts. Four roles, one pool workfl
 |---|---|---|---|
 | 1 | `critic` | reads the object in a clean context; writes hints: place, suspected error, severity, what evidence would settle it. Hints, not verdicts. Read and Write only, tool-call budget. | main-model |
 | 2 | `evidence-researchers` | parallel, one per hint or group of hints; collect facts by research, test runs, a run on the base version, docs. Return `confirmed`, `refuted` or `undetermined` with pointers. Many cheap queries. | sonnet |
-| 3 | `evidence-triage` | the judge: reads the critique and the evidence, accepts or rejects each hint, writes the accepted list with the required change. Runs no queries itself. | main-model (or opus, open question) |
+| 3 | `evidence-triage` | the judge: reads the critique and the evidence, accepts or rejects each hint, writes the accepted list with the required change. Runs no queries itself. | main-model slot (or the opus slot below `c4`, open question) |
 | 4 | `fixer` | changes the object by the accepted list only; then the oracle runs when one exists. | opus |
 
 Rules of the chain:
 
-- A hint without evidence changes nothing. `undetermined` is rejected or goes to the
-  user; it never goes to the fixer.
+- A hint without evidence changes nothing. An `undetermined` hint goes to the user
+  through `session:ask`; it never goes to the fixer.
 - Two kinds of failure stay apart (from `session:review`): a finding about the object,
   and a harness failure on our side (tool, access, sandbox). Only the first reaches
   triage.
@@ -274,9 +358,9 @@ Rules of the chain:
   version is not a finding.
 - One round: generate → critique → evidence → triage → fix, no second critique without
   the user's word (the heavy document cycle of `pipeline`).
-- Short form for depth `lite` and `std`: stages 2 and 3 merge into one `evidence` agent
-  on a lower slot that both collects and decides (the pipeline's evidence-audit). Long
-  form for `full` and for a high severity.
+- The form follows the depth. Short form for depth `lite` and `std`: stages 2 and 3
+  merge into one `evidence` agent on a lower slot that both collects and decides (the
+  pipeline's evidence-audit). Long form for `full` and for any hint of high severity.
 
 **Aspect critics.** Stage 1 may split into several parallel critics. Each one reads the
 same object through one quality aspect and gives hints only on that aspect: simplicity,
@@ -286,11 +370,14 @@ for problems", and the aspects do not compete for one critic's attention or tool
 
 - **Aspect set per task.** Not every aspect fits every object: a process document has no
   performance aspect, an internal script has no scalability aspect. The set is chosen
-  for the task. Its default source is the list of quality criteria agreed with the user
-  at intent level and recorded in the task files (3.3): a criterion the user named
-  becomes an aspect critic, a criterion the user ruled out is never launched. Default
-  count by depth (a proposal, not settled): `lite` one merged
-  critic with no aspect split, `std` 2-3 aspects, `full` 3-5 aspects.
+  for the task. The main session proposes a reasonable default set, cut to the count the
+  depth allows (the counts are a proposal, not settled: `lite` one merged critic with no
+  aspect split, `std` 2-3 aspects, `full` 3-5 aspects; the user settled only that the
+  depth limits the list), and that proposal always goes to the user for approval: the user may cut
+  aspects out or add criteria of their own back. The approved list is recorded in the
+  task files next to the intent (3.3). No aspect critic runs without that approval, not
+  even `security`. At `lite` this meets the missing intent gate of 3.3; how the two meet
+  there is open (section 9).
 - **Static aspect prompts.** The workflow holds one common critic role text (clean
   context, hints not verdicts, the hint format, the budget) plus one short static
   paragraph per aspect: what the aspect means, the typical error shapes, what is out of
@@ -324,6 +411,38 @@ The gain: model choice per stage (one costly read or several cheaper narrow read
 cheap searches, one costly judgment), and a change of the object rests on facts, not on
 a model's guess.
 
+### 3.7 Connection model: add at user level, take away per project
+
+How plugins, tools, agents, workflows and skills reach a project. Stated by the user; it
+shapes the split of the whole design into plugins.
+
+- **Levels.** User level, project level, and between them plugins that group things. A
+  base plugin carries the base skill and everything for the built-in tools.
+- **A plugin is the unit of delivery.** A plugin may carry MCP servers (new tools), lean
+  agents built for those tools, workflows that assume those tools, hooks that inject the
+  usage contracts of those workflows as system reminders at session start and after a
+  compact, and process or context skills.
+- **User level only adds.** Every wanted plugin is enabled at user level, so by default
+  any project has the richest set.
+- **Project level only takes away.** Two means: `permissions.deny` for heavy built-in
+  tools a project does not need (Artifact, design tools), and disabling a whole plugin
+  whose tools the project does not need.
+- **A plugin can not disable anything.** It only adds.
+- **Purpose.** Context window management: allow everything at user level, deny single
+  elements per project, and so control what is connected and what sits in the context.
+
+Consequences for the design:
+
+- The common plugin holds the carriers for built-in tools; every MCP server or tool
+  group gets a plugin of its own with its agents, workflows, hooks and skills (3.1, 3.2
+  "MCP workflows stay separate", 8.12).
+- Process skills find carriers through the injected contracts and name none (3.3), so
+  enabling or disabling a plugin changes what a process can use with no edit anywhere.
+- Proposal of the main session, not the user's words: every plugin is self-contained.
+  Its agents, workflows, hooks and skills work together or vanish together, and nothing
+  outside a plugin depends on a tool a project can deny or on a plugin a project can
+  disable. Open in section 9.
+
 ## 4. Goals
 
 1. One carrier per aspect: tools in agent files, roles in workflows, fixed flows in pool
@@ -332,19 +451,24 @@ a model's guess.
 3. Model and effort of every agent come from the session's class and the role's slot,
    never from a choice made at launch.
 4. Verification by oracle first: review runs only where no oracle is possible and the
-   author's context is biased.
+   author's context is biased, and a key document is never unchecked, whoever wrote it.
 5. A review changes the object only through evidence: hint → facts → judgment → fix.
 6. Make the work on a task repeatable: the same task type and depth give the same stages,
    the same roles and the same artifacts.
 7. Make the work interruptible: a task can stop for the user and resume from files.
 8. Match spending to the task on two independent axes: depth (`lite`, `std`, `full`)
    decides what runs, class (`c1-c5`) decides on which models.
-9. Keep project-specific tools out of the common plugin.
+9. Keep project-specific and MCP tools out of the common plugin: each tool group lives
+   in its own plugin with its agents, workflows, hooks and skills.
 10. Work down one artifact chain, for code and non-code tasks: intent → subtasks →
     requirements and invariants → test scenarios → executable tests → result. Each level
     is checked only against the level above, by the check its ladder level allows.
-11. Agree the intent and the quality criteria with the user before anything is built,
-    and let the criteria steer the later checks.
+11. Agree the intent and the quality criteria with the user before anything is built, at
+    `std` and above, and let the criteria steer the later checks; `lite` acts at once.
+12. Control the context per project by subtraction: everything is added at user level,
+    a project denies built-in tools and disables plugins, a plugin only adds (3.7).
+13. Keep process skills open to extension: they name no workflow, agent or tool, so a
+    newly enabled plugin widens what a process can do with no edit to the skill (3.3).
 
 ## 5. Problems it solves
 
@@ -362,7 +486,8 @@ a model's guess.
 - **Review opinions treated as facts.** A reviewer's remark goes straight to a fixer; a
   wrong remark damages a correct object and costs a fix cycle.
 - **Weak authors for unverifiable objects.** A plan or contract written on a cheap slot
-  and then "saved" by a reviewer costs two runs and is still unproved.
+  and then "saved" by a reader of the same class costs two runs and is still unproved.
+  The checker one class step above the author (3.5, rule 3) is the decided exception.
 - **Improvised process.** The main model decides on the fly whether to research first,
   how many cycles to run. It over-spends on small tasks and under-spends on risky ones.
 - **One-shot workflows cannot be steered.** A full development workflow runs from plan to
@@ -371,6 +496,11 @@ a model's guess.
   conversation; a compact, a new session or a limit restart loses it.
 - **Project tools in a common plugin.** Agents with project MCP tools do not belong in a
   plugin that every project loads.
+- **Process tied to a fixed tool set.** A process skill that names its workflows and
+  agents keeps working with the built-in tools only; connecting a plugin with new tools
+  (metrics, logs, Kubernetes, Slack) adds nothing to the process until the skill is edited.
+- **No way to trim the context per project.** Heavy tools and unused plugins sit in the
+  context of every project unless the project can deny or disable them.
 
 ## 6. What gets better after implementation
 
@@ -450,6 +580,8 @@ internals other than `dev.js` are taken from their contracts, not from the scrip
   largest gap.
 - `pipeline` and `review` run stages through forks with prompts dictated by the main
   session, not through named workflows; roles are still written on the fly.
+- The base skill and both process skills name carriers in their text (agent types,
+  workflow names, fork stages), so a new plugin can not widen them without an edit.
 - `dev` is a one-shot run from plan to closure with no stop for the user.
 - Process tables exist for own code task and MR review only; investigation, document
   and ops are named in the pipeline description but have no table.
@@ -467,8 +599,8 @@ internals other than `dev.js` are taken from their contracts, not from the scrip
 - The artifact chain is only partly there. `pipeline` has `Framing`, a `Decision
   contract` with invariants and a `Verification plan` with an invariant → oracle map,
   but: no gate where the user confirms the intent (the main session proposes and
-  starts); no specification level of its own (functional and non-functional
-  requirements, constraints); scenarios have no fixed text form and no ids; no coverage
+  starts at `std` and `full` too); no specification level of its own (functional and
+  non-functional requirements, constraints); no coverage
   check of tests against scenarios (the fast path writes "one new test per changed
   behaviour" with no scenario list). `dev` starts in the middle of the chain: it takes
   "a task with acceptance criteria" and nothing checks the criteria against an intent.
@@ -483,71 +615,107 @@ internals other than `dev.js` are taken from their contracts, not from the scrip
 Order follows the dependencies; items at the same level can run in parallel.
 
 1. **Tool-set inventory and naming.** List the tool combinations in real use (agent
-   files and transcripts), choose the family and names by tool set, decide the fate of
-   the `stage-*` names (rename or alias). Output: a table of agents. Depends on: nothing.
+   files and transcripts), choose the family and names by tool set. The whole set of
+   agents, workflows, hooks and process skills is rebuilt from zero under the new names;
+   the old ones are cleaned out, and saved scripts that call the old names are not kept
+   working. Output: a table of agents. Depends on: nothing.
 2. **Role catalog with slots.** Roles: plan author, code author, test author, fixer,
    critic, evidence-researcher, evidence (merged short form), evidence-triage,
    researcher, executor, translator, web researcher, and the chain roles of 3.5.2: spec
    author, scenario author, coverage-checker. For each: static prompt, arguments,
    return format, tool-set agent, slot, and the rule that moves the slot (input volume,
-   no-oracle uplift). No model names anywhere. Depends on: 1.
+   no-oracle uplift). No model names anywhere. The checker of a key document (3.5, rule
+   3) is fixed here too: either the review chain run one class step up, as proposed, or a
+   role of its own, once the carrier is settled (section 9). Depends on: 1.
 3. **Verification-first specification.** Oracle classes (`existing`, `missing`,
    `no possible`), the route per class, the size of the author uplift for no-oracle
    objects, the fork-author exception, how unverified areas are accepted. The
    verifiability ladder (levels a-e) with the check per level, control calls for
    infrastructure changes, and the artifact chain with the author per level. The
-   scenario text form (Gherkin, EARS or informal), scenario ids and the id rule for
-   tests, the coverage script. One page that the core file and the workflows cite.
+   scenario text form is free: the model picks it per task, and the document only lists
+   known forms (Gherkin, EARS, plain one-liners) as hints. No scenario ids and no id in
+   a test name; coverage is checked by reading the two lists. One page that the core
+   file and the workflows cite.
    Depends on: nothing.
 4. **Shared-block strategy.** A build step that stamps the class table and helpers into
    every script, plus a test that all copies match; the block also carries an
    "output exists" check for every stage that names an output file. Depends on: nothing;
    needed before 5.
-5. **Short role workflows.** One script per role from the catalog, each with a usage
-   contract and its SessionStart line; `class` and `submodes` as arguments. Test each in
+5. **Role workflow.** One workflow for single agents with a `role` argument; its usage
+   contract lists the roles it carries, so one script and one SessionStart line cover
+   the whole catalog and maintenance stays in one place. The same approach applies
+   inside composite workflows: a stage may carry several role sets (different tools,
+   different role prompts), so the number of workflows is far below the number of launch
+   modes. Output includes the hooks: one new SessionStart contract hook for the role
+   workflow, and the old per-workflow hooks removed with the old set (8.1, 8.11).
+   This holds for built-in tools. Roles that need MCP tools stay in separate
+   workflows, because an MCP server may be absent on a given project and a workflow must
+   not claim tools it cannot get. `class` and `submodes` as arguments. Test each role in
    a tmux session. Depends on: 2, 4.
 6. **Review-chain pool workflow.** `critic → evidence-researchers → evidence-triage →
    fixer`, long and short form by a `depth` argument, one round, harness failures kept
    apart, control run, accepted list as a file. Aspect critics: a fixed catalog of
    static aspect paragraphs in the script, an `aspects` argument (list of catalog
-   names; default: the agreed quality criteria read from the task files, count by
-   depth), parallel critics with a hint cap, script-side grouping of
+   names; default: the set approved by the user and read from the task files, count by
+   depth, the counts themselves a proposal, section 9), parallel critics with a hint cap, script-side grouping of
    hints by place before the evidence stage, the slot rule for a split critic stage,
    aspect critics counted in the depth ceilings. Test: two critics that hint at the same
-   lines produce one evidence run. Rework `review-fix` onto it or replace it.
-   Depends on: 2, 3, 4.
-7. **Pool workflows under verification-first.** `dev` and `build`: remove the reviewer
-   from testable code (author → tests → fixer), route no-oracle packages to the stronger
-   author, route fork-authored documents to the review chain. Split `dev` at its gates so
-   a stage can run alone. Depends on: 3, 6.
-8. **Task file group.** One layout for every process and depth: location, file names,
-   which stage writes which file, status markers, the resume rule. One artifact per
-   chain level: intent with quality criteria (confirmed by the user, with the date),
-   subtasks, specification, scenarios with ids, the scenario → test coverage table.
+   lines produce one evidence run. This is a new workflow under a new name; the old
+   `review-fix` is deleted with the rest (8.1, 8.11). Depends on: 2, 3, 4.
+7. **New pool workflows under verification-first.** The successors of `dev` and `build`,
+   written from zero under new names: no reviewer on testable code (author → tests →
+   fixer), no-oracle packages to the stronger author, fork-authored documents to the
+   review chain, a checker one class step up for every key document. Each gate of the old
+   `dev` becomes a workflow that can run alone. Depends on: 3, 6.
+8. **Task file group.** One layout for every process and depth: the files live under
+   `~/.claude/projects/.../`, as the skills keep them today; file names, which stage
+   writes which file, status markers, the resume rule. One artifact per
+   chain level: intent with quality criteria (confirmed by the user at `std` and `full`,
+   with the date; at `lite` written by the main session alone),
+   subtasks, specification, scenarios, the coverage report of the last check (not a
+   maintained scenario → test map).
    The collapsed form for `lite`. Align workflow `out` defaults with it. Depends on: nothing; needed before 9.
-9. **Process skill on workflows.** Carry over from `pipeline` and `review`: core file,
-   gates, hard-list depth table with ceilings, `Sources` and `Oracles` blocks, harness
-   gate, loop guard, structured status. Replace fork stages that write role prompts with
-   named workflows; keep forks for glue whose input lives in the conversation. Depth
+9. **New process skill on workflows.** A new skill under a new name, carrying over the
+   shape of `pipeline` and `review`: core file, gates, hard-list depth table with
+   ceilings, `Sources` and `Oracles` blocks, harness gate, loop guard, structured status.
+   A stage names no workflow, agent or tool: it states the need, the task files it reads
+   and writes and its gate, and the main model matches it to the carriers the session
+   has, read from the injected contracts (3.3, 3.7). The skill may recommend a fork or a
+   workflow as a kind; the main model makes that choice, and no rule fixes it (3.2). Depth
    and class as two independent arguments. Stages follow the artifact chain; the first
    stage is the intent talk with the user (intent, subtasks, quality criteria) and ends
-   at a user gate at every depth. First process: code change. Depends on: 5, 6, 7, 8.
+   at a user gate at `std` and `full`; at `lite` it starts at once with no gate. A
+   loaded process skill of the pipeline kind defaults the depth to `full`, and the class
+   defaults to `c3`. First process: code change. Depends on: 5, 6, 7, 8.
 10. **More processes.** MR review (port of `session:review`), investigation, document,
     ops change: each a process table over the same core. Depends on: 9.
-11. **Base skill cleanup.** Remove "every authoring stage pairs with a review", the
-    mandatory code review and closure review; state verification-first, the review
-    chain, "class drives model and effort", "launch by name; an ad hoc script is the
-    exception". Remove model names from `pipeline` and `review` texts. Depends on: 3, 9.
-12. **Project-group plugin pattern.** Template and one real case (b2connect): agent
-    files with project tools, role workflows that use them, how the process skill finds
-    them. Depends on: 1, 5.
+11. **Base skill rewrite and cleanup of the old set.** Remove "every authoring stage
+    pairs with a review", the mandatory code review and closure review; state
+    verification-first, the review chain, "class drives model and effort", "launch by
+    name; an ad hoc script is the exception". No model name anywhere in a skill text.
+    Delete the old agents, workflows, hooks and process skills (`pipeline`, `review`,
+    `dev`, `build`, `review-fix`, the `stage-*` agents and their SessionStart contract
+    hooks); proposal for the moment of deletion, not set by the user: once their
+    successors pass their tests. Depends on: 3, 9.
+12. **Tool plugin pattern.** Template and the real cases (the MCP servers connected
+    today, b2connect): one plugin per MCP server or tool group, carrying the server, the
+    agent files with its tools, the separate MCP workflows that use them (the built-in
+    role workflow of 8.5 never carries MCP roles), the contract hooks and any skills.
+    Enabled at user level, disabled per project; heavy built-in tools are denied per
+    project through `permissions.deny` (3.7). The process skill finds the carriers
+    through the injected contracts, never by name. Depends on: 1, 5.
 13. **Behavior tests.** `test-session` scenarios: launch by name with no role prompt;
     agent labels match the class cell under c2, c3, c5 and one submode; no review when
     an oracle exists; a seeded false hint is refuted and never reaches the fixer; a
     seeded real defect is confirmed and fixed; `lite` skips what it must skip; a task
-    resumes from files after `/clear`; no stage starts before the user confirmed the
-    intent; a scenario without a test and a test without a scenario are both reported
-    by the coverage check; a quality criterion the user ruled out launches no critic;
+    resumes from files after `/clear`; at `std` and `full` no stage starts before the
+    user confirmed the intent, at `lite` the work starts at once; a scenario without a
+    test and a test without a scenario are both reported by the coverage check, with no
+    ids in test names; an aspect the user did not approve launches no critic; a process
+    skill text holds no workflow, agent or tool name (a scripted check over the skill
+    files); with a tool plugin enabled the process uses its workflow with no skill edit,
+    and with the plugin disabled or a tool denied in the project the same task still runs
+    on what is left;
     `full` at `c2` and `lite` at `c5` both run as asked. Depends on: 9, 11.
 14. **Measurement.** Baseline first, then after, on 3-5 comparable tasks: main-session
     output tokens per launch, agents per task, cost per depth, hint precision, rework
@@ -556,57 +724,95 @@ Order follows the dependencies; items at the same level can run in parallel.
     Depends on: all above.
 
 First useful cuts: 1 → 2 → 4 → 5 removes on-the-fly role prompts without touching the
-process level; 3 → 6 → 11 brings verification-first and the evidence chain to the
-present workflows without waiting for the new process skill.
+process level; 3 → 6 gives the new review-chain workflow, with verification-first and
+the evidence chain, before the new process skill exists; 11 waits for 9.
 
 ## 9. Open questions for the user
 
-1. Does review disappear as a role? Proposal: yes, `reviewer` is removed; `critic`
-   (hints) plus the evidence chain stay, and only for fork-authored or external objects.
-   Does a key document by a cold stronger author (plan, decision contract) then go to
-   the user with no critic at all?
-2. Size of the author uplift for no-oracle objects: one slot up (sonnet → opus →
-   main-model), one class up (c3 → c4 for that stage), or a fixed main-model slot?
-3. Slot of `evidence-triage`: main-model slot always, or opus slot below `c4`? It reads
-   little and judges much.
-4. When is the chain long (researchers plus triage) and when short (one `evidence`
-   agent)? Proposal: by depth, long for `full` and for any high-severity hint.
-5. `undetermined` hints: rejected silently, listed in the report, or sent to the user
-   through `session:ask`?
-6. Does the new process skill replace `session:pipeline` and `session:review`, or is it
-   their next version (same names, stages moved from forks to workflows)?
-   Recommendation: next version, one core.
-7. Settled by the user: depth (`lite/std/full`) and class (`c1-c5`) are two independent
-   axes. Still open: when no depth is given, does the process take a default from the
-   class (`c1-c2` lite, `c3-c4` std, `c5` full, as the skills do today), or does the
-   main session propose a depth from the task itself (size, blast radius, oracle
-   strength)? Recommendation: from the task; the class says nothing about the task.
-8. Forks inherit the main model, so the class cannot drive them. Are forks limited to
-   glue, with every role stage on a cold workflow agent?
-9. Agent names: rename `stage-*` to tool-set names (breaking for saved scripts) or keep
-   the names and only strip role text from the bodies?
-10. Short workflows: one per role (about 10-12), or one generic `role` workflow with a
-    `role` argument? And is a SessionStart contract line per workflow acceptable for
-    context cost (50-150 tokens each), or must role workflows share one table?
-11. Where does the task file group live: in the repository (`<cwd>/reviews/<task>`) or
-    under `~/.claude/projects/.../` as the skills do today?
-12. Who picks the aspects for the critic stage? Revised: the default source is the list
-    of quality criteria agreed with the user at intent level and recorded in the task
-    files, so the first pick is the user's. Still open: who maps the agreed criteria to
-    catalog names and cuts them to the depth's count (the process skill by a fixed
-    table, or the main model through the `aspects` argument with the reason in one
-    ledger line); may an aspect the user did not name ever run (proposal: `security`
-    always runs when the change touches input handling, access or secrets, all others
-    never); the default counts by depth (1, 2-3, 3-5); the slot of a split critic stage
-    (opus slot, as proposed in 3.6, or main-model slot at `full`).
-13. Scenario text form: one form for all processes (Gherkin or EARS), or chosen per
-    process (EARS for requirements, Gherkin for scenarios, informal one-liners at
-    `lite`)? Are scenario ids in test names acceptable in your repositories, so that
-    coverage becomes a script check?
-14. How much of the chain does `lite` keep: one short text with intent, requirements
-    and scenario one-liners, confirmed by the user in chat? And is the user gate on the
-    intent really wanted at every depth, or may `lite` start on the main session's own
-    reading of the request and only show it?
-15. Infrastructure changes: are control calls (GET requests, metrics, logs) written as
-    a file of commands with expected results before the change, and run before and
-    after it, the accepted form of "tests" for ops work?
+Feedback items 1-17 on questions 1-15 of revision 3, answered by the user; the decided
+ones are carried by the body sections:
+
+1. `reviewer` is removed as a role; `critic` plus the evidence chain stay (3.5, 3.6).
+2. A key document never reaches the user unchecked; the user's attention goes to the
+   final result, or to a stage where the intent is still unclear (3.5, rule 3).
+3. The checker of a key document runs one class step above its author, not one model tier
+   up: the tier step would be more effective but is far too expensive for some objects
+   (3.5, rule 3). The same size is carried over to the author uplift of rule 2 as an
+   interpretation, and what carries the checker is open; see "Still open".
+4. Not decided: question 3 of revision 3 (`evidence-triage`: main-model slot always, or
+   the opus slot below `c4`) carries a "Looks good" on an either-or with no proposal, so
+   no option was named; see "Still open" 3.
+5. The chain is long for `full` and for any high-severity hint, short otherwise (3.6).
+6. `undetermined` hints go to the user through `session:ask` (3.6).
+7. The new process skill is the next version of `pipeline` and `review` in function, one
+   core; by item 10 it is built from zero under a new name, so "same names" from the
+   revision 3 text does not hold (8.9, 8.11).
+8. Class defaults to `c3` when the user names none; depth defaults to `full` when a
+   process skill of the pipeline kind is loaded, unless the user lowers it (3.3, 3.4).
+9. Fork or workflow is a free choice of the main model, optionally recommended by a
+   process skill, never fixed by a rule and never tied to the class (3.2).
+10. Agents, workflows, hooks and process skills are rebuilt from zero under new names;
+    the old ones are cleaned out and saved scripts are not kept working (8.1).
+11. One role workflow with a `role` argument and the roles listed in its contract;
+    composite workflows may carry several role sets per stage; workflows that need MCP
+    tools stay separate from workflows on built-in tools (8.5).
+12. The task file group lives under `~/.claude/projects/.../` (8.8).
+13. The aspect list is a reasonable default cut by depth and always goes to the user,
+    who may cut it or add criteria; no aspect runs without that approval, and the
+    earlier "security always runs" proposal is dropped (3.3, 3.6).
+14. Scenario ids in test names are rejected: an extra link between two texts drifts
+    apart. Coverage is checked by reading (3.5.1, 3.5.2, 8.3).
+15. The scenario form is free; the model picks it, and the document only lists known
+    forms as hints (3.5.1, 8.3).
+16. At `lite` the main session acts at once with no intent gate; at `std` and above the
+    intent is clarified with the user through questions (3.3, 3.5.2).
+17. For an infrastructure change, control calls (GET requests, metrics, logs) are
+    written as a file of commands with expected results before the change and run before
+    and after it; this is the accepted form of "tests" for ops work (3.5.1, level b).
+
+Decided by the two dictated notes after the reading (addendum):
+
+18. Connection model: every wanted plugin is enabled at user level and carries its MCP
+    servers, lean agents, workflows, contract hooks and skills; a project only takes
+    away, through `permissions.deny` for heavy built-in tools and through disabling a
+    plugin; a plugin can not disable anything (3.7).
+19. Process skills (pipeline, review) name no workflow, agent or tool. They fix the
+    stages, the task files and the user review points; the main model matches each stage
+    to what the session has, so a new plugin widens the process with no skill edit (3.3).
+
+Still open:
+
+1. The depth default outside a process skill: the user stated the default only for the
+   case where a process skill of the pipeline kind is loaded (`full`). What the depth is
+   when no such skill is loaded and the user names no depth is not stated.
+2. Inside the aspect stage: who maps the approved quality criteria to catalog names and
+   cuts them to the depth's count (the process skill by a fixed table, or the main model
+   through the `aspects` argument with the reason in one ledger line). The user settled
+   the approval step, not the mapping step. Part of the same gap: a criterion the user
+   adds back may have no paragraph in the fixed catalog, and an unknown `aspects` name
+   stops the workflow (3.6); what happens to such a criterion is not settled. The counts
+   per depth (1, 2-3, 3-5) are a proposal; the user settled only that the depth limits
+   the list.
+3. The slot of a split critic stage: the opus slot as proposed in 3.6, or the main-model
+   slot at `full`. Not answered. The same for `evidence-triage` (question 3 of revision
+   3): the "Looks good" landed on an either-or with no proposal, so neither the
+   main-model slot always nor the opus slot below `c4` is chosen.
+4. The size of the author uplift of 3.5 rule 2: the user gave one class step for the
+   checker; whether the no-oracle author moves by the same one class step is not stated
+   (the rows of 3.5.2 keep the neutral "one step above the code author").
+5. How much of the artifact chain `lite` keeps (one short text with intent, requirements
+   and scenario one-liners, or more). The user settled only that `lite` needs no intent
+   gate. The same gap: whether the aspect or criteria proposal is shown to the user at
+   `lite`, where item 16 removes the intent gate and item 13 says the list always goes to
+   the user.
+6. The remainder of question 10 of revision 3: the contract cost per workflow (a
+   SessionStart line of 50-150 tokens for each) was not answered. Sub-point: how many
+   role sets one role or composite workflow may carry before that line grows too large.
+7. What carries the checker of a key document (3.5, rule 3): the review chain of 3.6 run
+   one class step up, as proposed, or a single reader role of its own. The user settled
+   the class step, not the carrier.
+8. Self-contained plugins (3.7): a proposal of the main session, not the user's words.
+   Every plugin's agents, workflows, hooks and skills work together or vanish together,
+   and nothing outside a plugin depends on a tool a project can deny or a plugin a
+   project can disable. Part of the same gap: what the base skill and a process skill do
+   when a project denies a built-in tool that a common role agent lists.
