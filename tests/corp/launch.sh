@@ -6,7 +6,7 @@
 #   model-id : default claude-fable-5-1[1m]
 #   effort   : default low
 #   --no-prompt : stop after the three mode skills (smoke test)
-# Mode chain: /session:base -> /session:pipeline full -> /session:codex +astra -> task prompt.
+# Mode chain: /session:base -> /session:process code full -> /session:codex +astra -> task prompt.
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
@@ -62,7 +62,7 @@ wait_for '^❯ |shift\+tab to cycle|\? for shortcuts' 120 || exit 1
 sleep 2
 tmux send-keys -t "$tmux_name" "/session:base" Enter
 wait_for 'Base on' 150 || exit 1
-tmux send-keys -t "$tmux_name" "/session:pipeline full" Enter
+tmux send-keys -t "$tmux_name" "/session:process code full" Enter
 wait_for 'ipeline' 120 || exit 1
 tmux send-keys -t "$tmux_name" "/session:codex +astra" Enter
 wait_for 'codex|Codex' 120 || exit 1

@@ -54,7 +54,7 @@ For each line: DELETE moves the file with mv into /Users/aleksandr.antonov/.clau
 Return: counts deleted, shortened, kept, index lines changed; last line DONE or BLOCKED: <reason>. ${STYLE}`
 
 phase('Trim')
-const t = await agent(trimPrompt(1), opts('opus', 'trim', { agentType: 'session:stage-author', phase: 'Trim' }))
+const t = await agent(trimPrompt(1), opts('opus', 'trim', { agentType: 'session:tools-edit', phase: 'Trim' }))
 if (blocked(t)) return { stage: 'trim', blocked: last(t) }
 
 phase('Check')
@@ -64,7 +64,7 @@ if (blocked(check)) return { stage: 'check', blocked: last(check) }
 
 let fixed = null
 if (!clean(check)) {
-  const f = await agent(trimPrompt(2, report(check)), opts('opus', 'gc-fix', { agentType: 'session:stage-author', phase: 'Check' }))
+  const f = await agent(trimPrompt(2, report(check)), opts('opus', 'gc-fix', { agentType: 'session:tools-edit', phase: 'Check' }))
   fixed = blocked(f) ? `BLOCKED ${last(f)}` : last(f)
 }
 

@@ -49,7 +49,7 @@ scenario(){ ID=$1; ARGS=$2; shift 2
   clean
 }
 # 0.14 setups
-setup_T2(){ mkdir -p "$P/hooks"; cp "$HERE/../../plugins/session/hooks/session-modes.sh" "$P/hooks/"; }
+setup_T2(){ mkdir -p "$P/hooks"; cp "$HERE/../../plugins/session/hooks/modes.sh" "$P/hooks/"; }
 setup_T3(){ printf '# Demo\n\nVersion 1.2.3\n' > "$P/README.md"; printf '{ "name": "demo", "version": "1.2.4" }\n' > "$P/package.json"; }
 setup_T4(){ for n in a b c d e; do echo "line $n" > "$P/$n.txt"; done; echo foo >> "$P/a.txt"; echo "call foo()" >> "$P/c.txt"; echo "foo bar" >> "$P/e.txt"; }
 setup_T5(){ (cd "$P" && git init -q && printf 'def add(a, b):\n    return a + b\n' > calc.py && git add calc.py && git -c user.name=t -c user.email=t@t commit -qm init && printf 'def add(a, b):\n    return a - b\n\ndef mul(a, b):\n    return a * b\n' > calc.py); }
@@ -76,7 +76,7 @@ IDS=${*:-${IDS:-"S1 S2 S3 S4 S5 S6 S7 S8 S9"}}
 for ID in $IDS; do case $ID in
   T0) scenario T0 "" ;;
   T1) scenario T1 "" "ping" ;;
-  T2) scenario T2 "" "объясни, что делает hooks/session-modes.sh" "ответь по-русски" ;;
+  T2) scenario T2 "" "объясни, что делает hooks/modes.sh" "ответь по-русски" ;;
   T3) scenario T3 "" "прочитай README.md и package.json и скажи, совпадает ли версия" ;;
   T4) scenario T4 "" "исследуй, какие файлы в этой папке ссылаются на 'foo'" ;;
   T5) scenario T5 "no-sonnet c4" "запусти ревью diff" ;;

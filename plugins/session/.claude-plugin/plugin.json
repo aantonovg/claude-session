@@ -1,14 +1,14 @@
 {
   "name": "session",
   "version": "0.15.18",
-  "description": "Rules for the main Claude Code session: /session:base (forks, named workflows, lean agents, classes and slots, waits, style) plus the pipeline, review, codex, ask and reset-counter modes.",
+  "description": "Rules for the main Claude Code session: /session:base (forks, named workflows, lean agents, classes and slots, waits, style) plus the process, codex, ask and reset-counter skills.",
   "keywords": [
     "session",
     "base",
     "cache",
     "forks",
-    "pipeline",
-    "review",
+    "process",
+    "verification",
     "codex"
   ],
   "hooks": {
@@ -71,42 +71,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/build.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/dev.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/research.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/review-fix.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/role.js --prefix session",
             "timeout": 5
           }
@@ -135,15 +99,6 @@
           {
             "type": "command",
             "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/probe.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/translate-ru.js --prefix session",
             "timeout": 5
           }
         ]

@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 # Launch one benchmark run of the demo game task in a tmux-driven Claude Code session.
 # Usage: launch.sh <run-name> <mode> <model-id> <effort> [extra-skill-line]
-#   mode    : session mode skill line, e.g. 'pipeline full' | 'none' (base only, no skill)
+#   mode    : session mode skill line, e.g. 'process code full' | 'none' (base only, no skill)
 #   model-id: e.g. claude-opus-5[1m] | claude-fable-5-1[1m]
 #   effort  : low | medium | high
 #   extra   : optional second skill sent as /session:<extra> after the mode, e.g. 'codex sol'
@@ -70,7 +70,7 @@ tmux send-keys -t "$tmux_name" "/session:base" Enter
 wait_for 'Base on' 120 || exit 1
 if [[ $mode != none ]]; then
   tmux send-keys -t "$tmux_name" "/session:$mode" Enter
-  wait_for 'mode on|Pipeline review' 90 || exit 1
+  wait_for 'mode on|lite|std|full' 90 || exit 1
 fi
 if [[ -n $extra ]]; then
   tmux send-keys -t "$tmux_name" "/session:$extra" Enter

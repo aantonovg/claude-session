@@ -8,45 +8,40 @@ regenerates `skills/base/SKILL.md` and every other target of `lib/build-manifest
 | skill | mode | spawns |
 |---|---|---|
 | `session:base` | every session: main + forks, delegation rules, classes and slots, waits, style | forks + `Workflow` for cold agents |
-| `session:pipeline` | on top of the base: staged pipeline with gates (research, critic, decision, verification, implementation, closure); shared rules in `skills/pipeline/core.md` | forks + lean cold agents |
-| `session:review` | on top of the base: verification-first review of someone else's MR | forks + cold researcher |
-| `session:codex` | on top of the base: codex heavy axis (sol, astra) and executor axis (luna, terra) | `session:codex-proxy` one-agent workflows |
+| `session:process` | on top of the base: the stages, gates, task files and user points of one task (`code`, `mr`, `look`, `doc`, `ops` at depth `lite`, `std`, `full`); shared rules in `skills/process/core.md` | named workflows picked from the contracts |
+| `session:codex` | on top of the base: codex heavy axis (sol, astra) and executor axis (luna, terra) | one lean `Read`/`Bash` agent per codex job, shim text in `skills/codex/proxy-prompt.md` |
 | `session:ask` | ask without blocking: options document, Plannotator in the background, continue on reversible defaults (model-invocable) | - |
 | `session:reset-counter` | clears the statusline mode counters after a rewind (user only) | - |
 
 ## Agents
 
-Lean cold agents, launched only through one-agent or multi-agent `Workflow` with `agentType: session:<name>`,
-explicit model and effort, inputs by path. Frontmatter holds the c3 default.
+One agent per tool set, never per job. An agent file carries its tool list, its return shape, the
+working-directory rule and the `BLOCKED` rule — and no `model` and no `effort` key: the class table
+of `lib/classes.json` is the only source of a cell, passed at every call site. What the agent does
+comes from the launch prompt, which a workflow builds out of the role text of `lib/roles/`.
 
-| agent | model / effort | tools | returns |
-|---|---|---|---|
-| `artifact-publisher` | opus / medium | Artifact, Read, Write | `URL: <url>`, at most 40 words |
-| `artifact-designer` | opus / medium | Artifact, DesignSync, Read, Write | `URL: <url>`, at most 40 words |
-| `web-researcher` | sonnet / medium | WebFetch, WebSearch, Write | `FILE: <path>` plus a digest of at most 600 words with sources |
-| `code-reviewer` | sonnet / high | Read, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
-| `simplifier` | sonnet / medium | Read, Edit, Bash | one line per file plus the check result, at most 150 words |
-| `security-reviewer` | sonnet / high | Read, Bash | findings `file:line severity text`, at most 300 words, or `CLEAN` |
-| `stage-author` | opus / medium | Bash, Read, Edit, Write | plan or code author and fixer; diff summary |
-| `stage-reviewer` | fable / low | Read, Write | document critique to a review file, 5 tool calls at medium, 3 at high |
-| `stage-critic` | fable / low | Read, Write | clean-context critic of a framing and ledger |
-| `stage-researcher` | sonnet / high | Bash, Read, Write | facts to a notes file |
-| `stage-executor` | sonnet / high | Bash, Read | runs named commands, PASS/FAIL with decisive lines |
-| `waiter` | sonnet / low | Bash, Read | long waits with judgment |
-| `codex-proxy` | haiku / medium (fixed) | Bash | runs one codex job by header block, returns a file path |
+| agent | tools | used by |
+|---|---|---|
+| `tools-read-write` | Read, Write | the authors, the critic, the triage, the coverage check, the synthesis, the translation |
+| `tools-read-bash` | Read, Bash | the evidence roles, the executor, the waiter, the codex shim |
+| `tools-read-write-bash` | Read, Write, Bash | the researcher |
+| `tools-edit` | Bash, Read, Edit, Write | the code and test authors, the fixer |
+| `tools-web` | WebFetch, WebSearch, Write | the web researcher |
 
-Only `code-reviewer` keeps a `skills:` preload (`code-review`); other skills reach an agent as a
-resolved SKILL.md path in the prompt. Artifact and DesignSync are denied per project in
-`.claude/settings.local.json`; remove the two entries and start a new session to publish.
+No agent preloads a skill in frontmatter; a skill reaches an agent as a resolved SKILL.md path in
+the launch prompt. A tool group behind an MCP server belongs to a tool plugin of its own
+(`docs/tool-plugin/`), never to this plugin.
 
 ## Classes, slots and submodes
 
 The class comes from `/session:base` (default c3) and holds for the session; every workflow
-takes one row. Main-model slot: document critique and generation (stage-reviewer, stage-critic).
-Opus slot: authors and fixers (stage-author, simplifier, artifact agents). Sonnet slot: researchers,
-executors, bulk code and security review, web research. Large input moves a role one slot down,
-never up. Fixed: waiter sonnet-low; claude-code-guide haiku-medium; codex-proxy fixed haiku medium. Forks run on the
-main session's model and effort.
+takes one row. Main-model slot: the document authors, the merged critic, the triage, the synthesis.
+Opus slot: the fixer, the translation. Sonnet slot: the researchers, the evidence roles, the
+executor, the code and test authors, the coverage check, the waiting role. The `size` argument moves
+a role one slot down at `large`, never up. The per-role slot map lives in `lib/classes.json`, not in
+a text. One pin stands outside the table, at its call site: the cheap wrapper cell of the codex shim
+(`skills/codex/`), which wraps an external CLI and chooses no slot. Forks run on the main session's
+model and effort.
 
 | class | main-model slot (small input; document critique and generation) | opus slot (medium input; plan and code authors, fixers) | sonnet slot (large input; researchers, executors, bulk reviews) |
 |---|---|---|---|
@@ -68,8 +63,8 @@ Submodes rewrite the row (cells main / opus / sonnet; all three at once is an er
 
 ## Named workflows (0.14.0)
 
-Scripts under `workflows/`, launched by name (`session:dev`, `session:review-fix`, `session:build`,
-`session:research`) with `args`; the `/* usage: */` block is the contract, delivered to the session as SessionStart
+Scripts under `workflows/`, launched by name (`session:role`, `session:chain`, `session:make`,
+`session:probe`) with `args`; the `/* usage: */` block is the contract, delivered to the session as SessionStart
 context (section "Workflow contract hooks"); the body is never read by the caller. Shared block in every script: the 35-cell class table, `args.class` (default c3) and
 `args.submodes` pick the row, `opts(slot, job)` turns a slot into explicit `model`, `effort` and a
 `<mod>-<eff>-<job>` label. `args.cwd` is required; outputs go to `args.out` (default `<cwd>/reviews`).
@@ -81,12 +76,12 @@ transcripts, `tmux-sessions` for tmux test commands, `workflow-reliability` for 
 `shell-gotchas` for `.sh` inputs); otherwise the prompt says "No skills needed for this step". No
 agent preloads a skill in frontmatter.
 
-| workflow | stages | args | agents |
+| workflow | stages | args | roles |
 |---|---|---|---|
-| `dev` | plan, plan critique+fix (1-3), red tests + review (1-2), implement + code review + tests + fix (1-3), closure + review | `cwd, task, paths (array), test, class, submodes (array), out` | stage-author (opus slot), stage-reviewer (main), code-reviewer and stage-executor (sonnet) |
-| `review-fix` | code review, evidence check, fix, tests; 1-3 cycles (1 when `fix: false`) | `cwd, target (diff file / a..b / worktree), test, fix, class, submodes (array), out` | code-reviewer (findings returned inline), stage-researcher (sonnet), stage-author (opus) |
-| `build` | implement a plan, code review + tests + fix (1-3) | `cwd, plan, test, class, submodes (array), out` | stage-author (opus), code-reviewer and stage-executor (sonnet) |
-| `research` | parallel researchers by direction, critique, synthesis | `cwd, question, directions (array), paths (array), class, submodes (array), out` | stage-researcher (sonnet), stage-critic (main), stage-author (opus) |
+| `role` | one role, one agent | `role, in (array), ask, out, run, class, submodes (array), size` | every row of the catalog in `lib/roles/` |
+| `chain` | critic(s), evidence researchers, triage, fixer; one round | `in (array), ask, aspects (array), depth, base, test, out, run, class, submodes (array)` | critic, evidence-researcher, evidence, evidence-triage, fixer |
+| `make` | spec, scenarios, tests, code, executor, coverage, fixer | `ask, in (array), test, out, run, depth, from, until, class, submodes (array)` | spec-author, scenario-author, test-author, code-author, executor, coverage-checker, fixer, closure-author |
+| `probe` | parallel researchers by direction, critique, synthesis | `ask, directions (array), in (array), out, run, depth, class, submodes (array)` | researcher, web-researcher, critic, synthesizer |
 
 
 ## Workflow contract hooks
@@ -114,9 +109,9 @@ User and project workflow dirs are already covered by session's `@user` and `@pr
 second `@project` hook. Contracts load at session start: after a mid-session install run
 `/reload-plugins` or restart the session.
 
-## codex-proxy permission set
+## codex shim permission set
 
-Moved out of `agents/codex-proxy.md` in 0.10.2. Every launch runs `codex exec` with the same
+Moved out of the shim text (`skills/codex/proxy-prompt.md`) in 0.10.2. Every launch runs `codex exec` with the same
 three settings: `-s workspace-write` (the sandbox: writes only inside the workspace, no
 network), `-c approval_policy="on-request"` (codex asks before going beyond the sandbox) and
 `-c approvals_reviewer="auto_review"` (those requests go to codex's built-in risk-based
@@ -137,7 +132,7 @@ sequence of event types, never task content. In detached mode (`--detach <done-f
 starts codex with nohup, prints the PID, and on exit writes the answer file, the ledger row
 and the done-file (content = exit code) with stderr in `<done-file>.log`. With a trailing `-` or
 `--prompt-file <path>` the wrapper composes codex's stdin in memory, never on disk: the
-agent body for `--role <name>`, user and project `CLAUDE.md`, the memory index, `bin/codex-style.md`
+body of the named file in `agents/` for `--role <name>`, user and project `CLAUDE.md`, the memory index, `bin/codex-style.md`
 (style plus the escalation preamble), then the task; `CODEX_LABEL` lands in the ledger row's `label`.
 
 
@@ -159,34 +154,42 @@ Skill description: 100 tokens. Agent description: 100 tokens. Workflow `meta.des
 
 Details trimmed from `meta.description`; classes and submodes are described in "Classes, slots and submodes".
 
-### dev
+### role
 
-Defaults: `class` c3, `submodes` `[]`, `paths` `[]`, `test` the command decided in the plan, `out` `<cwd>/reviews`.
-Outputs: `plan.md`, review files and the closure review under `out`; working-tree changes, no commit.
-Stop conditions: plan critique-fix, red-test review and implementation review each run 1-3 rounds; a BLOCKED stage stops the run with a report.
+Defaults: `class` c3, `submodes` `[]`, `in` `[]`, `size` `medium`. `role`, `ask` and `out` are required.
+Outputs: the file named by `out`; the return carries `{role, out, class, slot, label}`. The one role
+that writes no file is `closure-author`: its report comes back as text.
+Stop conditions: an unknown role, a missing required argument or an `out` file the run never wrote
+ends the launch blocked, with the reason in the last line.
 
-### build
+### chain
 
-Defaults: `class` c3, `submodes` `[]`, `test` the plan's "Test command", `out` `<cwd>/reviews`.
-Outputs: working-tree changes (no commit), `code-review-N.md` and `tests-N.md` under `out`.
-Stop conditions: 1-3 author/review/test cycles until clean and green; a BLOCKED stage stops the run with a report.
+Defaults: `depth` `std`, `class` c3, `submodes` `[]`, `aspects` from the object kind, `base` none, `test` none.
+Outputs: the review file named by `out`, the evidence files beside it, the fixes in the working tree.
+Stop conditions: one round only; a hint with no evidence never reaches the fixer, what stays
+undetermined goes into the result for the user, and the ceiling of the depth ends a stage instead of
+starting another round.
 
-### research
+### make
 
-Defaults: `directions` `[question]`, `paths` `[]`, `class` c3, `submodes` `[]`, `out` `<cwd>/reviews`.
-Outputs: `notes-N.md` per direction, `critique.md`, `research.md` under `out`. Read-only, no file in the repo is changed.
-Stop conditions: every direction BLOCKED stops the run with a report.
+Defaults: `depth` `std`, `class` c3, `submodes` `[]`, `from`/`until` the whole stage list.
+Outputs: the stage files under `out` (specification, scenarios, tests), the code in the working tree,
+the executor's run result. No commit.
+Stop conditions: the fix-cycle ceiling of the depth; a failing check after it is a gap in the result,
+never another round. Output an oracle can judge gets no review stage.
 
-### review-fix
+### probe
 
-Defaults: `target` `worktree`, `class` c3, `submodes` `[]`, `test` none, `out` `<cwd>/reviews`, `fix` true.
-Outputs: `evidence-N.md` and `tests-N.md` under `out`; fixes in the working tree when `fix` is true.
-Stop conditions: 1-3 review/evidence/fix cycles until clean; a BLOCKED stage stops the run with a report.
+Defaults: `directions` `[ask]`, `in` `[]`, `depth` `std`, `class` c3, `submodes` `[]`.
+Outputs: one bundle file per direction, one critique file, one synthesis file at `out`. Read-only.
+Stop conditions: every direction blocked stops the run with a report.
 
 ## Session mode counters
 
-`hooks/session-modes.sh` writes `~/.claude/session-modes/<session_id>.json`: a JSON object keyed by
-skill name holding the string to render (`{"base":"base-c3","codex":"codex+astra"}`). Written on a
+`hooks/modes.sh` writes `~/.claude/session-modes/<session_id>.json`: a JSON object keyed by
+skill name holding the string to render (`{"base":"base-c3","process":"process-code-full","codex":"codex+astra"}`).
+The directory keeps its name on purpose: the statusline outside this plugin reads it, and only the
+keys inside the file changed with the rebuild. Written on a
 user-typed `/session:<mode> <args>` (UserPromptSubmit) or a model-invoked one (PostToolUse on Skill);
 cleared on PreCompact and SessionStart (resume keeps it); files older than seven days pruned. A
 statusline reads it by `session_id`; `/session:reset-counter` clears it after a rewind. State, not an API.

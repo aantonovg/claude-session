@@ -514,6 +514,55 @@ function oldCarrierGap(text) {
   return best === null ? OLD_CARRIERS.slice() : best
 }
 
+// The names of the 0.15 set that part 9 retires, and the only forms a live reference to one of them
+// takes. tests/rebuild/stale.sh executes staleNameHits() over every tracked file of the repo and
+// over the patched copy of the user-level assets, so one place holds the list and the test is a
+// reader of it, never a second copy of the patterns.
+// Every form is qualified. The bare words `research`, `review`, `build`, `waiter`, `translator` and
+// `web-researcher` are live names of the new set (a role, a skill, a workflow), so a pattern that
+// matched one of them alone would call the new set stale. The five `stage-<x>` stems are no English
+// words and count bare: they name deleted agent files, and the codex wrapper takes such a stem as a
+// `--role` argument, where neither the `session:` prefix nor a path stands beside it.
+// The two state keys come from the U9 answer line: the statusline consumer read `.pipeline` and
+// `.review` out of the mode file and `hooks/modes.sh` writes neither any more. The `session-modes/`
+// path itself is NOT retired — the rebuilt hook keeps writing that directory on purpose (A15, U9),
+// so it is no part of this list.
+const STALE_AGENTS = ['stage-author', 'stage-critic', 'stage-executor', 'stage-researcher',
+  'stage-reviewer', 'code-reviewer', 'security-reviewer', 'simplifier', 'artifact-designer',
+  'artifact-publisher', 'web-researcher', 'waiter', 'size-estimator', 'translator', 'codex-proxy']
+const STALE_WORKFLOWS = ['build', 'dev', 'research', 'review-fix', 'translate-ru']
+const STALE_SKILL_CMDS = ['pipeline', 'review']
+const STALE_STAGE_AGENTS = ['stage-author', 'stage-critic', 'stage-executor', 'stage-researcher',
+  'stage-reviewer']
+const STALE_PATHS = ['skills/pipeline/', 'skills/review/', 'hooks/session-modes.sh',
+  'hooks/pipeline-subagent-stop.sh', 'base/split.sh', 'pipeline/current']
+const STALE_STATE_KEYS = ['pipeline', 'review']
+function staleNameHits(line) {
+  const s = String(line == null ? '' : line)
+  const ag = STALE_AGENTS.map(rxEsc).join('|')
+  const wf = STALE_WORKFLOWS.map(rxEsc).join('|')
+  const pre = rxEsc(CARRIER_PREFIX)
+  // Two of the parts below are written as plain strings, not as template literals: a template
+  // literal that opens with `(?:` is what the tool-shape mutant of tests/rebuild/carrier-free.sh
+  // searches for, and a second one in this file would send that mutant at the wrong line.
+  const parts = [
+    `\\b${pre}:(?:${ag}|${wf})(?![a-z0-9-])`, // a launch name under this plugin's prefix
+    '\\b(?:agentType|subagent_type)\\s*[:=]\\s*[\'"](?:' + pre + ':)?(?:stage-[a-z]+|' + ag + ')[\'"]',
+    `/${pre}:(?:${STALE_SKILL_CMDS.map(rxEsc).join('|')})\\b`, // the two retired slash commands
+    '\\b(?:' + STALE_PATHS.map(rxEsc).join('|') + ')', // a path of the tree that no longer exists
+    `\\bagents/(?:stage-[a-z]+|${ag})\\.md\\b`,
+    `\\bworkflows/(?:${wf})\\.js\\b`,
+    `\\b(?:${STALE_STAGE_AGENTS.map(rxEsc).join('|')})\\b`, // no English word: counts bare
+    // a key of the old mode file in the shape its reader takes, a key of a jq list
+    '(?:^|[\\s,[(])\\.(?:' + STALE_STATE_KEYS.map(rxEsc).join('|') + ')(?=[\\s,\\])])',
+  ]
+  const re = new RegExp(parts.join('|'), 'g')
+  const hits = []
+  let m
+  while ((m = re.exec(s)) !== null) hits.push(m[0].trim())
+  return hits
+}
+
 // hintVerdictHits(text): the places where <text> lets a hint decide by itself. A critic gives hints,
 // never verdicts (idea 3.6): a claim is withdrawn only when a fact refutes it, and a hint no fact
 // settles leaves the claim standing, marked as not checked. A text that makes a hint, a critique or
@@ -1905,7 +1954,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, optsFor, classUp, slotForSize, cellTokens,
     CARRIER_PATHS, CARRIER_DIRS, CARRIER_AGENTS, CARRIER_WORKFLOWS, CARRIER_FILES, CARRIER_WORDS,
     carrierTokens, TOOL_PLAIN, TOOL_CAMEL, ROLE_NOUNS, roleCarrierNames, carrierFreeTokens,
-    phraseGap, OLD_CARRIERS, oldCarrierGap, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
+    phraseGap, OLD_CARRIERS, oldCarrierGap, STALE_AGENTS, STALE_WORKFLOWS, STALE_PATHS,
+    staleNameHits, HINT_SUBJECTS, hintVerdictHits, agentTypesOf,
     bindClass,
     roleOf, roleNames, roleAgent, roleSlot, roleClass, roleReturnsText, ceiling, ceilingHit, isBlocked, lastLine,
     blockedLine, namesOut, mustExist, outVerdict, outDir, closureReport, textResult,

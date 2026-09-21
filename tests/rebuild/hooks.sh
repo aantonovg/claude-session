@@ -212,7 +212,7 @@ check "h2 ledger-stop.sh reads that pointer" grep -Fq 'tasks/current' "$LEDGER_H
 LEDGER_NAME=$(grep -oE 'ledger\.jsonl' "$LAYOUT" | head -1)
 check "h2 lib/task-layout.md names the ledger file" test "$LEDGER_NAME" = ledger.jsonl
 check "h2 ledger-stop.sh appends to that file" grep -Fq 'ledger.jsonl' "$LEDGER_HOOK"
-check "h2 ledger-stop.sh names no old pointer path" bash -c '! grep -Fq "pipeline/current" "$1"' _ "$LEDGER_HOOK"
+check "h2 ledger-stop.sh names no old pointer path" bash -c '! grep -Fq "pipeline/current" "$1"' _ "$LEDGER_HOOK"  # stale-ok: the retired pointer path, quoted to assert its absence
 
 CWD=/tmp/ledger-proj
 ENC=$(printf '%s' "$CWD" | sed 's#[^A-Za-z0-9-]#-#g')
