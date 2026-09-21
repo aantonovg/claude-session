@@ -213,7 +213,6 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 
 ## Version log
 
-0.16.0: rebuild from zero: class and submodes the only source of a cell (`lib/classes.json`, rendered by `bin/build.sh`); four named workflows `session:role`, `session:chain`, `session:make`, `session:probe`; five tool-set agents; one process skill with task files under `tasks/current`; verification page `lib/verification.md`; hooks `modes.sh` and `ledger-stop.sh`; the 0.15 agents, workflows and skills are gone; tests `tests/rebuild/all.sh` and `tests/workflows/usage-test.sh`.
 0.15.1: chat replies in A2 English (word list, grammar, verbatim identifiers) in the base Language section; caveman uses common synonyms.
 0.15.2: self-ping rule for long commands in every Bash-capable agent (detach, then `sleep 180` per turn; no background job at turn end).
 0.15.3: every synchronous Bash call in an agent sets `timeout` ≤ 120000; commands that may run over 2 minutes run detached only.
@@ -221,6 +220,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.5: poll step 5 seconds (`for i in $(seq 36); do test -f <done> && break; sleep 5; done`); a finished job is noticed within 5 s.
 0.15.6: base "Skill first, then delegate" bullet (transcripts-jsonl, shell-gotchas, workflow-reliability, harness-cost, tmux-sessions); tests/measure: S1-S9 scenarios for the 0.15 assets, driver env matrix (MODEL EFFORT CWD OUT REPEAT IDS), parser S3 scans script files only.
 0.15.7: shorter workflow descriptions; README documents workflow args; plugin-dev workflows (test-session, skill-author, memory-gc) tracked in .claude/workflows/.
+0.16.0: rebuild from zero: class and submodes the only source of a cell (`lib/classes.json`, rendered by `bin/build.sh`); four named workflows `session:role`, `session:chain`, `session:make`, `session:probe`; five tool-set agents; one process skill with task files under `tasks/current`; verification page `lib/verification.md`; hooks `modes.sh` and `ledger-stop.sh`; the 0.15 agents, workflows and skills are gone; tests `tests/rebuild/all.sh` and `tests/workflows/usage-test.sh`.
 0.15.18: fork names and `Agent` descriptions use `fork-<mod>-<eff>-<job>`; effort comes from the status line or the user's word, never guessed; workflow labels stay `<mod>-<eff>-<job>`.
 0.15.17: workflow contracts via per-workflow SessionStart hooks (50-150 tokens); session:translate-ru, session:translator, session:size-estimator moved into the plugin; start-ping monitor for sessions without base; ping.sh exits when orphaned.
 0.15.16: named workflows: 1-4 word descriptions, launch contract injected into base via workflow-usage.sh; ad hoc description rule. Each named workflow keeps its args in a `/* usage: */` block; base `## Named workflows` runs `bin/workflow-usage.sh` at skill load; test tests/workflows/usage-test.sh.

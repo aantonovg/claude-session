@@ -16,7 +16,7 @@
       "version": "0.16.0",
       "keywords": [
         "session",
-        "modes",
+        "base",
         "cache",
         "forks",
         "process",
