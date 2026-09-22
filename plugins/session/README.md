@@ -15,7 +15,7 @@ regenerates `skills/base/SKILL.md` and every other target of `lib/build-manifest
 
 ## The 0.17 set
 
-0.17.0: a `research` stage runs before `intent` (task file `ledger.md`: facts, unknowns,
+Version 0.17.0: a `research` stage runs before `intent` (task file `ledger.md`: facts, unknowns,
 contradictions, assumptions, verification capabilities); at `std` and `full` nothing but research
 launches before the user confirms the intent, the gate now sitting after research; the plan stage
 splits into `verification-plan` and `implementation-plan`; the uplift rule for a no-oracle author
