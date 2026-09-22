@@ -15,7 +15,8 @@ One directory per task:
 `<encoded-cwd>` is the working directory with every character outside `A-Za-z0-9-` replaced by
 `-`, `<date>` is `YYYY-MM-DD`, `<slug>` a short lower-case name of the task. The pointer
 `~/.claude/projects/<encoded-cwd>/tasks/current` holds one line, the absolute path of that
-directory. Written at the start, removed at closure, by the main session and by nobody else:
+directory. The pointer lives under the encoded repository root, which the hooks find from any cwd
+inside it. Written at the start, removed at closure, by the main session and by nobody else:
 
 ```
 D=~/.claude/projects/<encoded-cwd>/tasks/<date>-<slug>; mkdir -p $D/evidence $D/reviews $D/changes $D/runs; echo $D > $(dirname $D)/current

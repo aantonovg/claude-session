@@ -277,6 +277,16 @@ case "$EVENT" in
         CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null); [ -n "$CWD" ] || CWD=$PWD
         ENC=$(printf '%s' "$CWD" | sed 's#[^A-Za-z0-9-]#-#g')
         CUR="$HOME/.claude/projects/$ENC/tasks/current"
+        # A process skill turn can leave the session cwd inside the repository (e.g. a skill
+        # directory) rather than at the repository root the pointer was written under. When the
+        # hook cwd itself names no pointer, retry once from the repository root of that cwd.
+        if [ ! -f "$CUR" ]; then
+          ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)
+          if [ -n "$ROOT" ]; then
+            RENC=$(printf '%s' "$ROOT" | sed 's#[^A-Za-z0-9-]#-#g')
+            CUR="$HOME/.claude/projects/$RENC/tasks/current"
+          fi
+        fi
         TDIR=$(head -1 "$CUR" 2>/dev/null)
         if [ -n "$TDIR" ] && [ -d "$TDIR" ] && [ -f "$PLUGIN_ROOT/lib/block.js" ] && command -v node >/dev/null 2>&1; then
           RLINE=$(node -e '
