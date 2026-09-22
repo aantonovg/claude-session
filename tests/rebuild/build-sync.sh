@@ -198,7 +198,7 @@ eq(b.roleSlot('code-author'), 'sonnet', 'roleSlot code-author')
 eq(b.roleSlot('translator', 'large'), 'sonnet', 'roleSlot translator large')
 eq(b.roleSlot('critic'), 'main', 'roleSlot critic merged')
 eq(b.roleSlot('critic', null, true), 'opus', 'roleSlot critic split by aspect')
-eq(b.roleClass('plan-author', 'c3'), 'c4', 'roleClass uplift')
+eq(b.roleClass('plan-author', 'c3'), 'c3', 'roleClass never moves the class')
 eq(b.roleClass('code-author', 'c3'), 'c3', 'roleClass no uplift')
 
 // ceilings of A30
@@ -215,6 +215,19 @@ eq(b.mustExist(null, '/tmp/out.md').ok, false, 'mustExist null return')
 eq(b.isBlocked('one finding says BLOCKED: nothing\nwrote /tmp/out.md\nDONE'), false, 'isBlocked mid-text')
 eq(b.mustExist('a line quoting BLOCKED: x\n/tmp/out.md written\nDONE', '/tmp/out.md').ok, true, 'mustExist word mid-text')
 eq(b.isBlocked('wrote nothing\nBLOCKED: Read denied'), true, 'isBlocked last line')
+
+// intentStopDue: a stop row naming its own stage (no agent_id) proves the confirmation, except a
+// stop row of stage `research`, which never does (evidence-first phase, scenarios.md "Hook and
+// predicate"); R21
+const researchStop = '{"ts":1,"stage":"research","event":"stop","depth":"std"}'
+const researchThenSubtasks = researchStop + '\n{"ts":2,"stage":"subtasks","event":"stop","depth":"std"}'
+const specificationOnly = '{"ts":1,"stage":"specification","event":"stop","depth":"std"}'
+const researchSubtasksThenIntent = researchThenSubtasks + '\n{"ts":0,"stage":"intent","event":"stop","depth":"std"}'
+eq(b.intentStopDue(researchStop, ['intent.md']), false, 'intentStopDue: a research-only stop row is not due')
+eq(b.intentStopDue(researchThenSubtasks, ['intent.md']), true, 'intentStopDue: a stop row of a later non-intent stage is due even after a research stop')
+eq(b.intentStopDue(specificationOnly, ['intent.md']), true, 'intentStopDue: a finished non-intent, non-research stage proves the confirmation')
+eq(b.intentStopDue(researchStop, []), false, 'intentStopDue: due only when an intent file is named')
+eq(b.intentStopDue(researchSubtasksThenIntent, ['intent.md']), false, 'intentStopDue: never due twice, even with a research stop in the ledger')
 
 // the error paths
 throws(() => b.cellFor('c9', []), 'unknown class')

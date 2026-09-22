@@ -10,11 +10,12 @@ states these rules. It decides, for one object, who checks it and who writes it.
    review and no other review of that output, at any depth.
 2. **Output without an oracle gets a stronger author, not a second reader.** For an object only a
    reading could check (a decision contract, a plan, a process document, code with no possible
-   verifier), the author runs one class step up. A second reader of the same class is waste.
+   verifier), the author runs one slot up in the same class row; the class never moves for a
+   stage. A second reader of the same class is waste.
 3. **Review is not a default role, but a key document is never unchecked.** No reviewer is paired
    with every author. Every key document (plan, decision contract, specification, closure report)
-   gets a checker one class step above its author before the user sees it. The stronger author of
-   rule 2 does not replace that check.
+   gets a checker one slot up in the same class row above its author before the user sees it. The
+   stronger author of rule 2 does not replace that check.
 4. **The plan names the oracle per object.** Each invariant and each claim carries one of three
    oracle classes: `existing oracle`, `missing oracle`, `no possible oracle`. The class decides the
    route, and no object goes into work without one.
@@ -31,7 +32,7 @@ one case where an author's carrier, not the object, forces the check.
 |---|---|---|
 | existing oracle | a check exists and runs today (tests, a validator, a control call file, a build) | run it through an executor; the run output is the verdict; no review of that output |
 | missing oracle | a check is possible but absent | build the check first, at the level above the object, then run it; the cost of building it is part of the task, not an extra |
-| no possible oracle | no runnable check can exist (intent, a plan, a prose document) | rule 2 (author one class step up) plus, for a key document, rule 3 (checker one class step above that author), carried by the evidence review chain |
+| no possible oracle | no runnable check can exist (intent, a plan, a prose document) | rule 2 (author one slot up in the same class row) plus, for a key document, rule 3 (checker one slot up in the same class row above that author), carried by the evidence review chain |
 
 An object whose class is unclear is treated as `missing oracle` until someone shows no check can
 exist; the cheap mistake is building a check that was not needed, the costly one is an opinion
@@ -48,7 +49,7 @@ is never "should this be reviewed", it is "which level is this".
 | b | infrastructure change, local or remote | missing, then existing | the resulting state: requests against it, metrics, logs | control calls written before the change (section 5), run by an executor before it and after it; the pair of runs is the verdict |
 | c | tests, benchmarks, harness code | no possible oracle for quality, existing for coverage | the scenario list written beforehand | coverage only: every scenario has a test, no test stands without a scenario, read by a coverage check of the two lists. No quality review. At depth `full` a negative control: the test must fail without the change |
 | d | test scenarios as text | existing, against the level above | the fixed specification: goal, subtasks, functional and non-functional requirements, invariants, constraints | traceability: every requirement, invariant and constraint has at least one scenario, negative ones included; a gap goes through the evidence chain, not through an opinion |
-| e | intent: which problem the user wants solved, what to change | no possible oracle | only the user | a critic looks for ambiguity, a contradiction, a hidden second goal; the user confirms the text. At `std` and `full` no stage starts before that confirmation; at `lite` the session acts at once on its own reading |
+| e | intent: which problem the user wants solved, what to change | no possible oracle | only the user | a critic looks for ambiguity, a contradiction, a hidden second goal; the user confirms the text. At `std` and `full` no stage starts before that confirmation; at `lite` the session acts at once on its own reading; nothing but research is launched before that confirmation |
 
 The lower the level, the weaker the oracle, the more a check costs and the more the user is needed.
 
@@ -58,8 +59,9 @@ The same ladder read from the top is the order in which a task is worked, for co
 non-code work alike:
 
 intent (goal) → subtasks, when the goal is complex → functional requirements, non-functional
-requirements, invariants, constraints → test scenarios as text → executable tests, or manual
-control calls → the result (code, infrastructure state, document).
+requirements, invariants, constraints → test scenarios as text → verification plan →
+implementation plan → executable tests, or manual control calls → the result (code, infrastructure
+state, document).
 
 **Each level is the oracle for the level below it.** A level is checked against the level above,
 never against the conversation and never against the author's memory.
@@ -67,12 +69,14 @@ never against the conversation and never against the author's memory.
 | level | checked against | check | author |
 |---|---|---|---|
 | intent, with quality criteria | the user | dialogue; critic hints on ambiguity; the user confirms the text. User gate at `std` and `full` | the main session with the user |
-| subtasks | intent | every part of the goal has a subtask, no subtask lies outside the goal; evidence chain; user gate at `std` and `full` | one class step up |
-| requirements, invariants, constraints | intent and subtasks | traceability to the subtasks, no contradiction, every non-functional requirement in a measurable form; evidence chain | one class step up |
-| test scenarios as text | the specification | traceability: every requirement and invariant has scenarios, negative ones included; a critic only for missing cases | one class step up: coverage is checkable, the sense of a scenario is not |
+| subtasks | intent | every part of the goal has a subtask, no subtask lies outside the goal; evidence chain; user gate at `std` and `full` | one slot up in the same class row |
+| requirements, invariants, constraints | intent and subtasks | traceability to the subtasks, no contradiction, every non-functional requirement in a measurable form; evidence chain | one slot up in the same class row |
+| test scenarios as text | the specification | traceability: every requirement and invariant has scenarios, negative ones included; a critic only for missing cases | one slot up in the same class row: coverage is checkable, the sense of a scenario is not |
+| verification plan | the scenarios | every invariant has an oracle row: `existing`, `missing` or `no possible` | one slot up in the same class row |
+| implementation plan | the verification plan | the steps and their order are named and checked against the verification plan; starts only after the verification-plan gate passed | one slot up in the same class row |
 | executable tests, control calls | the scenarios | coverage by reading the two lists; negative control at `full`; no quality review | no uplift, the cheapest author the class allows |
 | result: code, infrastructure state | the tests, the control calls | an executor runs them | no uplift, the cheapest author the class allows |
-| result with no possible oracle (a document) | the scenarios, read as a checklist a reader can answer | evidence chain with aspect critics | one class step up |
+| result with no possible oracle (a document) | the scenarios, read as a checklist a reader can answer | evidence chain with aspect critics | one slot up in the same class row |
 
 Two consequences:
 
@@ -104,8 +108,9 @@ An area with no possible oracle, or with an oracle nobody can run here, is not s
 away. It is:
 
 1. named in the verification plan with its oracle class and the reason no run is possible;
-2. given the strongest available substitute: the author one class step up (rule 2) and, for a key
-   document, the evidence review chain one class step above the author (rule 3);
+2. given the strongest available substitute: the author one slot up in the same class row (rule 2)
+   and, for a key document, the evidence review chain one slot up in the same class row above the
+   author (rule 3);
 3. listed in the report as unverified, in the user's words, with what a later run would need;
 4. accepted by the user, explicitly. The user's acceptance is the closing act, not a judgment of
    the session about its own output.

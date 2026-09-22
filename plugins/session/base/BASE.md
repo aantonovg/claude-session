@@ -61,7 +61,7 @@ Waiting on the user:
 - An unanswered `AskUserQuestion` auto-continues: a reversible choice takes the recommended option and says so; a choice that must be the user's ends the turn with the question restated and the work paused.
 - Two or more open decisions, or a timed-out question: the `session:ask` skill instead of a dialog.
 - Plan mode only when the user is present to approve.
-- The user is needed at three points of a task: the intent with its quality criteria, an open decision the work rests on, and the acceptance of what stayed unverified.
+- The user is needed at three points of a task: the intent with its quality criteria, an open decision the work rests on, and the acceptance of what stayed unverified. At `std` and `full`, nothing but research launches before the user confirms the intent.
 
 Questions about Claude Code, the Agent SDK or the Anthropic API: the built-in `claude-code-guide` agent as a one-agent `Workflow` on its own fixed cell, the `guide` seat named under the class table below, which no class and no size move; label `<mod>-<eff>-guide` off that cell; never the `/claude-api` skill.
 

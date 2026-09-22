@@ -9,11 +9,13 @@ and `SKILL.md` first.
 
 | stage | task file | gate | lite | std | full |
 |---|---|---|---|---|---|
+| `research` — facts, unknowns, contradictions, assumptions, verification capabilities | `ledger.md`, `evidence` | no decision-changing unknown open, contradictions closed or accepted as risk, verification capabilities listed or unverifiable written | one research bundle, no gate | yes | yes |
 | `intent` — what must be true after the change, and what must not change | `intent.md` | the user confirms the wanted state, the blast radius and the criteria | written by the main session, no gate | user gate | user gate |
 | `subtasks` — the change cut into steps that can be applied and rolled back alone | `subtasks.md` | every part of the goal has a step, each with its rollback | folded into `intent.md` | yes | yes |
 | `specification` — the wanted state, the invariants that must hold during the change, the constraints (window, access, quota) | `specification.md` | traceability to the steps, every invariant measurable as a number or a line of output | folded into `intent.md` | yes | yes |
 | `scenarios` — what a correct state looks like, and what a broken one looks like | `scenarios.md` | every invariant has a scenario; the failure cases are among them | one-liners | yes | yes, with negatives |
 | `verification-plan` — the oracle of every invariant, and the rollback trigger | `verification-plan.md` | every invariant has a row: `existing`, `missing` or `no possible` oracle | folded into `intent.md` | yes | yes |
+| `implementation-plan` — the plan of the work | `implementation-plan.md` | the steps and their order are named and checked against the verification plan; starts only after the verification-plan gate passed | folded into `intent.md` | yes | yes |
 | `checks` — the control-call file: one line per call, each with its expected result | `tests.md` | every invariant has a call with an expected result written down before the change | – | yes | yes, plus a call that must fail while the change is absent |
 | `result` — the change applied, with the control calls run before it and after it | `changes`, `runs` | the two runs are recorded and every call matches its expected result; a mismatch triggers the rollback | yes | yes | yes |
 | `review` — the parts no call can reach | `reviews` | evidence chain over the approved aspects; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |

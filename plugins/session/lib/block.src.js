@@ -640,7 +640,15 @@ function roleNames() { return Object.keys(CLASSES.roles) }
 function roleAgent(name) { return roleOf(name).agent }
 function roleSlot(name, size, split) {
   const r = roleOf(name)
-  return slotForSize(split && r.splitSlot ? r.splitSlot : r.slot, size)
+  const slot = slotForSize(split && r.splitSlot ? r.splitSlot : r.slot, size)
+  // decision 11 (2026-09-22): uplift never changes the class (roleClass below); it moves the role
+  // one slot up in the same class row, applied after slotForSize — sonnet to opus, opus to main,
+  // main stays main. CLASSES.slots runs main, opus, sonnet (strongest first), so one step toward
+  // index 0 is one slot up, floored at main.
+  if (!r.uplift) return slot
+  const idx = CLASSES.slots.indexOf(slot)
+  if (idx < 0) throw new Error(`roleSlot: slot ${slot} not in CLASSES.slots`)
+  return CLASSES.slots[Math.max(0, idx - 1)]
 }
 // roleToolGaps(text, tools): what a role text asks of its agent that the agent's tool list does not
 // give. A role that lists a directory, runs a check or a command, greps or polls needs Bash; a role
@@ -670,8 +678,9 @@ function roleToolGaps(text, tools) {
   for (const n of NO_SUCH_TOOLS) if (have.has(n)) gaps.push(`names ${n}, a tool this build does not have`)
   return gaps
 }
-// roleClass(role, class): an output no oracle can check gets a stronger author, one class step up.
-function roleClass(name, cls) { return roleOf(name).uplift ? classUp(cls) : cls }
+// roleClass(role, class): decision 11 (2026-09-22) — the class of a launch never moves for a role;
+// an output no oracle can check gets a stronger author through roleSlot's one-slot-up move instead.
+function roleClass(name, cls) { roleOf(name); return cls }
 // roleReturnsText(role): true for a role whose whole output is its return. This harness lets no
 // subagent hand a report file to anybody, so such a role writes nothing, reads its `out` as the
 // directory the run filled, and is checked on closureReport() of its return, never on a path. The
@@ -1795,9 +1804,9 @@ function probeResult(s) {
 // file names of the task directory named by tasks/current and prints resumeLine() as a context line
 // after a clear, a compact or a resume, so a session that lost its context continues from the
 // machine rows instead of from its own reading of a long text.
-const PROCESS_STAGES = ['intent', 'subtasks', 'specification', 'scenarios', 'verification-plan',
-  'checks', 'result', 'review', 'coverage', 'closure']
-const STAGE_OFF = { lite: ['subtasks', 'specification', 'verification-plan', 'checks', 'coverage'], std: [], full: [] }
+const PROCESS_STAGES = ['research', 'intent', 'subtasks', 'specification', 'scenarios', 'verification-plan',
+  'implementation-plan', 'checks', 'result', 'review', 'coverage', 'closure']
+const STAGE_OFF = { lite: ['subtasks', 'specification', 'verification-plan', 'implementation-plan', 'checks', 'coverage'], std: [], full: [] }
 const INTENT_FILES = ['intent.md', 'task.md']
 function ledgerRows(text) {
   const rows = []
@@ -1839,8 +1848,9 @@ function resumeState(ledgerText, files) {
   return { depth, done: order, last: lastIdx < 0 ? null : PROCESS_STAGES[lastIdx], next, intent: done.has('intent') && hasIntent }
 }
 // intentStopDue(ledgerText, files): hooks/ledger-stop.sh writes the intent stop row once, at the
-// first stop row of any launch of the task. At std and full nothing is launched before the user
-// confirmed the intent, so a finished launch proves the confirmation; at lite the intent has no gate.
+// first stop row of any launch of the task. At std and full nothing but research is launched
+// before the user confirmed the intent, so a finished launch proves the confirmation, except a
+// stop row of stage `research` itself, which never does; at lite the intent has no gate.
 function intentStopDue(ledgerText, files) {
   const rows = ledgerRows(ledgerText)
   if (!(files || []).some(f => INTENT_FILES.includes(f))) return false
@@ -1848,6 +1858,7 @@ function intentStopDue(ledgerText, files) {
   const stopped = stopIds(rows)
   return rows.some(r => !r.event && r.agent_id && stopped.has(r.agent_id) && r.stage !== 'intent')
     || rows.some(r => r.event === 'stop' && r.agent_id && r.stage && r.stage !== 'intent')
+    || rows.some(r => r.event === 'stop' && !r.agent_id && r.stage && r.stage !== 'intent' && r.stage !== 'research')
 }
 // unnamedStopRow(ledgerText, id, ts, agentHead, taskDir): the stop row of a launch whose row carries
 // no agent_id. The session writes the launch row before the launch, and filling the id in afterwards

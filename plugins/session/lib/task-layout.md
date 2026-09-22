@@ -42,6 +42,7 @@ the row stays as it is.
 
 | key | path | kind | written by | read by | at lite |
 |---|---|---|---|---|---|
+| facts | ledger.md | file | the research stage (the synthesis carrier, when the process names `ledger.md` as its `out`) | the intent, decisions, verification-plan and implementation-plan stages | task.md |
 | intent | intent.md | file | the intent and quality criteria stage, confirmed by the user at `std` and `full` | every later stage: authors as constraints, the review chain as its aspect source, triage as its severity scale | task.md |
 | subtasks | subtasks.md | file | the subtasks stage, from the confirmed intent | the specification stage, the scenario stage, closure | task.md |
 | decisions | decisions.md | file | the intent and specification stages: the decision contract and what each decision rests on | every author, triage, closure | task.md |

@@ -23,10 +23,16 @@ D=~/.claude/projects/<encoded-cwd>/tasks/<date>-<slug>; mkdir -p $D/evidence $D/
 
 The files, one level of the chain each: `intent.md`, `subtasks.md`, `decisions.md`,
 `specification.md`, `scenarios.md`, `verification-plan.md`, `implementation-plan.md`, `tests.md`,
-`coverage.md`, `report.md`, the state file `ledger.jsonl`, and the directories `evidence`,
-`reviews`, `changes`, `runs`. At depth `lite` the documents collapse into one `task.md` with one
-section per level; `tests.md` and `coverage.md` are not written at all, and the directories keep
-their place.
+`coverage.md`, `report.md`, the state file `ledger.jsonl`, `ledger.md` beside it, and the
+directories `evidence`, `reviews`, `changes`, `runs`. At depth `lite` the documents collapse into
+one `task.md` with one section per level; `tests.md` and `coverage.md` are not written at all, and
+the directories keep their place.
+
+`ledger.md` holds the evidence of the research stage: facts as file:line or URL pointers,
+unknowns sorted into four classes (decision-changing, verification-changing, implementation-local,
+nice-to-know), contradictions with both sides kept, assumptions, and the verification capabilities
+the task can call on. `intent.md`, `decisions.md`, `verification-plan.md` and
+`implementation-plan.md` cite its rows.
 
 A file is written by one stage and read by the later ones. Nobody rewrites a file of a level above
 their own: a stage that disagrees says so in its own file, and the disagreement goes to the gate
@@ -40,7 +46,7 @@ is not whole. A level counts as done only when the launch that wrote its file ha
 `ledger.jsonl`: that row is written by a hook when the launch finishes, never by the session and
 never by the launched work, so it stands every time and only then. The intent has no launch: the
 same hook writes its stop row, `{"ts","stage":"intent","event":"stop","depth"}`, at the first stop
-row of the task, because nothing is launched before the intent is confirmed. A closing line, a status block
+row of the task, because nothing but research is launched before the intent word. A closing line, a status block
 or any other marker inside the file proves nothing about completeness. A file whose launch has no
 stop row — a stage killed mid-write by a compact, an interruption or a denied capability — is
 redone from that level, not read as a result. No stage researches again what a whole file already holds, and no stage trusts a
@@ -155,8 +161,8 @@ The lower the level, the weaker the oracle, the more the user is needed.
 
 The same ladder read from the top is the order of the work, for code and for prose alike:
 
-intent → subtasks → requirements, invariants, constraints → scenarios as text → tests or control
-calls → the result.
+intent → subtasks → requirements, invariants, constraints → scenarios as text → verification plan →
+implementation plan → tests or control calls → the result.
 
 **Each level is the oracle of the level below it.** A level is checked against the level above,
 never against the conversation and never against the memory of an author. An error high in the
@@ -202,8 +208,8 @@ carries exactly those aspects. No aspect critic runs without that approval. A cr
 report as not covered by a critic, never dropped in silence.
 
 A critic may raise the class of the stages that follow, never lower it, and says so in one line.
-A checker of a key document runs one class step above its author; that step is the only per-stage
-class change and does not move the class of the session.
+A checker of a key document runs one slot up in the same class row as its author; the class never
+moves for a stage.
 
 ## Status shape
 

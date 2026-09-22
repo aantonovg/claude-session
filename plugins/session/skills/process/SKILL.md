@@ -39,15 +39,19 @@ option and is named in the closure report. Skip steps 3 to 5 below.
    The depth is the argument; with no argument the default is `full`, and only the user lowers it.
 3. Reply with one line: the type, the depth and the class, nothing else.
 4. At `std` and `full` no stage starts before the user confirmed the intent text and the quality
-   criteria, and nothing at all is launched before that word: the intent text, the criteria and the
-   open decisions are your own writing in chat, never a job you send away, because this level
-   answers to the user alone. The confirmation always uses the form of `intent-form.md` next to
-   this file, its `Review aspects` line included, written into `intent.md` and shown in chat. Between the task and the confirmation the turn holds no launch and no
-   task file of a later stage. At `lite` the work starts at once, on your own reading of the
-   request.
+   criteria, and nothing but research is launched before that word: the intent text, the criteria
+   and the open decisions are your own writing in chat, never a job you send away, because this
+   level answers to the user alone. The confirmation always uses the form of `intent-form.md` next
+   to this file, its `Review aspects` line included, written into `intent.md` and shown in chat,
+   with `ledger.md` in view; no decision-changing unknown open. Between the task and the
+   confirmation the turn holds no launch besides research and no task file of a later stage. At
+   `lite` the work starts at once, on your own reading of the request.
 5. Create the task directory and write the pointer, one command (`core.md`, "Task directory").
 
 ## Stages and gates
+
+The order a reader traces end to end: research, intent, subtasks, specification, scenarios,
+verification-plan, implementation-plan, checks, result, review, coverage, closure.
 
 Every process file instantiates this table for its task type. A stage writes its file, passes its
 gate, and only then does the next stage start. The main session writes the one-line status of each
@@ -60,11 +64,13 @@ which it drops, stands in `core.md`, "Task directory", and nowhere else.
 
 | stage | task file | gate | lite | std | full |
 |---|---|---|---|---|---|
+| `research` — facts, unknowns, contradictions, assumptions, verification capabilities | `ledger.md`, `evidence` | no decision-changing unknown open, contradictions closed or accepted as risk, verification capabilities listed or unverifiable written | one research bundle, no gate | yes | yes |
 | `intent` — the problem, the quality criteria, the open decisions | `intent.md`, `decisions.md` | the user confirms the text and the criteria; every open decision names what it rests on | written by the main session, no gate | written by the main session, user gate | written by the main session, user gate |
 | `subtasks` — the goal cut into parts | `subtasks.md` | every part of the goal has a subtask, no subtask outside the goal | folded into the intent level | yes | yes |
 | `specification` — requirements, invariants, constraints | `specification.md` | traceability to the subtasks, every non-functional requirement measurable | folded into the intent level | yes | yes |
 | `scenarios` — the scenarios as text, ladder level d | `scenarios.md` | every requirement and invariant has a scenario, negatives included | one-liners | yes | yes, with negatives |
-| `verification-plan` — the oracle of every invariant, and the plan of the work | `verification-plan.md`, `implementation-plan.md` | every invariant has an oracle row: `existing`, `missing` or `no possible`; the plan names the steps and their order | folded into the intent level | yes | yes |
+| `verification-plan` — the oracle of every invariant | `verification-plan.md` | every invariant has an oracle row: `existing`, `missing` or `no possible` | folded into the intent level | yes | yes |
+| `implementation-plan` — the plan of the work | `implementation-plan.md` | the steps and their order are named and checked against the verification plan; starts only after the verification-plan gate passed | folded into the intent level | yes | yes |
 | `checks` — tests or control calls, ladder level c | `tests.md` | coverage read from the two lists; no scenario id in a test name | – | yes | yes, plus the negative control |
 | `result` — the code, the document, the state, ladder levels a and b | `changes`, `runs` | the oracle is run and the run reports PASS | yes | yes | yes |
 | `review` — only where no oracle is possible, ladder level e | `reviews`, `evidence` | evidence chain over the aspects of the `Review aspects` line of `intent.md` and no other, its facts written into `evidence`; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |
@@ -105,7 +111,7 @@ right now; they arrive at session start and again after a compact.
 | the need of a stage | what to look for in the contracts |
 |---|---|
 | collect facts from files, history, docs or an external source | a research carrier, one per direction, run in parallel |
-| write a document of the artifact chain | an authoring carrier, launched one class step up when its output has no oracle |
+| write a document of the artifact chain | an authoring carrier, launched one slot up in the same class row when its output has no oracle; the class never moves for a stage |
 | write code or tests | an authoring carrier with edit rights, on the cheapest slot the class allows |
 | run a check, a suite or a control-call file | a carrier that runs commands and reports PASS or FAIL with the raw output path |
 | judge an object no oracle can judge | the evidence review chain: hints, evidence, triage, fix |
