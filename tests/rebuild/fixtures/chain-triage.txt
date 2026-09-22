@@ -1,6 +1,0 @@
-# Real return text of the triage stage, scenario base:chain-seeded, run 20260920-174213, stage
-# label ops-lo-triage, verbatim except for the shortened output path. It carries counts and no
-# accepted row, so the fixer of that run received no mandate at all.
-/tmp/project-chain-seeded/out/review.md 1186 bytes
-accepted 0, rejected 1, unsettled 8
-DONE

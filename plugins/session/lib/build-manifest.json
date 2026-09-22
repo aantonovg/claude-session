@@ -1,42 +1,15 @@
 {
-  "comment": "Targets of bin/build.sh. A target that does not exist yet is skipped, so a part lands before its workflow exists. block: the file carries the shared-block markers. table: the file carries the class-table markers. roles/aspects: the subset of lib/roles/*.md and lib/aspects/*.md stamped into that file (A23), by role name without the .md suffix. A key set to true whose marker pair is missing from an existing target fails the build, so a deleted marker is never a silent skip. fromBase: the target is the named source file, as this run stamped it, under the frontmatter lines of this entry; it carries no markers and is never hand-edited.",
+  "comment": "Targets of bin/build.sh. block: the file carries the shared-block markers and gets lib/block.js between them. table: the file carries the class-table markers and gets the table of lib/classes.json as markdown between them. fromBase: the target is the named source file, as this run stamped it, under the frontmatter lines of this entry; it carries no markers and is never hand-edited.",
   "targets": [
-    {
-      "path": "workflows/role.js",
-      "block": true,
-      "roles": ["plan-author", "spec-author", "scenario-author", "code-author", "test-author", "coverage-checker", "closure-author", "critic", "evidence-researcher", "evidence", "evidence-triage", "fixer", "researcher", "web-researcher", "synthesizer", "executor", "waiter", "translator"],
-      "aspects": []
-    },
-    {
-      "path": "workflows/chain.js",
-      "block": true,
-      "roles": ["critic", "evidence-researcher", "evidence", "evidence-triage", "fixer"],
-      "aspects": ["*"]
-    },
-    {
-      "path": "workflows/make.js",
-      "block": true,
-      "roles": ["spec-author", "scenario-author", "test-author", "code-author", "executor", "coverage-checker", "fixer", "closure-author"],
-      "aspects": []
-    },
-    {
-      "path": "workflows/probe.js",
-      "block": true,
-      "roles": ["researcher", "web-researcher", "critic", "synthesizer"],
-      "aspects": []
-    },
-    {
-      "path": "base/BASE.md",
-      "comment": "the class table of the base text is the generated region between the class-table markers; every other line of the base is hand-written",
-      "table": true
-    },
+    { "path": "workflows/helper.js", "block": true },
+    { "path": "workflows/batch.js", "block": true },
+    { "path": "base/BASE.md", "table": true },
     {
       "path": "skills/base/SKILL.md",
-      "comment": "generated from base/BASE.md (P6: the successor of the retired split script); the frontmatter below is the whole difference between the two files",
       "fromBase": "base/BASE.md",
       "frontmatter": [
         "name: base",
-        "description: \"Session base: launch forms, classes, verification first. Invoke first in every session and again after /compact.\"",
+        "description: \"Session base: main, fork, helpers, classes. Invoke first in every session and again after /compact.\"",
         "disable-model-invocation: true"
       ]
     }

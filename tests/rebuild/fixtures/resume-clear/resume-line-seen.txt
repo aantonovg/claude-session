@@ -1,1 +1,0 @@
-Open task: @TASKDIR@ (depth std). No stage has a stop row yet. Next stage: intent. The intent has no stop row: its confirmation is not proven by the files. Approved review aspects: reliability, simplicity.

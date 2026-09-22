@@ -1,78 +1,104 @@
-# session plugin: modes of the main session
+# session plugin: main, fork, helpers
 
-One user-invocable skill per mode. Start a session, pick the model and effort, run
-`/session:base [no-sonnet] [no-opus] [no-fable] [c1..c5]` first (and again after `/compact`),
-then optionally one mode skill on top. Source of the base is `base/BASE.md`; `bin/build.sh`
-regenerates `skills/base/SKILL.md` and every other target of `lib/build-manifest.json`.
+Rules of the main Claude Code session as user-invocable skills. Start a session, pick the model
+and effort, run `/session:base [no-sonnet] [no-opus] [no-fable] [c1..c5]` first (and again after
+`/compact`), then optionally `/session:codex <mode>` on top. Source of the base is `base/BASE.md`;
+`bin/build.sh` regenerates `skills/base/SKILL.md`, the class table inside the base and the shared
+block of the two workflows from `lib/classes.json` and `lib/block.src.js`.
 
-| skill | mode | spawns |
+| skill | what it does |
+|---|---|
+| `session:base` | every session: main keeps the intent and the state, a fork does the work, a fresh helper brings one result for a named reason; classes and slots, waits, language, style |
+| `session:codex` | on top of the base: helper jobs of named kinds go to the codex CLI (luna, terra as executors; sol, astra for a narrow analysis) |
+| `session:ask` | ask without blocking: options document, Plannotator in the background, continue on reversible defaults (model-invocable) |
+| `session:start-ping`, `session:stop-ping`, `session:resume-ping` | the keep-warm ping monitor of a session |
+| `session:reset-counter` | clears the statusline mode counters after a rewind (user only) |
+
+## The 0.18 set
+
+0.18.0 rebuilds the routing around the fork-first architecture of
+`reviews/claude_fork_first_architecture_full_dialogue.md`: main holds the intent, the constraints,
+the decisions and the paths of results; every job of 2+ tool calls goes to a conversation fork on
+the main session's own cell; a fresh helper, launched by main before the fork, runs only for one concrete result (an index,
+facts, a run, a counterexample, a narrow check, a replicated change) that improves the fork's
+decision or replaces its costlier work, and returns three lines (status, report path, summary)
+with the details in a file. A fork launches nothing after its first tool call and never waits: a
+wait longer than the 5-minute cache window rewrites its whole section. There is no task process, no stage list, no review loop and no verification ladder:
+enough is the normal end, "no remarks" is a normal outcome of a check, "no helper" is a normal
+decision. Two named workflows carry every helper launch: `session:helper` (one helper, one
+contract, one result directory) and `session:batch` (one helper over many items, one status row per
+item). Nine helper agents carry the contracts; the class table stays the only source of a model and
+an effort. `tests/plugin/all.sh` runs the static oracles of the set; `tests/workflows/usage-test.sh`
+checks the contract collector; `tests/plugin/release-gate.sh` runs once, right after the release
+commit.
+
+## Helpers
+
+One agent file per helper under `agents/`: the method and the contract in the body (what it
+takes, what it returns, what it never does), the tools in the frontmatter, no model and no effort
+key. The launch prompt adds the object, the question, the inputs by absolute path and the result
+directory, never the history. There is no bare helper. Two groups: a cost helper replaces a part of
+the fork's work the fork can trust without redoing it (slot: the cheapest one trusted for the job);
+a quality helper brings new evidence for the fork's decision (slot: the difficulty of the analysis).
+
+| helper | gain | brings | tools | default slot |
+|---|---|---|---|---|
+| `finder` | cost | an index of files, symbols, ranges for one question, with the limits of the search | Read, Bash | sonnet |
+| `extractor` | cost | facts with source fragments for named questions from named local material | Read, Write, Bash | sonnet |
+| `web-extractor` | cost | the same from public sources, URL and version per fact | WebFetch, WebSearch, Write | sonnet |
+| `runner` | cost | a given experiment, test run, build or command set; commands, environment, logs | Read, Bash, Write | sonnet |
+| `applier` | cost | an accepted transformation replicated by sample; exceptions listed; the check run | Read, Edit, Write, Bash | sonnet |
+| `consumer` | quality | a document followed as a new consumer; the first blocker, the ambiguous step | Read, Bash, Write | sonnet |
+| `checker` | quality | defect candidates against one named property, with place and evidence | Read, Write | opus |
+| `breaker` | quality | a counterexample, a failing input, a minimal reproduction for one property | Read, Bash, Write | opus |
+| `guide` | | an answer on Claude Code, the SDK or the API (the built-in guide agent) | built-in | fixed seat `guide` |
+| `codex` | either | a contract forwarded to the codex CLI, the answer as a file; alone or paired with a Claude helper | Read, Bash | fixed seat `codex` |
+
+The catalog is a set of tools, not a team: a helper is launched for a result the fork names, and
+the fork decides what to do with it. The reasons and limits of each helper kind are in sections 6
+and 8 of the architecture document.
+
+## Result files and the handback
+
+A launch passes `out`, one absolute directory per launch:
+`~/.claude/projects/<encoded-cwd>/helpers/<YYYY-MM-DD>-<slug>/<helper>/`. The helper writes
+`result.md` there (what was asked and over which inputs, what was observed or changed, the
+evidence with paths and line ranges, the exceptions, what stayed unchecked) and its logs beside
+it, and returns exactly three lines:
+
+```
+status: completed | partial | blocked | failed
+report: <absolute path of result.md>
+summary: <one line>
+```
+
+`completed` means the contract was carried out, not that the object is fine. The workflow parses
+the lines (`handback()` of `lib/block.js`); a missing or unknown status comes back as `failed`.
+The next fork reads the file at the depth its decision needs; a result belongs to a state (commit
+and diff, document version, fetch date, environment) and an old one is a hint, never a confirmation.
+
+## Named workflows
+
+Scripts under `workflows/`, launched by name with `args`; the `/* usage: */` block is the contract,
+delivered to the session as SessionStart context (section "Workflow contract hooks"); the body is
+never read by the caller. Shared block in every script: the class table, `submodes()`, `cellFor()`,
+`helperOpts()`, `handback()`, `batchRows()`; `args.class` (default c3) and `args.submodes` pick the
+row, the helper's own slot or `args.slot` picks the cell, and every `agent()` call passes `model`,
+`effort` and a `<mod>-<eff>-<helper>` label explicitly.
+
+| workflow | args | returns |
 |---|---|---|
-| `session:base` | every session: main + forks, delegation rules, classes and slots, waits, style | forks + `Workflow` for cold agents |
-| `session:process` | on top of the base: the stages, gates, task files and user points of one task (`code`, `mr`, `look`, `doc`, `ops` at depth `lite`, `std`, `full`); shared rules in `skills/process/core.md` | named workflows picked from the contracts |
-| `session:codex` | on top of the base: codex heavy axis (sol, astra) and executor axis (luna, terra) | one lean `Read`/`Bash` agent per codex job, shim text in `skills/codex/proxy-prompt.md` |
-| `session:ask` | ask without blocking: options document, Plannotator in the background, continue on reversible defaults (model-invocable) | - |
-| `session:reset-counter` | clears the statusline mode counters after a rewind (user only) | - |
-
-## The 0.17 set
-
-Version 0.17.0: a `research` stage runs before `intent` (task file `ledger.md`: facts, unknowns,
-contradictions, assumptions, verification capabilities); at `std` and `full` nothing but research
-launches before the user confirms the intent, the gate now sitting after research; the plan stage
-splits into `verification-plan` and `implementation-plan`; the uplift rule for a no-oracle author
-moves it one slot up in its class row, never one class up; the researcher and synthesizer role
-texts carry `Sources` lines (`used:`, `wanted, unavailable:`).
-
-## The 0.16 set
-
-0.16.0 rebuilds the plugin from zero around one rule: the class `c1`-`c5` plus its submodes is the
-only source of a model and an effort, read through the table `bin/build.sh` renders from
-`lib/classes.json`; no agent, role, aspect or skill text names either. Four named workflows carry
-the work, each launched by name from its SessionStart contract line: `session:role` (one role of the
-catalog in `lib/roles/`, one agent), `session:chain` (critics by aspect, evidence, triage, fixer),
-`session:make` (spec, scenarios, tests, code, executor, fixer) and `session:probe` (parallel
-research, critique, synthesis). Five tool-set agents (`tools-*`) carry the tools, the process skill
-carries the stages and gates of one task and names no carrier, and `lib/verification.md` decides who
-checks what. Role and aspect texts live one file each and are stamped into the scripts by
-`bin/build.sh`; the decisions a test must see live as pure functions in `lib/block.src.js`.
-`tests/rebuild/all.sh` runs the static oracles of the rebuild (build sync, agents, texts, contracts,
-roles, chain, stages, hooks, carrier-free process text, tool plugin pattern).
-`tests/workflows/usage-test.sh` checks the contract collector, the SessionStart wiring, the base
-sentences, this README and the change set of the branch, on every commit.
-`tests/rebuild/release-gate.sh` runs once, right after the release commit, and checks what holds only
-there: both version files at 0.16.0, this section and the 0.16.0 version log line, the subject
-`session 0.16.0: <summary>` of HEAD and a clean tree; its `--selftest` mode runs in `all.sh`.
-
-## Agents
-
-One agent per tool set, never per job. An agent file carries its tool list, its return shape, the
-working-directory rule and the `BLOCKED` rule — and no `model` and no `effort` key: the class table
-of `lib/classes.json` is the only source of a cell, passed at every call site. What the agent does
-comes from the launch prompt, which a workflow builds out of the role text of `lib/roles/`.
-
-| agent | tools | used by |
-|---|---|---|
-| `tools-read-write` | Read, Write | the authors, the critic, the triage, the synthesis, the translation |
-| `tools-read-bash` | Read, Bash | the evidence roles, the executor, the waiter, the codex shim |
-| `tools-read-write-bash` | Read, Write, Bash | the researcher, the coverage check (its shell lists a directory input, nothing else) |
-| `tools-edit` | Bash, Read, Edit, Write | the code and test authors, the fixer |
-| `tools-web` | WebFetch, WebSearch, Write | the web researcher |
-
-No agent preloads a skill in frontmatter; a skill reaches an agent as a resolved SKILL.md path in
-the launch prompt. A tool group behind an MCP server belongs to a tool plugin of its own
-(`docs/tool-plugin/`), never to this plugin.
+| `helper` | `helper, ask, in (array), out, slot, codex, cwd, class, submodes (array)` | `{helper, cell, slot, label, out, status, report, summary}`, plus `codex: {target, status, report, summary}` when `codex` was given |
+| `batch` | `helper, ask (with {item}), items (array), in (array), out, slot, class, submodes (array)` | `{helper, out, counts, rows: [{item, status, report, summary}]}` |
 
 ## Classes, slots and submodes
 
-The class comes from `/session:base` (default c3) and holds for the session; every workflow
-takes one row. Main-model slot: the document authors, the merged critic, the triage, the synthesis.
-Opus slot: the fixer, the translation. Sonnet slot: the researchers, the evidence roles, the
-executor, the code and test authors, the coverage check, the waiting role. The `size` argument moves
-a role one slot down at `large`, never up. The per-role slot map lives in `lib/classes.json`, not in
-a text. One pin stands outside the table, at its call site: the cheap wrapper cell of the codex shim
-(`skills/codex/`), which wraps an external CLI and chooses no slot. Forks run on the main session's
-model and effort.
+The class comes from `/session:base` (default c3) and holds for the session. Three slots per row:
+main-model slot, opus slot, sonnet slot. Each helper has a default slot in `lib/classes.json`; the
+`slot` argument moves one launch with a one-line reason. Two fixed seats stand outside the rows:
+`guide` and `codex`. Forks run on the main session's model and effort.
 
-| class | main-model slot (small input; document critique and generation) | opus slot (medium input; plan and code authors, fixers) | sonnet slot (large input; researchers, executors, bulk reviews) |
+| class | main-model slot | opus slot | sonnet slot |
 |---|---|---|---|
 | c1 lowest | opus-low | opus-low | sonnet-low |
 | c2 below default | fable-low | opus-low | sonnet-medium |
@@ -80,38 +106,8 @@ model and effort.
 | c4 above default | fable-medium | opus-high | sonnet-high |
 | c5 highest | fable-high | opus-high | opus-high |
 
-Submodes rewrite the row (cells main / opus / sonnet; all three at once is an error):
-
-| class | none | no-sonnet | no-opus | no-fable | no-sonnet no-opus | no-sonnet no-fable | no-opus no-fable |
-|---|---|---|---|---|---|---|---|
-| c1 | ops-lo / ops-lo / son-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo | ops-lo / ops-lo / son-lo | fab-lo / fab-lo / fab-lo | ops-lo / ops-lo / ops-lo | son-me / son-me / son-lo |
-| c2 | fab-lo / ops-lo / son-me | fab-lo / ops-lo / ops-lo | fab-lo / son-me / son-me | ops-me / ops-lo / son-me | fab-lo / fab-lo / fab-lo | ops-me / ops-lo / ops-lo | son-me / son-me / son-me |
-| c3 | fab-lo / ops-me / son-hi | fab-lo / ops-me / ops-me | fab-lo / son-hi / son-hi | ops-me / ops-me / son-hi | fab-lo / fab-me / fab-me | ops-me / ops-me / ops-me | son-me / son-hi / son-hi |
-| c4 | fab-me / ops-hi / son-hi | fab-me / ops-hi / ops-me | fab-me / fab-me / son-hi | ops-hi / ops-hi / son-hi | fab-me / fab-me / fab-me | ops-hi / ops-hi / ops-me | son-hi / son-hi / son-hi |
-| c5 | fab-hi / ops-hi / ops-hi | fab-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | fab-hi / fab-me / fab-me | ops-hi / ops-hi / ops-hi | son-hi / son-hi / son-hi |
-
-## Named workflows (0.14.0)
-
-Scripts under `workflows/`, launched by name (`session:role`, `session:chain`, `session:make`,
-`session:probe`) with `args`; the `/* usage: */` block is the contract, delivered to the session as SessionStart
-context (section "Workflow contract hooks"); the body is never read by the caller. Shared block in every script: the 35-cell class table, `args.class` (default c3) and
-`args.submodes` pick the row, `opts(slot, job)` turns a slot into explicit `model`, `effort` and a
-`<mod>-<eff>-<job>` label. `args.cwd` is required; outputs go to `args.out` (default `<cwd>/reviews`).
-A `null` or `BLOCKED:` stage result ends the run with a report; reviewers end with `VERDICT: clean`
-or `VERDICT: findings`, which drives the 1-3 review-fix cycles.
-Skill injection is prompt-time: `skillLine()` in each script adds `~/.claude/skills/<name>/SKILL.md`
-paths to a stage prompt only when the args touch that domain (`transcripts-jsonl` for researchers on
-transcripts, `tmux-sessions` for tmux test commands, `workflow-reliability` for workflow tasks,
-`shell-gotchas` for `.sh` inputs); otherwise the prompt says "No skills needed for this step". No
-agent preloads a skill in frontmatter.
-
-| workflow | stages | args | roles |
-|---|---|---|---|
-| `role` | one role, one agent | `role, in (array), ask, out, run, class, submodes (array), size` | every row of the catalog in `lib/roles/` |
-| `chain` | critic(s), evidence researchers, triage, fixer; one round | `in (array), ask, aspects (array), depth, base, test, out, run, class, submodes (array)` | critic, evidence-researcher, evidence, evidence-triage, fixer |
-| `make` | spec, scenarios, tests, code, executor, coverage, fixer | `ask, in (array), test, out, run, depth, from, until, class, submodes (array)` | spec-author, scenario-author, test-author, code-author, executor, coverage-checker, fixer, closure-author |
-| `probe` | parallel researchers by direction, critique, synthesis | `ask, directions (array), in (array), out, run, depth, class, submodes (array)` | researcher, web-researcher, critic, synthesizer |
-
+Submodes rewrite the row (cells main / opus / sonnet; all three at once is an error): the full
+35-cell table is rendered into the base from `lib/classes.json` by `bin/build.sh`.
 
 ## Workflow contract hooks
 
@@ -136,11 +132,12 @@ script to its inline plugin.json `hooks.SessionStart` (never hooks/hooks.json):
 
 User and project workflow dirs are already covered by session's `@user` and `@project` hooks; add no
 second `@project` hook. Contracts load at session start: after a mid-session install run
-`/reload-plugins` or restart the session.
+`/reload-plugins` or restart the session. A tool plugin (an MCP server with its own helper agents
+and workflows) follows `docs/tool-plugin/`.
 
 ## codex shim permission set
 
-Moved out of the shim text (`skills/codex/proxy-prompt.md`) in 0.10.2. Every launch runs `codex exec` with the same
+Stated here since 0.10.2; the shim itself is the `codex` helper (`agents/codex.md`). Every launch runs `codex exec` with the same
 three settings: `-s workspace-write` (the sandbox: writes only inside the workspace, no
 network), `-c approval_policy="on-request"` (codex asks before going beyond the sandbox) and
 `-c approvals_reviewer="auto_review"` (those requests go to codex's built-in risk-based
@@ -164,7 +161,6 @@ and the done-file (content = exit code) with stderr in `<done-file>.log`. With a
 body of the named file in `agents/` for `--role <name>`, user and project `CLAUDE.md`, the memory index, `bin/codex-style.md`
 (style plus the escalation preamble), then the task; `CODEX_LABEL` lands in the ledger row's `label`.
 
-
 ## Compact prices
 
 - Warm compact (cache alive): the compact call reads the whole context at the cache-read
@@ -177,54 +173,20 @@ body of the named file in `agents/` for `--role <name>`, user and project `CLAUD
 
 ## Description limits
 
-Skill description: 100 tokens. Agent description: 100 tokens. Workflow `meta.description`: 200 tokens, every arg named with its type (string, absolute path, array of strings, boolean) and default.
-
-## Workflow args and outputs
-
-Details trimmed from `meta.description`; classes and submodes are described in "Classes, slots and submodes".
-
-### role
-
-Defaults: `class` c3, `submodes` `[]`, `in` `[]`, `size` `medium`. `role`, `ask` and `out` are required.
-Outputs: the file named by `out`; the return carries `{role, out, class, slot, label}`. The one role
-that writes no file is `closure-author`: its report comes back as text.
-Stop conditions: an unknown role, a missing required argument or an `out` file the run never wrote
-ends the launch blocked, with the reason in the last line.
-
-### chain
-
-Defaults: `depth` `std`, `class` c3, `submodes` `[]`, `aspects` from the object kind, `base` none, `test` none.
-Outputs: the review file named by `out`, the evidence files beside it, the fixes in the working tree.
-Stop conditions: one round only; a hint with no evidence never reaches the fixer, what stays
-undetermined goes into the result for the user, and the ceiling of the depth ends a stage instead of
-starting another round.
-
-### make
-
-Defaults: `depth` `std`, `class` c3, `submodes` `[]`, `from`/`until` the whole stage list.
-Outputs: the stage files under `out` (specification, scenarios, tests), the code in the working tree,
-the executor's run result. No commit.
-Stop conditions: the fix-cycle ceiling of the depth; a failing check after it is a gap in the result,
-never another round. Output an oracle can judge gets no review stage.
-
-### probe
-
-Defaults: `directions` `[ask]`, `in` `[]`, `depth` `std`, `class` c3, `submodes` `[]`.
-Outputs: one bundle file per direction, one critique file, one synthesis file at `out`. Read-only.
-Stop conditions: every direction blocked stops the run with a report.
+Skill description: 100 tokens. Agent description: 100 tokens. Workflow usage block: 50-150 tokens, every arg named with its type and default.
 
 ## Session mode counters
 
 `hooks/modes.sh` writes `~/.claude/session-modes/<session_id>.json`: a JSON object keyed by
-skill name holding the string to render (`{"base":"base-c3","process":"process-code-full","codex":"codex+astra"}`).
-The directory keeps its name on purpose: the statusline outside this plugin reads it, and only the
-keys inside the file changed with the rebuild. Written on a
-user-typed `/session:<mode> <args>` (UserPromptSubmit) or a model-invoked one (PostToolUse on Skill);
-cleared on PreCompact and SessionStart (resume keeps it); files older than seven days pruned. A
-statusline reads it by `session_id`; `/session:reset-counter` clears it after a rewind. State, not an API.
+skill name holding the string to render (`{"base":"base-c3","codex":"codex-sol-luna"}`).
+Written on a user-typed `/session:<mode> <args>` (UserPromptSubmit) or a model-invoked one
+(PostToolUse on Skill); cleared on PreCompact and SessionStart (resume keeps it); files older than
+seven days pruned. A statusline reads it by `session_id`; `/session:reset-counter` clears it after a
+rewind. State, not an API.
 
 ## Version log
 
+0.18.0: fork-first rebuild: main keeps the intent, a fork does every 2+ call job, a fresh helper launched by main before the fork runs only for one named result and hands back three lines (status, report, summary) with the details in `result.md`; a fork launches nothing after its first tool call and never waits; workflows `session:helper` (with a `codex` pair argument) and `session:batch` replace `role`, `chain`, `make` and `probe`; nine helper agents (`finder`, `extractor`, `web-extractor`, `runner`, `applier`, `consumer`, `checker`, `breaker`, `codex`) replace the five tool-set agents; the process skill, the verification page, the task layout, the roles, the aspects and the ledger hook are gone; `lib/classes.json` keeps the class table and adds the helper map and the `codex` seat; the codex skill is one page over the `codex` helper; tests `tests/plugin/all.sh`.
 0.15.1: chat replies in A2 English (word list, grammar, verbatim identifiers) in the base Language section; caveman uses common synonyms.
 0.15.2: self-ping rule for long commands in every Bash-capable agent (detach, then `sleep 180` per turn; no background job at turn end).
 0.15.3: every synchronous Bash call in an agent sets `timeout` ≤ 120000; commands that may run over 2 minutes run detached only.

@@ -4,7 +4,7 @@
     "name": "Aleksandr Antonov"
   },
   "metadata": {
-    "description": "Session rules for the main Claude Code session: the base, the task process, codex, ask.",
+    "description": "Session rules for the main Claude Code session: the fork-first base, helpers, codex, ask.",
     "version": "1.0.0",
     "pluginRoot": "./plugins"
   },
@@ -12,14 +12,14 @@
     {
       "name": "session",
       "source": "./plugins/session",
-      "description": "Session rules as user-invocable skills: base (named workflows, classes and slots, verification first), process (the stages, gates and task files of one task), codex (codex models behind a stage), ask (non-blocking questions). README holds the cache and compact reference.",
-      "version": "0.17.1",
+      "description": "Session rules as user-invocable skills: base (main keeps the intent, a fork does the work, fresh helpers bring one result each, classes and slots), codex (codex models behind a helper), ask (non-blocking questions), the ping skills. README holds the helper catalog and the result-file protocol.",
+      "version": "0.18.0",
       "keywords": [
         "session",
         "base",
         "cache",
         "forks",
-        "process",
+        "helpers",
         "codex"
       ]
     }

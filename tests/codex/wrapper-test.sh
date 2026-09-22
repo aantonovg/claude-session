@@ -138,13 +138,13 @@ if grep -oE '/[A-Za-z0-9._/-]*/codex([^-a-zA-Z.]|$)' "$WRAP" | grep -vE '/\.code
 if grep -q '"\$HOME/.codex/proxy-usage.jsonl"' "$WRAP"; then ok "AC5 ledger under \$HOME"; else bad "AC5 ledger under \$HOME" "not found"; fi
 
 # AC1: role section byte-equal to agent body (trailing EOF newline stripped).
-dry "$WORK" "task-text" --role tools-read-bash -
+dry "$WORK" "task-text" --role runner -
 check "AC1 dry run --role exit 0" "$RC" 0
-check "AC1 role header present" "$(grep -c '^\[ROLE: tools-read-bash\]$' <<<"$OUT" || true)" 1
-check "AC1/AC20 role section equals agent body" "$(section ROLE 2>/dev/null || true)" "$(agent_body "$AGENTS/tools-read-bash.md")"
+check "AC1 role header present" "$(grep -c '^\[ROLE: runner\]$' <<<"$OUT" || true)" 1
+check "AC1/AC20 role section equals agent body" "$(section ROLE 2>/dev/null || true)" "$(agent_body "$AGENTS/runner.md")"
 
 # AC1: header order.
-check "AC1 header order" "$(headers)" "[ROLE: tools-read-bash],[USER CLAUDE.md],[PROJECT CLAUDE.md],[MEMORY INDEX],[RESPONSE STYLE],[TASK],"
+check "AC1 header order" "$(headers)" "[ROLE: runner],[USER CLAUDE.md],[PROJECT CLAUDE.md],[MEMORY INDEX],[RESPONSE STYLE],[TASK],"
 check "AC2 USER CLAUDE.md content" "$(section 'USER CLAUDE.md' 2>/dev/null || true)" "user-claude-marker"
 check "AC2 PROJECT CLAUDE.md content" "$(section 'PROJECT CLAUDE.md' 2>/dev/null || true)" "project-claude-marker"
 check "AC2 MEMORY INDEX content" "$(section 'MEMORY INDEX' 2>/dev/null || true)" "memory-marker-work"
@@ -165,8 +165,8 @@ check "AC2 CODEX_STYLE_FILE override" "$(section 'RESPONSE STYLE' 2>/dev/null ||
 # AC2: missing or empty optional files omit section and header.
 EMPTY="$T/empty-proj"; mkdir -p "$EMPTY"; : >"$EMPTY/CLAUDE.md"
 mv "$HOME/.claude/CLAUDE.md" "$T/user-claude.bak"
-dry "$EMPTY" "t" --role tools-read-bash -
-check "AC2 missing/empty files: headers" "$(headers)" "[ROLE: tools-read-bash],[RESPONSE STYLE],[TASK],"
+dry "$EMPTY" "t" --role runner -
+check "AC2 missing/empty files: headers" "$(headers)" "[ROLE: runner],[RESPONSE STYLE],[TASK],"
 if has_section 'USER CLAUDE.md' || has_section 'PROJECT CLAUDE.md' || has_section 'MEMORY INDEX'; then bad "AC2 absent sections when missing" "section present"; else ok "AC2 absent sections when missing"; fi
 mv "$T/user-claude.bak" "$HOME/.claude/CLAUDE.md"
 check "AC2 missing style file omits RESPONSE STYLE" "$(cd "$WORK" && printf 't' | CODEX_STYLE_FILE="$T/nope.md" CODEX_EXEC_DRY_RUN=1 "$WRAP" - 2>/dev/null | grep -c '^\[RESPONSE STYLE\]$' || true)" 0
@@ -180,12 +180,12 @@ REL="$WORK/sub/rel.proj"; mkdir -p "$REL"
 mkdir -p "$HOME/.claude/projects/$(slug "$(cd "$REL" && pwd)")/memory"
 echo "memory-marker-rel" >"$HOME/.claude/projects/$(slug "$(cd "$REL" && pwd)")/memory/MEMORY.md"
 echo "project-rel" >"$REL/CLAUDE.md"
-dry "$WORK" "t" --role tools-read-bash -C sub/rel.proj -
+dry "$WORK" "t" --role runner -C sub/rel.proj -
 check "AC2 relative -C memory slug" "$(section 'MEMORY INDEX' 2>/dev/null || true)" "memory-marker-rel"
 check "AC2 relative -C project CLAUDE.md" "$(section 'PROJECT CLAUDE.md' 2>/dev/null || true)" "project-rel"
-dry "$WORK" "t" --role tools-read-bash --cd sub/rel.proj -
+dry "$WORK" "t" --role runner --cd sub/rel.proj -
 check "AC2 --cd memory slug" "$(section 'MEMORY INDEX' 2>/dev/null || true)" "memory-marker-rel"
-dry "$WORK" "t" --role tools-read-bash --cd=sub/rel.proj -
+dry "$WORK" "t" --role runner --cd=sub/rel.proj -
 check "AC2 --cd= memory slug" "$(section 'MEMORY INDEX' 2>/dev/null || true)" "memory-marker-rel"
 
 # AC2: cwd under symlinked dir with a dot in its name (logical path slug).
@@ -193,28 +193,28 @@ mkdir -p "$T/real.target/proj"; ln -s "$T/real.target" "$T/link.dir"
 LINKCWD="$T/link.dir/proj"
 LSLUG=$(slug "$(cd "$LINKCWD" && pwd)")
 mkdir -p "$HOME/.claude/projects/$LSLUG/memory"; echo "memory-marker-link" >"$HOME/.claude/projects/$LSLUG/memory/MEMORY.md"
-dry "$LINKCWD" "t" --role tools-read-bash -
+dry "$LINKCWD" "t" --role runner -
 check "AC2 symlinked dotted cwd memory slug" "$(section 'MEMORY INDEX' 2>/dev/null || true)" "memory-marker-link"
 
 # AC1: wrapper invoked through a symlink yields role section.
 mkdir -p "$T/symbin"; ln -s "$WRAP" "$T/symbin/codex-exec-logged.sh"
 clear_mark; RC=0
-OUT=$(cd "$WORK" && printf 't' | CODEX_EXEC_DRY_RUN=1 "$T/symbin/codex-exec-logged.sh" --role tools-read-bash - 2>/dev/null) || RC=$?
-check "AC1 symlink invocation role section" "$(section ROLE 2>/dev/null || true)" "$(agent_body "$AGENTS/tools-read-bash.md")"
+OUT=$(cd "$WORK" && printf 't' | CODEX_EXEC_DRY_RUN=1 "$T/symbin/codex-exec-logged.sh" --role runner - 2>/dev/null) || RC=$?
+check "AC1 symlink invocation role section" "$(section ROLE 2>/dev/null || true)" "$(agent_body "$AGENTS/runner.md")"
 
 # AC1: copy without sibling agents dir exits 2.
 mkdir -p "$T/copy/bin"; cp "$WRAP" "$BIN/codex-style.md" "$T/copy/bin/"
 clear_mark; RC=0
-OUT=$(cd "$WORK" && printf 't' | "$T/copy/bin/codex-exec-logged.sh" --role tools-read-bash - 2>"$T/err") || RC=$?
+OUT=$(cd "$WORK" && printf 't' | "$T/copy/bin/codex-exec-logged.sh" --role runner - 2>"$T/err") || RC=$?
 check "AC1 copy without agents dir exit 2" "$RC" 2
 check "AC1 agents dir not found message" "$(grep -c "codex-exec-logged: agents dir not found: " "$T/err" || true)" 1
 check "AC1 copy without agents dir: codex not started" "$([ -e "$MARK/argv0" ] && echo started || echo absent)" absent
 
 # AC20: every agent file of the plugin yields a non-empty role section. The wrapper resolves
-# `--role <name>` against its sibling `agents/` directory (unchanged, A18), and part 9 of the 0.16
-# rebuild left that directory holding the tool-set agents only, so the loop follows the files that
+# `--role <name>` against its sibling `agents/` directory (unchanged, A18), and the 0.18
+# rebuild left that directory holding the helper agents, so the loop follows the files that
 # exist instead of the five retired stage agents.
-for f in "$AGENTS"/tools-*.md; do
+for f in "$AGENTS"/*.md; do
   n=$(basename "$f" .md)
   dry "$WORK" "t" --role "$n" -
   s=$(section ROLE 2>/dev/null || true)
@@ -226,32 +226,32 @@ real "$WORK" "t" --role no-such-role -
 check "AC1 unknown role exit 2" "$RC" 2
 check "AC1 unknown role message" "$(grep -c 'codex-exec-logged: unknown role no-such-role' <<<"$ERR" || true)" 1
 check "AC1 unknown role: codex not started" "$([ -e "$MARK/argv0" ] && echo started || echo absent)" absent
-real "$WORK" "t" --role ../tools-read-bash -
+real "$WORK" "t" --role ../runner -
 check "AC1 bad role name exit 2" "$RC" 2
 check "AC1 bad role name: codex not started" "$([ -e "$MARK/argv0" ] && echo started || echo absent)" absent
 
 # AC3: --role without - or --prompt-file exits 2.
-real "$WORK" "t" --role tools-read-bash -m gpt-5
+real "$WORK" "t" --role runner -m gpt-5
 check "AC3 --role without stdin form exit 2" "$RC" 2
 check "AC3 --role without stdin form message" "$(grep -c 'codex-exec-logged: --role needs - or --prompt-file' <<<"$ERR" || true)" 1
 check "AC3 --role without stdin form: codex not started" "$([ -e "$MARK/argv0" ] && echo started || echo absent)" absent
 
 # AC3: missing prompt file exits 3.
-real "$WORK" "" --role tools-read-bash --prompt-file "$T/missing-prompt.txt"
+real "$WORK" "" --role runner --prompt-file "$T/missing-prompt.txt"
 check "AC3 missing prompt file exit 3" "$RC" 3
 check "AC3 missing prompt file message" "$(grep -c "codex-exec-logged: prompt file not found: $T/missing-prompt.txt" <<<"$ERR" || true)" 1
 check "AC3 missing prompt file: codex not started" "$([ -e "$MARK/argv0" ] && echo started || echo absent)" absent
 
 # AC3/AC20: --prompt-file form composes, TASK equals file content.
 printf 'prompt-file-task' >"$T/prompt.txt"
-dry "$WORK" "" --role tools-read-bash --prompt-file "$T/prompt.txt"
+dry "$WORK" "" --role runner --prompt-file "$T/prompt.txt"
 check "AC3 --prompt-file dry exit 0" "$RC" 0
 check "AC3 --prompt-file TASK" "$(section TASK 2>/dev/null || true)" "prompt-file-task"
-check "AC3 --prompt-file header order" "$(headers)" "[ROLE: tools-read-bash],[USER CLAUDE.md],[PROJECT CLAUDE.md],[MEMORY INDEX],[RESPONSE STYLE],[TASK],"
+check "AC3 --prompt-file header order" "$(headers)" "[ROLE: runner],[USER CLAUDE.md],[PROJECT CLAUDE.md],[MEMORY INDEX],[RESPONSE STYLE],[TASK],"
 
 # AC6: dry run prints argv line, exit 0, works with --detach, no detach.
 rm -f "$HOME/.codex/proxy-usage.jsonl"
-dry "$WORK" "t" --detach "$T/dry.done" --role tools-read-bash -m gpt-5 -c 'model_reasoning_effort="medium"' -o "$T/o.md" -
+dry "$WORK" "t" --detach "$T/dry.done" --role runner -m gpt-5 -c 'model_reasoning_effort="medium"' -o "$T/o.md" -
 check "AC6 dry --detach exit 0" "$RC" 0
 check "AC6 dry --detach TASK count" "$(grep -c '^\[TASK\]$' <<<"$OUT" || true)" 1
 ARGV_LINE=$(grep '^CODEX ARGV: ' <<<"$OUT" || true)
@@ -277,7 +277,7 @@ fi
 # AC8/AC19: ledger label from CODEX_LABEL (non-dry, fake codex).
 rm -f "$HOME/.codex/proxy-usage.jsonl"
 clear_mark; RC=0
-(cd "$WORK" && printf 'label-task' | CODEX_LABEL=hai-me-sol-test "$WRAP" --role tools-read-bash -m gpt-5 - >/dev/null 2>"$T/err") || RC=$?
+(cd "$WORK" && printf 'label-task' | CODEX_LABEL=hai-me-sol-test "$WRAP" --role runner -m gpt-5 - >/dev/null 2>"$T/err") || RC=$?
 check "AC19 label run exit 0" "$RC" 0
 check "AC20 marker present in non-dry label case" "$([ -e "$MARK/argv0" ] && echo present || echo absent)" present
 LBL=$("$PY" -c 'import json,sys; rows=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]; print(rows[-1].get("label","<missing>"))' "$HOME/.codex/proxy-usage.jsonl" 2>/dev/null || echo "<no ledger>")
@@ -285,7 +285,7 @@ check "AC8/AC19 ledger label equals CODEX_LABEL" "$LBL" "hai-me-sol-test"
 KEYS=$("$PY" -c 'import json,sys; rows=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]; print(",".join(sorted(rows[-1])))' "$HOME/.codex/proxy-usage.jsonl" 2>/dev/null || echo "<no ledger>")
 check "AC8 ledger other fields unchanged" "$KEYS" "cached_input,effort,input,label,model,output,reasoning_output,ts"
 check "AC7 non-dry: --role not in codex argv" "$(grep -cE -- '^(--role|--prompt-file|--detach)$' "$MARK/args" 2>/dev/null || true)" 0
-check "AC1 non-dry: codex stdin has role section" "$(grep -c '^\[ROLE: tools-read-bash\]$' "$MARK/stdin" 2>/dev/null || true)" 1
+check "AC1 non-dry: codex stdin has role section" "$(grep -c '^\[ROLE: runner\]$' "$MARK/stdin" 2>/dev/null || true)" 1
 clear_mark; RC=0
 (cd "$WORK" && printf 'x' | env -u CODEX_LABEL "$WRAP" - >/dev/null 2>"$T/err") || RC=$?
 LBL=$("$PY" -c 'import json,sys; rows=[json.loads(l) for l in open(sys.argv[1]) if l.strip()]; print("[" + rows[-1].get("label","<missing>") + "]")' "$HOME/.codex/proxy-usage.jsonl" 2>/dev/null || echo "<no ledger>")
@@ -307,7 +307,7 @@ detach_run() {  # $1 name, rest: wrapper args; stdin from $DIN
   check "AC7 $name done-file written" "$([ -f "$done" ] && echo yes || echo no)" yes
   check "AC20 $name detached child \$0 is fake codex" "$(cat "$MARK/argv0" 2>/dev/null || true)" "$FAKE/codex"
   check "AC7/AC20 $name exactly one [TASK]" "$(grep -c '^\[TASK\]$' "$MARK/stdin" 2>/dev/null || true)" 1
-  check "AC7 $name child composed role section" "$(grep -c '^\[ROLE: tools-read-bash\]$' "$MARK/stdin" 2>/dev/null || true)" 1
+  check "AC7 $name child composed role section" "$(grep -c '^\[ROLE: runner\]$' "$MARK/stdin" 2>/dev/null || true)" 1
   check "AC7 $name child composed USER CLAUDE.md" "$(grep -c '^\[USER CLAUDE.md\]$' "$MARK/stdin" 2>/dev/null || true)" 1
   check "AC7 $name TASK is caller prompt" "$(OUT=$(cat "$MARK/stdin" 2>/dev/null || true); section TASK 2>/dev/null || true)" "detach-task"
   check "AC2/AC20 $name no TMPDIR file holds composed context (launch, done)" "$leak_before" clean
@@ -317,9 +317,9 @@ detach_run() {  # $1 name, rest: wrapper args; stdin from $DIN
 }
 printf 'detach-task' >"$T/detach-prompt.txt"
 DIN=/dev/null
-detach_run pf --role tools-read-bash --prompt-file "$T/detach-prompt.txt" -m gpt-5 -o "$T/pf.final.md"
+detach_run pf --role runner --prompt-file "$T/detach-prompt.txt" -m gpt-5 -o "$T/pf.final.md"
 DIN="$T/detach-prompt.txt"
-detach_run stdin --role tools-read-bash -m gpt-5 -o "$T/stdin.final.md" -
+detach_run stdin --role runner -m gpt-5 -o "$T/stdin.final.md" -
 
 # AC20: real ledger untouched.
 check "AC20 real ledger line count unchanged" "$(ledger_count)" "$REAL_LEDGER_BEFORE"

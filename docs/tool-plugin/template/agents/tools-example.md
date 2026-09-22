@@ -15,5 +15,5 @@ Work only inside the directory the output path names. Never write anywhere else.
 Carry no model and no reasoning level in this file: the call site passes both, from the class the
 launch names. Copy this file per tool group, one agent per group, and keep the tool list minimal.
 
-Return: what the job asks for, with the last line carrying the answer alone. On a permission denial
+Return: the three handback lines of the session base (status, report, summary) when the job names a result directory, else what the job asks for with the last line carrying the answer alone. On a permission denial
 stop at once and return BLOCKED: <the denied action>.

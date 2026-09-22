@@ -8,7 +8,7 @@
 # ("/session:codex +astra") or with the plugin namespace stripped ("/codex
 # +astra"), depending on how the command was entered. Measured 2026-09-07: a
 # typed "/session:<skill>" reached the hook as "/<skill>". Both are accepted,
-# but the bare form only for the four names below, so an unrelated command like
+# but the bare form only for the three names below, so an unrelated command like
 # /model or /compact is never taken for a mode. Two payload shapes exist as
 # well. Interactive sessions send the prompt verbatim. Background-job sessions
 # send the command already expanded, starting with a tag block:
@@ -33,15 +33,6 @@
 # later seed must stay possible. A resume changes nothing: it replays the
 # transcript, so the recorded modes are still true.
 
-# SessionStart also injects one context line: the absolute path of lib/verification.md (plus, after a
-# clear, a compact or a resume with a live tasks/current pointer, the resume line of that task). The base
-# rule "read the verification page before planning a task" would otherwise cost the main session a
-# path-resolving command plus a Read, and hard rules 1 and 2 of the base allow one own call per
-# turn. The
-# plugin root is taken from this script's own location, so the line is right in the cache copy and
-# in a --plugin-dir checkout alike.
-PLUGIN_ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
-
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -62,7 +53,7 @@ MARKER="$STATE_DIR/${SESSION_ID}.seeded"
 # form: without it "/model" or "/plan" would be parsed as a session command.
 bare_ok() {
   case "$1" in
-    base|codex|process|reset-counter) return 0 ;;
+    base|codex|reset-counter) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -96,27 +87,9 @@ base_mode() {
   return 0
 }
 
-# "process" args: the task type and the depth, the two independent axes of the
-# process skill, in any order, each at most once; rendered process[-<type>][-<depth>].
-process_mode() {
-  local type="" depth="" w
-  for w in $1; do
-    case "$w" in
-      code|mr|look|doc|ops) [ -n "$type" ] && return 1; type=$w ;;
-      lite|std|full) [ -n "$depth" ] && return 1; depth=$w ;;
-      *) return 1 ;;
-    esac
-  done
-  printf 'process'
-  [ -n "$type" ] && printf -- '-%s' "$type"
-  [ -n "$depth" ] && printf -- '-%s' "$depth"
-  return 0
-}
-
 mode_valid() {
   case "$1" in
     base) base_mode "$2" || true ;;
-    process) process_mode "$2" || true ;;
     codex)
       case "$2" in
         "") printf 'codex' ;;
@@ -264,42 +237,6 @@ case "$EVENT" in
     esac
     # State and marker expire together, so an old marker never blocks a rebuild.
     find "$STATE_DIR" -type f -mtime +7 -delete 2>/dev/null
-    # The one context line. A missing page prints nothing: a wrong path would send the session to a
-    # Read that fails, which costs the same call the line was meant to save.
-    VPAGE=$PLUGIN_ROOT/lib/verification.md
-    CTX=
-    [ -n "$PLUGIN_ROOT" ] && [ -f "$VPAGE" ] && CTX="Verification page (read before planning a task): $VPAGE"
-    # After a clear, a compact or a resume with a live tasks/current pointer: one more line, the
-    # resume state of that task, computed by resumeLine() of lib/block.js from its ledger and its
-    # file names. This glue reads the files; the decision is the pure function.
-    case "$src" in
-      clear|compact|resume)
-        CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null); [ -n "$CWD" ] || CWD=$PWD
-        ENC=$(printf '%s' "$CWD" | sed 's#[^A-Za-z0-9-]#-#g')
-        CUR="$HOME/.claude/projects/$ENC/tasks/current"
-        # A process skill turn can leave the session cwd inside the repository (e.g. a skill
-        # directory) rather than at the repository root the pointer was written under. When the
-        # hook cwd itself names no pointer, retry once from the repository root of that cwd.
-        if [ ! -f "$CUR" ]; then
-          ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)
-          if [ -n "$ROOT" ]; then
-            RENC=$(printf '%s' "$ROOT" | sed 's#[^A-Za-z0-9-]#-#g')
-            CUR="$HOME/.claude/projects/$RENC/tasks/current"
-          fi
-        fi
-        TDIR=$(head -1 "$CUR" 2>/dev/null)
-        if [ -n "$TDIR" ] && [ -d "$TDIR" ] && [ -f "$PLUGIN_ROOT/lib/block.js" ] && command -v node >/dev/null 2>&1; then
-          RLINE=$(node -e '
-            const b = require(process.argv[1]), fs = require("fs"), d = process.argv[2]
-            const rd = f => { try { return fs.readFileSync(d + "/" + f, "utf8") } catch (e) { return "" } }
-            process.stdout.write(b.resumeLine(d, rd("ledger.jsonl"), fs.readdirSync(d), rd("intent.md") || rd("task.md")))
-          ' "$PLUGIN_ROOT/lib/block.js" "$TDIR" 2>/dev/null)
-          [ -n "$RLINE" ] && CTX="${CTX:+$CTX
-}$RLINE"
-        fi ;;
-    esac
-    [ -n "$CTX" ] && jq -nc --arg c "$CTX" \
-      '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$c}}'
     : ;;
 esac
 exit 0

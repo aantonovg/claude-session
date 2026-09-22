@@ -1,145 +1,82 @@
 ---
 name: codex
-description: Loaded on top of the session base: routes heavy roles or executor jobs to the codex stack (luna, terra, sol, astra) through the proxy shim of this skill.
+description: Loaded on top of the session base: sends helper jobs of named kinds to the codex CLI (luna, terra as executors; sol, astra for a narrow analysis, alone or paired with the Claude helper) through the codex helper of this plugin.
 disable-model-invocation: true
 ---
 
 # Codex axis
 
-Loaded on top of the session base. Only the agent running a job changes; jobs and files
-stay as defined by the base.
-
-A job is a fork job in the base. The heavy axis replaces or pairs the base's "upscale
-agent". The executor axis routes executor-kind fork jobs (repository research, harness,
-package edits, mechanical checks) to `luna-high` / `terra-high`.
+Loaded on top of the session base. Only the executor of a helper job changes; the launcher (main,
+before the fork), the result directories and the three handback lines stay as the base states them.
+A codex job is a `session:helper` launch: alone with `helper: codex`, or paired with a Claude
+helper through the `codex` argument of the same launch.
 
 ## Modes
 
-Two axes, multiplied:
+Two axes, multiplied. Executor axis: the jobs of the cost helpers (`runner`, `applier`, `finder`,
+`extractor`) go to codex instead of the Claude helper. Heavy axis: the jobs of the quality helpers
+(`checker`, `breaker`) go to codex, or run on both.
 
-| heavy axis (critic, decision review, upscale agent: document critique only, never code review) | executor axis (repo research, harness, packages, mechanical checks) |
+| heavy axis | executor axis |
 |---|---|
-| `none` — Claude agents / forks as in the base or the process skill | `none` — forks on the main model |
-| `sol` — replace with `sol-medium` / `sol-high` (5 / 3 tool calls) | `luna` — executor fork jobs → `luna-high` |
-| `astra` — replace with `astra-medium` / `astra-high` (5 / 3 tool calls); sol not used | `terra` — as luna, plus opus-low-class executor jobs → `terra-high` |
-| `+sol` — dual review: keep the Claude upscale agent, pair `sol` at the same effort | |
-| `+astra` — dual review: keep the Claude upscale agent, pair `astra` at the same effort | |
+| `none`: Claude helpers as in the base | `none`: Claude helpers as in the base |
+| `sol`: replace `checker` and `breaker` with `helper: codex` on `sol-medium`, `sol-high` for the hardest one | `luna`: cost-helper jobs as `helper: codex` on `luna-high` |
+| `astra`: the same on `astra-medium`, `astra-high`; sol not used | `terra`: as luna, plus the heavy executor jobs on `terra-high` |
+| `+sol`: pair: the Claude `checker` or `breaker` launch carries `codex: sol-medium` (or `sol-high`); two result directories, the fork reads both | |
+| `+astra`: the same pair with astra | |
 
 Names: single axis `luna`, `terra`, `sol`, `astra`, `+sol`, `+astra`; combos `<heavy>-<exec>`:
-`sol-luna`, `sol-terra`, `astra-luna`, `astra-terra`, `+sol-luna`, `+sol-terra`,
-`+astra-luna`, `+astra-terra`. Invocation: `/session:codex <mode>`, at any point of the
-session; after the process skill of the base set when one is loaded.
+`sol-luna`, `sol-terra`, `astra-luna`, `astra-terra`, `+sol-luna`, `+sol-terra`, `+astra-luna`,
+`+astra-terra`. Invocation `/session:codex <mode>`, at any point of the session.
 
 ## Start (do this now)
 
-0. The base is present in every session; no check. The base mapping applies: executor-kind
-   fork job → executor axis, upscale agent → heavy axis. The review points (plan critique,
-   verification-plan critique, closure review, test-suite job) fire in every mode; only the
-   agent behind each point changes.
-1. Parse the argument. `<mode>` present → split at the `-` before `luna`/`terra`:
-   `sol-luna` = heavy `sol`, exec `luna`; `sol` = heavy `sol`, exec `none`; `luna` = heavy
-   `none`, exec `luna`. With an argument there is NO question to the user. Only without an
-   argument ask two questions with `AskUserQuestion`, in A2 English, recommended option
-   first:
-
-   Q1, header "Heavy agents", question "Who does critique and decision review (documents only)?"
-   - "Claude (default)" — heavy jobs on Claude agents by class slot.
-   - "Claude + codex pair" — each heavy Claude agent gets a codex agent as a pair, a separate fork merges (`+sol` / `+astra`).
-   - "Replace with codex" — heavy agents replaced by codex (`sol` / `astra`).
-
-   Q1b (only when Q1 chose codex), header "Codex model", question "Which heavy codex model set?"
-   - "sol" — sol-medium / sol-high.
-   - "astra" — astra-medium / astra-high (no sol).
-
-   Q2, header "Executors", question "Who does cheap executor jobs (repository research, tests, checks)?"
-   - "Claude forks (default)" — as in the base.
-   - "luna" — executor forks go to luna-high where allowed.
-   - "terra" — as luna, plus heavy executor jobs on terra-high.
-
+1. Parse the argument: `sol-luna` = heavy `sol`, exec `luna`; `sol` = heavy `sol`, exec `none`;
+   `luna` = heavy `none`, exec `luna`; `+sol` = pair, exec `none`. With an argument there is no
+   question to the user. Without one, ask two questions with `AskUserQuestion`, recommended option
+   first: who does the narrow checks (Claude helpers; Claude paired with sol or astra; sol or astra
+   alone) and who does the executor jobs (Claude helpers; luna; terra).
 2. One Bash call: `codex --version; for d in $(ls -d ~/.claude/plugins/cache/claude-session/session/*/bin 2>/dev/null | sort -rV) ~/projects/claude-session/plugins/session/bin ~/.claude/bin; do [ -x "$d/codex-exec-logged.sh" ] && CODEX_BIN=$d && break; done; ls "$CODEX_BIN/codex-exec-logged.sh" "$CODEX_BIN/codex-style.md"`.
-   The wrapper and the style file ship with this plugin (`bin/`). Missing wrapper → BLOCKED, say so. A `CODEX CLI ERROR` mentioning the quota during the
-   task → executors fall back to `luna-reserve-high`, heavy slots to the Claude agent;
-   the job label gets the suffix `-fallback`.
-3. Astra modes need `astra` in the plugin's `skills/codex/proxy-prompt.md` (one grep on `$CODEX_BIN/../skills/codex/proxy-prompt.md`); missing →
-   run on the sol set and say "astra pending".
-4. Reply with one line: "Codex: <mode> (heavy <…>, exec <…>); fallbacks <…>."
-5. Exchange directory: `<task dir>/codex/` when the process skill has a task directory (the path in `tasks/current`)
-   (`mkdir -p` right after it exists); otherwise
-   `$TMPDIR/codex-<YYYY-MM-DD>-<basename of cwd>/codex/`, created at the first codex job.
-   Prompt and output files live there. Two sessions never share an exchange directory; a
-   session never renames or deletes files it did not create there.
+   Missing wrapper: BLOCKED, say so. A `CODEX CLI ERROR` naming the quota during the task:
+   executors fall back to `luna-reserve-high`, heavy jobs to the Claude helper; the launch label
+   gets the suffix `-fallback`.
+3. Reply one line: `Codex: <mode> (heavy <…>, exec <…>); fallbacks <…>.`
+4. Exchange directory: the result directory of the launch (`out` of `session:helper`; `out/codex`
+   in a pair), one per job. Prompt and output files live there.
 
 ## How a codex job runs
 
-Envelope: the MAIN session
-writes the prompt file `<exchange dir>/<job>-<n>.md` (≤ 30 lines of bullets, first line
-`Style: caveman ultra, plain English only; artifacts in normal prose.`), runs ONE `Workflow`
-with one `agent()` (`agentType: 'session:tools-read-bash'`, the fixed cheap wrapper cell passed
-at this call site: `model: 'haiku', effort: 'medium'` — the pin is the cheapest wrapper around an
-external CLI, never a slot of the class; label `<mod>-<eff>-<tier>-<job>`, so `hai-me-<tier>-<job>`,
-for example `hai-me-luna-research`; tiers `sol`, `terra`, `luna`, `luna-reserve`, `astra`) and
-consumes only the shim's `LAST LINE`; no fork writes a prompt or relays an output.
-The agent prompt is the absolute path of the shim page
-(`$CODEX_BIN/../skills/codex/proxy-prompt.md`, "read it first and follow it") plus the header
-block: `CODEX TARGET`, `CODEX PROMPT FILE`, `CODEX CWD` = repo
-root, `CODEX OUTPUT FILE: <exchange dir>/<job>-<n>.out.md`, optional
-`CODEX ROLE: <stem of a file in the plugin's agents/ directory>` (the wrapper puts that file's
-body, the CLAUDE.md files and the memory index into codex's stdin; a role text of `lib/roles/` is
-named inside the prompt file instead)
-and `CODEX LABEL: <the same label>` (lands in `~/.codex/proxy-usage.jsonl`). The header block
-ends with the line `No skills needed for this step.` (or the Read-skill-files line). Inputs of
-each prompt file: the role, the inputs by absolute path, the acceptance criteria, the commands
-to run, the required last lines. Heavy jobs write their output file, read by the next consumer
-by path; the artifact stays at `CODEX OUTPUT FILE`, the final message lands in
-`<CODEX OUTPUT FILE>.final.md`, which the shim reads for `LAST LINE`.
+Alone (`sol`, `astra`, `luna`, `terra`): main launches `session:helper` with `helper: codex` and
+`ask` holding the header block: `CODEX TARGET: <tier>-<effort of the mode>`, `CODEX CWD: <repository
+root>`, `CODEX OUTPUT FILE: <out>/output.md`, `CODEX LABEL: <mod>-<eff>-<tier>-<job>`, `RESULT
+DIR: <out>`, then `CODEX ASK:` and the contract the Claude helper of that kind would get (the
+goal, the object by absolute path, the constraints, the result file at `<out>/output.md`, the
+required last line). The codex helper writes that text to `<out>/prompt.md` verbatim and runs; a
+prompt file written beforehand can be named with `CODEX PROMPT FILE:` instead. Codex reads the
+repository and the paths named, never `~/.claude`; a SKILL.md it needs is named by path inside the
+ask. The codex helper runs on its fixed seat under the class table; the launcher names no cell for
+it. Main consumes the three handback lines; the summary is the last line of the codex answer; the
+output file is read by the fork by path, never retold.
 
-Executor jobs (luna, terra) run inside codex's workspace-write sandbox, `CODEX CWD` = repo
-root. The package prompt file ends with: run the harness, commit on pass with the given
-message, return the 5-field status with the harness result lines. The codex run does the
-edit, the harness run and the commit itself. No fork reads the diff, no fork re-runs the
-tests, no review. `partial` or a failing harness → one more codex run with the failure
-packet (the failing lines, the hypothesis), never an opus fork; after the second failure
-the job goes to the loop guard (the failure packet in chat), a low fork diagnoses from the failure lines only. A harness
-build in luna / terra mode is closed the same way: the harness must fail on the negative
-control and codex reports it in the status. Choosing an executor mode is the user's
-permission for codex edits in that task.
+Paired (`+sol`, `+astra`): main launches the Claude `checker` or `breaker` as usual and adds
+`codex: sol-medium` (or `sol-high`, `astra-medium`, `astra-high`) and `cwd` to the same launch; the
+workflow runs both on the same contract in parallel and returns two triples; the fork reads both
+result files and takes what evidence stands, never merges the two into a longer list.
+
+Executor jobs run inside codex's workspace-write sandbox, `CODEX CWD` = the repository root; a job
+that edits the repository does the edit, runs the check named in the ask and returns the status;
+nobody re-reads the diff, nobody re-runs the check. A `partial` or a failing check: one more codex
+run with the failing lines and the hypothesis, then the gap goes to the fork. Choosing an executor
+mode is the user's permission for codex edits in that task.
 
 ## Rules
 
-- Heavy effort by job budget, within the mode's set only (`sol` mode: sol; `astra` mode:
-  astra): critic (reasoning over given files) → `<set>-medium`; decision review
-  (depth `full` only; `std` has a low fork check, `lite` none) and the hardest
-  document review or generation on request → `<set>-high`. Heavy models and any medium/high effort generate or critique documents
-  only, within 5 tool calls at medium and 3 at high; they never review code or read the
-  repository. There is no final review and no code review at all: the closure stage is a
-  mechanical check by a low fork. A package without a formal verifier is authored
-  by opus-low (`terra-high` in terra mode) and not reviewed; luna-high writes only
-  packages that have a verifier. Executors fixed at `luna-high` (`terra-high` for the
-  heavy executor jobs in terra mode).
-- A job stays on Claude when it needs MCP (Jira, GitLab, Confluence), writes the
-  task file group's own artifacts (`intent.md`, `specification.md`,
-  `scenarios.md`, `task.md` at depth `lite`, `ledger.jsonl`, `evidence/`, `reviews/`) or needs a skill (codex sees no SKILL.md; the prompt file names
-  the SKILL.md path to read, or the job stays on Claude). Codex writes only into the
-  repository (executor jobs, including their commits), the exchange directory and, in
-  dual review, `reviews/<stage>-codex.md`.
-- Codex jobs are Workflow calls like the base's cold agents and the stages the process
-  skill delegates (critic, researcher, waiter); its rule that a stage runs through one of
-  the named carriers of the session is lifted exactly for them, one agent per job.
-- Dual review (`+sol`, `+astra`): at every review point (plan critique, verification-plan critique, closure review) the Claude upscale agent of
-  the main session's model (opus-medium / opus-high in an opus session, fable-medium /
-  fable-high in a fable session) and the codex agent of the same effort (sol-me with
-  opus-me, sol-hi with opus-hi; same for astra) run in ONE `Workflow` (`parallel`), two
-  review files, a merge fork writes the triage, a high finding in either that the triage
-  did not refute fails the gate. Rounds stay at 2. Upscale GENERATION stays single, on
-  the Claude agent.
-- Cost: `tools/pipeline-cost.py` joins codex rows with `~/.codex/proxy-usage.jsonl` by
-  model + effort, then time window; give parallel codex jobs distinct labels.
-
-## Forbidden
-
-- No codex agent for a job that needs MCP, the task file group's own artifacts or a
-  skill; no inline task text in the shim prompt (file only); no reading of a codex output
-  file by the main session or by a relay fork; no fork to write a prompt file.
-- No effort or model outside the sets above; no `danger-full-access` or bypass flags (the
-  shim refuses them anyway).
-- No mode change in the middle of a task; a fallback is recorded, not a mode change.
+- A job stays on a Claude helper when it needs MCP (Jira, GitLab, Confluence), a tool codex lacks,
+  or a skill codex cannot read by path.
+- Heavy jobs (sol, astra) analyze one property with evidence, within 5 tool calls at medium and 3
+  at high; they never review a tested object and never read the repository at large.
+- No mode change in the middle of a task; a fallback is recorded in the label, not a mode change.
+- No effort or model outside the sets above; no `danger-full-access`, no bypass flag (the helper
+  refuses them anyway).
+- Cost: `tools/pipeline-cost.py` joins the codex rows of `~/.codex/proxy-usage.jsonl` by model,
+  effort and time window; give parallel codex jobs distinct labels.

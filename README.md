@@ -8,29 +8,24 @@ claude plugin marketplace add aantonovg/claude-session
 claude plugin install session@claude-session
 ```
 
-The session base (launch forms, classes and slots, cache and wait rules, verification
-first) is the skill you invoke as the first prompt of a session, and again after `/compact`:
-`/session:base [no-sonnet] [no-opus] [no-fable] [c1..c5]`. Then, when the session has a task: `/session:process <type> <depth>` — one page of
-stages, gates, task files and user points for a code change, an MR review, an
-investigation, a document or an infrastructure change, at depth `lite`, `std` or `full`.
-Add `/session:codex [mode]` to run a stage on codex models (luna, terra as executors; sol,
-astra as heavy reviewers). The model may call `session:ask` on its own to ask you without
-blocking.
+The session base is the skill you invoke as the first prompt of a session, and again after
+`/compact`: `/session:base [no-sonnet] [no-opus] [no-fable] [c1..c5]`. It is fork-first: the main
+session keeps the user's intent, the constraints, the decisions and the paths of results; every job
+of 2+ tool calls runs in a conversation fork on the main session's own model; a fresh helper (an
+index, facts, a run, a counterexample, a narrow check, a replicated change) runs only for one
+concrete result that improves the fork's decision or replaces its costlier work, writes the details
+to a file and returns three lines. Add `/session:codex [mode]` to send helper jobs of named kinds
+to the codex CLI. The model may call `session:ask` on its own to ask you without blocking.
 
-The work itself runs in named workflows the session launches by name: `session:role` (one
-role, one agent), `session:chain` (the evidence review chain), `session:make` (spec,
-scenarios, tests, code, executor, fixer) and `session:probe` (parallel research, critique,
-synthesis). Each arrives as one SessionStart contract line, so a launch never reads a
-script body.
+Helper launches go through two named workflows, `session:helper` (one helper, one contract, one
+result directory) and `session:batch` (one helper over many items, one status row per item), each
+arriving as one SessionStart contract line, so a launch never reads a script body.
 
-## The 0.16 set
+## The 0.18 set
 
-0.16.0 rebuilds the plugin from zero: the class `c1`-`c5` plus its submodes is the only source of a
-model and an effort. `tests/rebuild/all.sh` runs the static oracles of the rebuild, and
-`tests/workflows/usage-test.sh` checks the contract collector, the SessionStart wiring, the base
-sentences and the READMEs on every commit; `tests/rebuild/release-gate.sh` runs once, right after
-the release commit, and checks what holds only there (both version files at 0.16.0, the version log
-line, the commit subject, a clean tree). Details: the section
-"The 0.16 set" of `plugins/session/README.md`.
-
-Reference (classes, cache facts, compact prices, measurements): `plugins/session/README.md`.
+0.18.0 rebuilds the routing from the fork-first architecture document
+(`reviews/claude_fork_first_architecture_full_dialogue.md`); the class `c1`-`c5` plus its submodes
+stays the only source of a model and an effort, and the keep-warm ping monitors stay as they were.
+`tests/plugin/all.sh` runs the static oracles of the set, `tests/workflows/usage-test.sh` checks the
+contract collector, `tests/plugin/release-gate.sh` runs once, right after the release commit.
+Details: `plugins/session/README.md`.

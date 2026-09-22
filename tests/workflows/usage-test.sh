@@ -1,8 +1,8 @@
 #!/bin/bash
-# Verifier for plugins/session/bin/workflow-usage.sh, workflow usage blocks,
-# hook mode (--hook --file/--dir/--prefix), plugin.json SessionStart hooks, translate-ru in plugin
-# base and README. Temp dirs and fixtures only, no network, runs under 20 s.
-# Labels: c1..c6 from the 0.15.16 plan, k<n> = wf-hook-dev2 acceptance criterion n.
+# Verifier for plugins/session/bin/workflow-usage.sh: the usage blocks of the project workflows,
+# plain mode, hook mode (--hook --file/--dir/--prefix), escaping, the user and project override
+# rules, the real collector's timing. Temp dirs and fixtures only, no network, runs under 20 s.
+# The plugin workflows themselves are owned by tests/plugin/contracts.sh.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -24,10 +24,7 @@ check() {  # $1 label, rest: command
 }
 now_ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time * 1000'; }
 
-# Step 1 baseline: arg names of each `Args:` list. P9 of the 0.16 rebuild took the five old plugin
-# workflows out of this list with the files themselves; the four new ones (role, chain, make, probe)
-# are owned by tests/rebuild/contracts.sh, which checks their usage block, their word cap and their
-# plugin.json entry.
+# Baseline: arg names of each usage block of the project workflows.
 args_of() {
   case $1 in
     memory-gc) echo "trim class submodes" ;;
@@ -263,225 +260,8 @@ k4 "dir without .js" --hook --dir "$K/txt"
 k4 "--file without value" --hook --file
 k4 "--dir without value" --hook --dir
 real_plain=$(cd "$REPO" && env -u CLAUDE_PROJECT_DIR sh "$COLLECTOR" 2>/dev/null)
-check "k4 plain real lists session:role" grep -q '^- session:role — ' <<<"$real_plain"
+check "k4 plain real lists session:helper" grep -q '^- session:helper — ' <<<"$real_plain"
 
-# k5, k6: plugin.json
-PJ=$P/.claude-plugin/plugin.json
-check "k5 plugin.json valid JSON" python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$PJ"
-# P5 of the 0.16 rebuild moved all five hook events to the two new scripts, so this check reads the
-# wiring itself instead of comparing it with HEAD: four events plus the first SessionStart entry,
-# every command path on disk, and the contract entries only counted (contracts.sh owns their shape).
-check "k5 hook wiring: five events at the two new scripts, every command path on disk" python3 -c '
-import json, os, re, sys
-pj = sys.argv[1]
-plugin = os.path.dirname(os.path.dirname(pj))
-hooks = json.load(open(pj, encoding="utf-8"))["hooks"]
 
-def only(groups, want, what):
-    cmds = [h.get("command", "") for g in groups for h in g["hooks"]]
-    assert len(cmds) == 1, "%s: expected one hook, got %d" % (what, len(cmds))
-    assert cmds[0].endswith(want), "%s: %s" % (what, cmds[0])
-
-only(hooks["SubagentStop"], "/hooks/ledger-stop.sh", "SubagentStop")
-only(hooks["UserPromptSubmit"], "/hooks/modes.sh", "UserPromptSubmit")
-only(hooks["PreCompact"], "/hooks/modes.sh", "PreCompact")
-only([g for g in hooks["PostToolUse"] if g.get("matcher") == "Skill"], "/hooks/modes.sh", "PostToolUse(Skill)")
-only([hooks["SessionStart"][0]], "/hooks/modes.sh", "the first SessionStart entry")
-
-missing = []
-for event, groups in hooks.items():
-    for g in groups:
-        for h in g["hooks"]:
-            for m in re.finditer(r"\$\{CLAUDE_PLUGIN_ROOT\}(/[A-Za-z0-9._/-]+)", h.get("command", "")):
-                p = plugin + m.group(1)
-                if not os.path.exists(p): missing.append("%s: %s" % (event, p))
-assert not missing, "hook command path missing on disk: %s" % "; ".join(missing)
-
-# the contract entries are only counted here: one per workflow file plus @user and @project
-entries = [h.get("command", "") for g in hooks["SessionStart"] for h in g["hooks"] if "workflow-usage.sh" in h.get("command", "")]
-wf = [f for f in os.listdir(os.path.join(plugin, "workflows")) if f.endswith(".js")]
-assert len(entries) == len(wf) + 2, "contract entries %d, workflow files %d" % (len(entries), len(wf))
-' "$PJ"
-cat > "$T/k6.py" <<'PY'
-import json, os, sys, glob
-pj, wfdir = sys.argv[1], sys.argv[2]
-groups = json.load(open(pj))["hooks"]["SessionStart"]
-cmds = [h.get("command", "") for g in groups for h in g["hooks"]]
-cmds = [c for c in cmds if "workflow-usage.sh" in c]
-pre = "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh "
-stems = sorted(os.path.basename(f)[:-3] for f in glob.glob(os.path.join(wfdir, "*.js")))
-ok = bool(stems)
-for s in stems:
-    want = pre + "--hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/%s.js --prefix session" % s
-    n = cmds.count(want)
-    if n != 1: print("file command count %s = %d" % (s, n)); ok = False
-for d in ("@user", "@project"):
-    n = cmds.count(pre + "--hook --dir " + d)
-    if n != 1: print("dir command count %s = %d" % (d, n)); ok = False
-for c in cmds:
-    if "--file" in c:
-        name = c.split("/workflows/")[-1].split(".js")[0]
-        if name not in stems: print("command for missing file", name); ok = False
-sys.exit(0 if ok else 1)
-PY
-check "k6 SessionStart commands match plugin workflows plus @user and @project" python3 "$T/k6.py" "$PJ" "$P/workflows"
-mkdir -p "$T/k6wf"; cp "$P"/workflows/*.js "$T/k6wf/" 2>/dev/null; wfx "$T/k6wf/zz-extra.js" 'Extra.'
-check "k6 negative: extra fixture .js without hook fails the check" bash -c '! python3 "$1" "$2" "$3" > /dev/null 2>&1' _ "$T/k6.py" "$PJ" "$T/k6wf"
-python3 -c '
-import json, sys
-for g in json.load(open(sys.argv[1]))["hooks"]["SessionStart"]:
-    for h in g["hooks"]:
-        if "workflow-usage.sh" in h.get("command", ""): print(h["command"])
-' "$PJ" > "$T/k6cmds" 2>/dev/null
-check "k6 real plugin.json has workflow-usage commands" test -s "$T/k6cmds"
-KH=$(mktemp -d "$T/khome.XXXX"); i=0
-while IFS= read -r c; do
-  i=$((i + 1))
-  c=${c//\$\{CLAUDE_PLUGIN_ROOT\}/$P}
-  (cd "$REPO" && env -u CLAUDE_PROJECT_DIR HOME="$KH" sh -c "$c" > "$T/k6o$i" 2>/dev/null); rc=$?
-  check "k6 command $i exit 0" test "$rc" -eq 0
-  if [ -s "$T/k6o$i" ]; then check "k6 command $i output json.loads" jvalid "$T/k6o$i"; fi
-done < "$T/k6cmds"
-if command -v claude > /dev/null 2>&1; then
-  check "k6 claude plugin validate plugins/session" bash -c 'claude plugin validate "$1" > /dev/null 2>&1' _ "$P"
-else
-  echo "usage-test: note: claude not on PATH, plugin validate skipped"
-fi
-
-# k7: usage word range and arg sets (description words and whenToUse checked in c1)
-for f in "${SCRIPTS[@]}"; do
-  s=$(basename "$f" .js)
-  block=$(awk 'f==0&&/^\/\* usage:/{f=1} f{print} f&&/\*\//{exit}' "$f" 2>/dev/null)
-  w=$(printf '%s\n' "$block" | sed -e 's#^/\* usage:##' -e 's#\*/##' | wc -w | tr -d ' ')
-  check "k7 $s usage words 36-107 (got $w)" test "$w" -ge 36 -a "$w" -le 107
-  got=$(grep -oE 'A\.[a-z]+' "$f" 2>/dev/null | sed 's/^A\.//' | sort -u | tr '\n' ' ')
-  want=$(args_of "$s" | tr ' ' '\n' | sort -u | tr '\n' ' ')
-  check "k7 $s A.<arg> set equals args_of (got $got)" test "$got" = "$want"
-done
-
-# k8: the role workflow and the tool-set agents it may launch (rewritten in P2 of the 0.16
-# rebuild: the old check read translate-ru.js, whose two agents leave with it in P9)
-RL=$P/workflows/role.js
-check "k8 role.js in plugin" test -f "$RL"
-# comment lines are stripped first: an agent named only in a comment reaches no launch, so it must
-# not keep this check green
-at=$(grep -vE '^[[:space:]]*(//|\*|/\*)' "$RL" 2>/dev/null | grep -oE "session:tools-[a-z-]+" | sort -u | tr '\n' ' ')
-check "k8 role.js agentTypes are the five tool-set agents (got $at)" test "$at" = "session:tools-edit session:tools-read-bash session:tools-read-write session:tools-read-write-bash session:tools-web "
-check "k8 role.js passes its agent as agentType" grep -qE "agentType: *AGENT" "$RL"
-for a in tools-edit tools-read-bash tools-read-write tools-read-write-bash tools-web; do
-  fm=$(awk 'NR==1&&/^---$/{f=1; next} f&&/^---$/{exit} f{print}' "$P/agents/$a.md" 2>/dev/null)
-  check "k8 agents/$a.md frontmatter name" grep -Fxq "name: $a" <<<"$fm"
-  check "k8 agents/$a.md frontmatter description" grep -Eq '^description: .+' <<<"$fm"
-  check "k8 agents/$a.md frontmatter tools" grep -Eq '^tools: .+' <<<"$fm"
-done
-
-# k9: the repo-wide scan for the old names. The 0.15 version of it grepped for `translate-ru`,
-# `translator` and `size-estimator` in any shape, which `translator` as a live role name of
-# lib/roles/ made red by construction (P2 removed it). Its successor is tests/rebuild/stale.sh,
-# which matches qualified forms only and needs the user-level copy as its argument: the three
-# scripts of part 9 run here in order, over a copy of their own under this test's temp dir, so this
-# file still answers the question "does any old name survive" on its own.
-# What is asserted of switch-user.sh is its repository-owned targets (the user-level skills and
-# statusline.sh) plus its idempotency: the memory notes under projects/<enc>/memory are the user's,
-# free to be deleted or rewritten (the 2026-09-21 cleanup did both), and switch-user.sh skips such a
-# note, so no check here depends on a live note still carrying the text of the switch.
-UC=$T/user-copy
-check "k9 user-copy.sh builds the copy of the user-level assets" \
-  bash -c 'bash "$1" "$2" > /dev/null' _ "$REPO/tests/rebuild/user-copy.sh" "$UC"
-check "k9 switch-user.sh patches the copy" \
-  bash -c 'bash "$1" "$2" > /dev/null' _ "$REPO/tests/rebuild/switch-user.sh" "$UC"
-check "k9 switch-user.sh is idempotent: the second run applies nothing" \
-  bash -c 'bash "$1" "$2" | grep -q "0 applied in this run"' _ "$REPO/tests/rebuild/switch-user.sh" "$UC"
-check "k9 stale.sh finds no live reference to a retired name" \
-  bash -c 'bash "$1" "$2" > "$3" 2>&1 || { tail -20 "$3"; exit 1; }' \
-  _ "$REPO/tests/rebuild/stale.sh" "$UC" "$T/stale.out"
-check "k9 stale.sh fails on a directory that holds no file" \
-  bash -c 'mkdir -p "$2/empty" && ! bash "$1" "$2/empty" > /dev/null 2>&1' _ "$REPO/tests/rebuild/stale.sh" "$T"
-check "k9 stale.sh fails without its argument" \
-  bash -c '! bash "$1" > /dev/null 2>&1' _ "$REPO/tests/rebuild/stale.sh"
-
-# k10: base
-for f in "$BASE" "$SKILL"; do
-  b=$(basename "$f")
-  check "k10 $b no workflow-usage.sh text" bash -c '! grep -Fq "workflow-usage.sh" "$1"' _ "$f"
-  check "k10 $b no Named workflows heading" bash -c '! grep -q "^## Named workflows" "$1"' _ "$f"
-  check "k10 $b keeps meta.description label sentence" grep -Fq 'Its `meta.description` is a 1-4 word label' "$f"
-done
-check "k10 $(basename "$SKILL") no allowed-tools" bash -c '! grep -Fq "allowed-tools" "$1"' _ "$SKILL"
-# P6 of the 0.16 rebuild rewrote the base, so the contract sentence is the new one: the injected
-# contract is the only thing a launch by name needs.
-check "k10 BASE.md SessionStart contract sentence" grep -Fq 'A named workflow arrives as one SessionStart contract line; launch it by `name` and never read the script body.' "$BASE"
-
-# k11: bin/build.sh regenerates SKILL.md from BASE.md (P6 replaced the retired split script as the
-# generator;
-# the copy holds lib/, bin/, base/ and skills/base/, so the build runs against a tree of its own)
-mkdir -p "$T/g/plugin/skills/base"
-cp -R "$P/base" "$T/g/plugin/base"
-cp -R "$P/lib" "$T/g/plugin/lib"
-cp -R "$P/bin" "$T/g/plugin/bin"
-cp "$SKILL" "$T/g/plugin/skills/base/SKILL.md"
-printf '\nhand edit\n' >> "$T/g/plugin/skills/base/SKILL.md"
-check "k11 build.sh --check fails on a hand edit of the generated skill" bash -c '! bash "$1" --check > "$2" 2>&1' _ "$T/g/plugin/bin/build.sh" "$T/g/check.out"
-check "k11 --check names skills/base/SKILL.md" grep -q 'skills/base/SKILL.md' "$T/g/check.out"
-bash "$T/g/plugin/bin/build.sh" > /dev/null 2>&1
-check "k11 build.sh regenerates identical SKILL.md" cmp -s "$T/g/plugin/skills/base/SKILL.md" "$SKILL"
-check "k11 build.sh --check clean on the real plugin" bash "$P/bin/build.sh" --check
-
-# k12: README
-RD=$P/README.md
-sec=$(awk '/^## Workflow contract hooks/{f=1; print; next} f&&/^## /{exit} f{print}' "$RD")
-check "k12 README section Workflow contract hooks" test -n "$sec"
-check "k12 README section plugin.json SessionStart snippet" bash -c 'grep -q "plugin.json" <<<"$1" && grep -q "SessionStart" <<<"$1" && grep -q "\"hooks\"" <<<"$1"' _ "$sec"
-check "k12 README section collector copy into bin/" grep -q 'bin/' <<<"$sec"
-check "k12 README section --hook --file and --prefix" bash -c 'grep -q -- "--hook --file" <<<"$1" && grep -q -- "--prefix" <<<"$1"' _ "$sec"
-check "k12 README section user and project dirs covered by session (@project)" grep -q '@project' <<<"$sec"
-check "k12 README section /reload-plugins or restart" bash -c 'grep -q "/reload-plugins" <<<"$1" && grep -qi "restart" <<<"$1"' _ "$sec"
-pre=$(awk '/^## Version log/{exit} {print}' "$RD")
-check "k12 README no base injection text outside version log" bash -c '! grep -Eiq "injected into base|at skill load|base .?## Named workflows|meta description is the contract" <<<"$1"' _ "$pre"
-
-# k13: the change set of this branch, and the two version files agree (suite pass itself is the
-# rest of k13; the bump to 0.16.0 is asserted once by tests/rebuild/release-gate.sh)
-# The change set is read against the branch point, never against the working tree alone: the parts
-# of the rebuild commit as they land, so `git status` is empty right after a commit and a check over
-# it would pass over nothing. A per-file allow list says nothing here either — the rebuild rewrites
-# the whole plugin — so what is asserted is what must NOT move: the records of past runs, the
-# reviews that are read-only input of this branch, and the cost tools nobody was asked to touch;
-# plus the outer bound, that no path outside the product, test and doc tree of this repo changed.
-BASEREF=$(git -C "$REPO" merge-base main HEAD 2>/dev/null)
-check "k13 the branch point against main is known" test -n "$BASEREF"
-changed=$( { [ -n "$BASEREF" ] && git -C "$REPO" diff --name-only "$BASEREF" HEAD
-             git -C "$REPO" status --porcelain -uall | cut -c4-; } | sort -u | grep -v '^$')
-check "k13 the change set of the branch is not empty (nothing to check otherwise)" test -n "$changed"
-frozen=$(printf '%s\n' "$changed" | grep -E '^(reviews/|docs/measurements/|docs/plans/|tests/corp/results/|tests/demo-game/results/|tools/)' | tr '\n' ' ')
-check "k13 no record, review or cost-tool path in the change set (extra: $frozen)" test -z "$frozen"
-bad=$(printf '%s\n' "$changed" | grep -vE '^(README\.md|CLAUDE\.md|\.claude-plugin/|\.claude/|docs/|plugins/session/|tests/)' | tr '\n' ' ')
-check "k13 change set within the product, test and doc tree (extra: $bad)" test -z "$bad"
-check "k13 plugin and marketplace versions match" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$P/.claude-plugin/plugin.json" "$P/../../.claude-plugin/marketplace.json"
-
-# k14: what of the 0.16.0 release (P10 of the rebuild) holds on every later commit: no older
-# plugin version left in the version files, and the description and the keywords of both carry no mode
-# word of the old set (pipeline, review and its fast/standard levels, the old workflow names).
-# The checks that hold only at the release commit (both version files at 0.16.0, the README 0.16
-# section and version log line, the HEAD subject `session 0.16.0: <summary>`, a clean tree) live
-# in the one-time tests/rebuild/release-gate.sh, run once right after the release commit.
-PJ=$P/.claude-plugin/plugin.json
-MJ=$REPO/.claude-plugin/marketplace.json
-# no version of an older release left in either file: every 0.x.y string in them is the plugin
-# version (the 1.0.0 of the marketplace metadata is no plugin version)
-check "k14 no other plugin version left in the version files" python3 -c 'import json,re,sys
-v=json.load(open(sys.argv[1]))["version"]
-found={x for f in sys.argv[1:] for x in re.findall(r"(?<![0-9.])0\.[0-9]+\.[0-9]+(?![0-9])", open(f).read())}
-sys.exit(0 if found=={v} else 1)' "$PJ" "$MJ"
-oldword='(^|[^a-z-])(pipeline|pipeline-codex|review|reviews|review-fix|translate-ru|fast|standard|modes|stage-[a-z]+)([^a-z-]|$)'
-meta=$(python3 -c 'import json,sys
-p=json.load(open(sys.argv[1])); m=[x for x in json.load(open(sys.argv[2]))["plugins"] if x["name"]=="session"]
-for d in [p]+m:
-    print(d.get("description","")); print(" ".join(d.get("keywords",[])))' "$PJ" "$MJ" 2>/dev/null)
-check "k14 description and keywords of both files readable" test -n "$meta"
-check "k14 description and keywords carry no old mode word" bash -c '! grep -Eiq "$1" <<<"$2"' _ "$oldword" "$meta"
-
-if [ "$FAILS" -eq 0 ]; then
-  echo "usage-test: PASS $N"; exit 0
-fi
-echo "usage-test: FAIL $FAILS failures, $N checks passed"
-exit 1
+if [ "$FAILS" -eq 0 ]; then echo "usage-test: PASS $N"; exit 0; fi
+echo "usage-test: FAIL $FAILS failures, $N checks passed"; exit 1
