@@ -1,3 +1,24 @@
+export const meta = {
+  name: 'batch',
+  description: 'One helper, many items',
+  whenToUse: 'Many independent objects need the same limited procedure and the caller would otherwise spend turns launching, waiting and copying. One helper per item in parallel; one status row per item; nothing dropped.',
+  phases: [{ title: 'Batch' }],
+}
+/* usage:
+One helper over many items in parallel; one status row per item.
+helper (required, as in session:helper)
+ask (the contract with {item} where the item goes; required)
+items (array of strings, required, at least 2)
+in (absolute paths array, default [])
+out (absolute result directory, required; item i lands in out/<i>-<slug>/)
+slot (main opus sonnet; default the helper's own)
+class (c1-c5, default c3)
+submodes (array: no-sonnet no-opus no-fable, default [])
+Out: rows [{item, status, report, summary}] in item order, counts; a failed item stays a row.
+Use: many independent objects, one procedure. Not: two items (helper twice), a procedure that needs all items at once.
+*/
+
+// ---- shared block (generated from lib/block.js by bin/build.sh; never edit here) ----
 // Shared script block. Source of truth: lib/block.src.js plus lib/classes.json; edit those only.
 // bin/build.sh renders them into lib/block.js and stamps lib/block.js between the shared-block
 // markers of every target named by lib/build-manifest.json. lib/block.js and every stamped copy
@@ -6,7 +27,152 @@
 // Pure functions only: no file access, no harness global (`args`, `agent`, `log`), no side effect.
 
 // ---- class table ----
-const CLASSES = {} // generated from lib/classes.json by bin/build.sh
+const CLASSES = {
+  "defaultClass": "c3",
+  "slots": [
+    "main",
+    "opus",
+    "sonnet"
+  ],
+  "models": {
+    "fab": "fable",
+    "ops": "opus",
+    "son": "sonnet",
+    "hai": "haiku"
+  },
+  "efforts": {
+    "lo": "low",
+    "me": "medium",
+    "hi": "high"
+  },
+  "submodeOrder": [
+    "no-sonnet",
+    "no-opus",
+    "no-fable"
+  ],
+  "submodeKeys": [
+    "none",
+    "no-sonnet",
+    "no-opus",
+    "no-fable",
+    "no-sonnet no-opus",
+    "no-sonnet no-fable",
+    "no-opus no-fable"
+  ],
+  "table": {
+    "c1": {
+      "none": "ops-lo/ops-lo/son-lo",
+      "no-sonnet": "ops-lo/ops-lo/ops-lo",
+      "no-opus": "son-me/son-me/son-lo",
+      "no-fable": "ops-lo/ops-lo/son-lo",
+      "no-sonnet no-opus": "fab-lo/fab-lo/fab-lo",
+      "no-sonnet no-fable": "ops-lo/ops-lo/ops-lo",
+      "no-opus no-fable": "son-me/son-me/son-lo"
+    },
+    "c2": {
+      "none": "fab-lo/ops-lo/son-me",
+      "no-sonnet": "fab-lo/ops-lo/ops-lo",
+      "no-opus": "fab-lo/son-me/son-me",
+      "no-fable": "ops-me/ops-lo/son-me",
+      "no-sonnet no-opus": "fab-lo/fab-lo/fab-lo",
+      "no-sonnet no-fable": "ops-me/ops-lo/ops-lo",
+      "no-opus no-fable": "son-me/son-me/son-me"
+    },
+    "c3": {
+      "none": "fab-lo/ops-me/son-hi",
+      "no-sonnet": "fab-lo/ops-me/ops-me",
+      "no-opus": "fab-lo/son-hi/son-hi",
+      "no-fable": "ops-me/ops-me/son-hi",
+      "no-sonnet no-opus": "fab-lo/fab-lo/fab-lo",
+      "no-sonnet no-fable": "ops-me/ops-me/ops-me",
+      "no-opus no-fable": "son-hi/son-hi/son-hi"
+    },
+    "c4": {
+      "none": "fab-me/ops-hi/son-hi",
+      "no-sonnet": "fab-me/ops-hi/ops-me",
+      "no-opus": "fab-me/fab-me/son-hi",
+      "no-fable": "ops-hi/ops-hi/son-hi",
+      "no-sonnet no-opus": "fab-me/fab-me/fab-lo",
+      "no-sonnet no-fable": "ops-hi/ops-hi/ops-me",
+      "no-opus no-fable": "son-hi/son-hi/son-hi"
+    },
+    "c5": {
+      "none": "fab-hi/ops-hi/ops-hi",
+      "no-sonnet": "fab-hi/ops-hi/ops-hi",
+      "no-opus": "fab-hi/fab-me/fab-me",
+      "no-fable": "ops-hi/ops-hi/ops-hi",
+      "no-sonnet no-opus": "fab-hi/fab-me/fab-me",
+      "no-sonnet no-fable": "ops-hi/ops-hi/ops-hi",
+      "no-opus no-fable": "son-hi/son-hi/son-hi"
+    }
+  },
+  "fixedCells": {
+    "guide": {
+      "none": "son-me",
+      "no-sonnet": "ops-lo",
+      "no-sonnet no-opus": "fab-lo"
+    },
+    "codex": {
+      "none": "hai-me"
+    }
+  },
+  "helpers": {
+    "finder": {
+      "agent": "session:finder",
+      "slot": "sonnet",
+      "gain": "cost"
+    },
+    "extractor": {
+      "agent": "session:extractor",
+      "slot": "sonnet",
+      "gain": "cost"
+    },
+    "web-extractor": {
+      "agent": "session:web-extractor",
+      "slot": "sonnet",
+      "gain": "cost"
+    },
+    "runner": {
+      "agent": "session:runner",
+      "slot": "sonnet",
+      "gain": "cost"
+    },
+    "applier": {
+      "agent": "session:applier",
+      "slot": "sonnet",
+      "gain": "cost"
+    },
+    "consumer": {
+      "agent": "session:consumer",
+      "slot": "sonnet",
+      "gain": "quality"
+    },
+    "checker": {
+      "agent": "session:checker",
+      "slot": "opus",
+      "gain": "quality"
+    },
+    "breaker": {
+      "agent": "session:breaker",
+      "slot": "opus",
+      "gain": "quality"
+    },
+    "guide": {
+      "agent": "claude-code-guide",
+      "seat": "guide"
+    },
+    "codex": {
+      "agent": "session:codex",
+      "seat": "codex"
+    }
+  },
+  "statuses": [
+    "completed",
+    "partial",
+    "blocked",
+    "failed"
+  ]
+}
 // ---- end class table ----
 
 const MODEL_NAME = CLASSES.models
@@ -162,3 +328,40 @@ if (typeof module !== 'undefined' && module.exports) {
     handback, isBlocked, batchRows, batchCounts, cellTokens,
   }
 }
+// ---- end shared block ----
+
+const A = args || {}
+const CLS = A.class || CLASSES.defaultClass
+const SUBS = submodes(A.submodes).subs
+const HELPER = A.helper
+const ASK = A.ask
+const OUT = A.out
+const ITEMS = Array.isArray(A.items) ? A.items.map(String) : null
+const IN = Array.isArray(A.in) ? A.in : (A.in ? [A.in] : [])
+if (!HELPER) throw new Error('args.helper is required')
+if (!ASK || !ASK.includes('{item}')) throw new Error('args.ask is required and must hold {item}')
+if (!ITEMS || ITEMS.length < 2) throw new Error('args.items (array of at least 2 strings) is required')
+if (!OUT || !String(OUT).startsWith('/')) throw new Error('args.out (absolute result directory) is required')
+if (IN.some(p => !String(p).startsWith('/'))) throw new Error('args.in holds a relative path')
+
+const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'item'
+log(`c${CLS.slice(1)}${SUBS.length ? '-' + SUBS.join('-') : ''}-batch | helper=${HELPER} items=${ITEMS.length} out=${OUT}`)
+
+phase('Batch')
+const returns = await parallel(ITEMS.map((item, i) => () => {
+  const O = helperOpts(CLS, SUBS, HELPER, A.slot, `${HELPER}-${i + 1}`)
+  const dir = `${OUT}/${i + 1}-${slug(item)}`
+  const prompt = [
+    `Contract:`,
+    ASK.split('{item}').join(item),
+    IN.length ? `Inputs (absolute paths): ${IN.join(' ')}` : 'Inputs: none beyond the contract.',
+    `Result directory: ${dir} (mkdir -p it; write result.md there; logs and attempts beside it).`,
+    `Return exactly the three handback lines: status, report, summary. No other text.`,
+  ].join('\n')
+  return agent(prompt, { agentType: O.agentType, model: O.model, effort: O.effort, label: O.label, phase: 'Batch' })
+}))
+const rows = batchRows(ITEMS, returns)
+const counts = batchCounts(rows)
+const bad = rows.filter(r => r.status !== 'completed')
+if (bad.length) log(`${bad.length} of ${rows.length} items not completed: ${bad.map(r => `${r.item} (${r.status})`).join(', ')}`)
+return { helper: HELPER, out: OUT, counts, rows }

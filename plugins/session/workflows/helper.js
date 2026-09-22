@@ -1,3 +1,25 @@
+export const meta = {
+  name: 'helper',
+  description: 'One fresh helper',
+  whenToUse: 'A fork or the main session needs one concrete result from a fresh context: an index, facts, a run, a counterexample, a narrow check, a replicated change. The contract is short; the result goes to a file; three lines come back.',
+  phases: [{ title: 'Helper' }],
+}
+/* usage:
+One fresh helper, one contract, one result directory.
+helper (required): finder extractor web-extractor runner applier consumer checker breaker guide codex
+ask (the contract: goal, object, constraints, expected result; required)
+in (absolute paths array, default [])
+out (absolute result directory, required)
+slot (main opus sonnet; default the helper's own; reason in ask)
+codex (codex target like sol-medium: the codex helper runs the same contract in parallel; default none)
+cwd (directory of the codex run, default none)
+class (c1-c5, default c3)
+submodes (array: no-sonnet no-opus no-fable, default [])
+Out: status (completed partial blocked failed), report path, summary; with codex a second triple.
+Use: one result before the fork decides. Not: authoring, intent, a review of tested code.
+*/
+
+// ---- shared block (generated from lib/block.js by bin/build.sh; never edit here) ----
 // Shared script block. Source of truth: lib/block.src.js plus lib/classes.json; edit those only.
 // bin/build.sh renders them into lib/block.js and stamps lib/block.js between the shared-block
 // markers of every target named by lib/build-manifest.json. lib/block.js and every stamped copy
@@ -307,3 +329,52 @@ if (typeof module !== 'undefined' && module.exports) {
     handback, isBlocked, batchRows, batchCounts, cellTokens,
   }
 }
+// ---- end shared block ----
+
+const A = args || {}
+const CLS = A.class || CLASSES.defaultClass
+const SUBS = submodes(A.submodes).subs
+const HELPER = A.helper
+const ASK = A.ask
+const OUT = A.out
+const IN = Array.isArray(A.in) ? A.in : (A.in ? [A.in] : [])
+if (!HELPER) throw new Error('args.helper is required')
+if (!ASK) throw new Error('args.ask is required')
+if (!OUT || !String(OUT).startsWith('/')) throw new Error('args.out (absolute result directory) is required')
+if (IN.some(p => !String(p).startsWith('/'))) throw new Error('args.in holds a relative path')
+
+const O = helperOpts(CLS, SUBS, HELPER, A.slot, HELPER)
+log(`c${CLS.slice(1)}${SUBS.length ? '-' + SUBS.join('-') : ''}-helper | helper=${HELPER} cell=${O.cell} slot=${O.slot} out=${OUT}`)
+
+const prompt = [
+  `Contract:`,
+  ASK,
+  IN.length ? `Inputs (absolute paths): ${IN.join(' ')}` : 'Inputs: none beyond the contract.',
+  `Result directory: ${OUT} (mkdir -p it; write result.md there; logs and attempts beside it).`,
+  `Return exactly the three handback lines: status, report, summary. No other text.`,
+].join('\n')
+
+const codexPrompt = (target, cwd, dir) => [
+  `CODEX TARGET: ${target}`,
+  cwd ? `CODEX CWD: ${cwd}` : null,
+  `CODEX OUTPUT FILE: ${dir}/output.md`,
+  `CODEX LABEL: ${O.label}-codex`,
+  `RESULT DIR: ${dir}`,
+  `CODEX ASK:`,
+  `Style: caveman ultra, plain English only; artifacts in normal prose.`,
+  `Contract: ${ASK}`,
+  IN.length ? `Inputs (absolute paths): ${IN.join(' ')}` : 'Inputs: none beyond the contract.',
+  `Write the result to ${dir}/output.md: what was asked, what was observed, the evidence with paths and lines, the exceptions, what stayed unchecked. Last line of the file: status: completed | partial | failed.`,
+].filter(Boolean).join('\n')
+
+phase('Helper')
+const runs = [() => agent(prompt, { agentType: O.agentType, model: O.model, effort: O.effort, label: O.label, phase: 'Helper' })]
+if (A.codex && HELPER !== 'codex') {
+  const C = helperOpts(CLS, SUBS, 'codex', null, `${HELPER}-codex`)
+  runs.push(() => agent(codexPrompt(A.codex, A.cwd, `${OUT}/codex`), { agentType: C.agentType, model: C.model, effort: C.effort, label: C.label, phase: 'Helper' }))
+}
+const returns = await parallel(runs)
+const h = handback(returns[0])
+const out = { helper: HELPER, cell: O.cell, slot: O.slot, label: O.label, out: OUT, status: h.status, report: h.report, summary: h.summary }
+if (runs.length > 1) { const c = handback(returns[1]); out.codex = { target: A.codex, status: c.status, report: c.report, summary: c.summary } }
+return out

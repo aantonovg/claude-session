@@ -73,7 +73,7 @@ B_MD=$REPO/plugins/session/base/BASE.md
 S_MD=$REPO/plugins/session/skills/base/SKILL.md
 for doc in "$B_MD" "$S_MD"; do
   name=${doc#"$REPO"/}
-  grep -qF 'ping monitor; forks or workflows for every 2+ call job' "$doc" || fail "docs: reply line missing in $name"
+  grep -qF 'ping monitor; fork first, helpers for a named result' "$doc" || fail "docs: reply line missing in $name"
   grep -qF 'Pings: every `ping` gets exactly `pong`: no work, no status, no tool calls.' "$doc" || fail "docs: pong rule missing in $name"
   grep -qF 'Exception: previous work turn cut off (error line in place of an answer, fork or background job never returned, step announced not done): `pong` and in the same turn resume that step, no other output.' "$doc" || fail "docs: cut-off exception missing in $name"
   if grep -qiE 'run_in_background.*(ping|keep-warm)|(ping|keep-warm).*run_in_background' "$doc"; then fail "docs: run_in_background ping text in $name"; fi

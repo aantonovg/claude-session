@@ -1,28 +1,16 @@
 {
   "name": "session",
-  "version": "0.17.1",
-  "description": "Rules for the main Claude Code session: /session:base (forks, named workflows, lean agents, classes and slots, waits, style) plus the process, codex, ask and reset-counter skills.",
+  "version": "0.18.0",
+  "description": "Rules for the main Claude Code session: /session:base (main keeps the intent, a fork does the work, fresh helpers bring one result each through session:helper and session:batch, classes and slots, waits, style) plus the codex, ask and ping skills.",
   "keywords": [
     "session",
     "base",
     "cache",
     "forks",
-    "process",
-    "verification",
+    "helpers",
     "codex"
   ],
   "hooks": {
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ledger-stop.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "hooks": [
@@ -71,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/role.js --prefix session",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/helper.js --prefix session",
             "timeout": 5
           }
         ]
@@ -80,25 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/chain.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/make.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/probe.js --prefix session",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/batch.js --prefix session",
             "timeout": 5
           }
         ]
