@@ -3,6 +3,7 @@ import os
 PRICES = {
     "claude-fable-5-1": (10e-6, 50e-6, 2.5e-7, 12.5e-6, 20e-6),
     "claude-fable-5": (10e-6, 50e-6, 1e-6, 12.5e-6, 20e-6),
+    "claude-opus-5-5": (4e-6, 20e-6, 2e-7, 5e-6, 8e-6),
     "claude-opus-5": (5e-6, 25e-6, 5e-7, 6.25e-6, 10e-6),
     "claude-opus-4-8": (5e-6, 25e-6, 5e-7, 6.25e-6, 10e-6),
     "claude-opus-4-7": (5e-6, 25e-6, 5e-7, 6.25e-6, 10e-6),
