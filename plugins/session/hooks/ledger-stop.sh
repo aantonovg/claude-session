@@ -7,8 +7,10 @@
 # nothing at all. Otherwise it appends one row
 #   {ts, agent_id, event:"stop", class, depth, slot, label}
 # to <task dir>/ledger.jsonl, copying class, depth, slot and label from that
-# agent's own launch row, and records the main session id in <task dir>/session
-# on first use, so a cost reading finds the transcripts without help from the model.
+# agent's own launch row, whose full field set is {ts, stage, step, role, kind, class, submodes,
+# depth, slot, label, agent_id} (skills/process/core.md "Ledger"), and records the main session id
+# in <task dir>/session on first use, so a cost reading finds the transcripts without help from
+# the model.
 #
 # Input: the hook JSON on stdin (session_id, cwd, agent_id, and for the run of a workflow
 # agent agent_transcript_path or transcript_path). Output: none. The stop row is the machine
@@ -52,8 +54,9 @@ launch_row() {
 }
 BLOCKJS=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/lib/block.js
 # The intent stop row: no launch writes the intent, so its row is written here, once, at the first
-# stop row of the task. The decision is intentStopDue() of lib/block.js (nothing is launched at std
-# or full before the user confirmed the intent); this glue only reads the files. No node, no row.
+# stop row of the task. The decision is intentStopDue() of lib/block.js (nothing but research is
+# launched at std or full before the user confirmed the intent); this glue only reads the files. No
+# node, no row.
 intent_row() {
   command -v node >/dev/null 2>&1 && [ -f "$BLOCKJS" ] || return 0
   node -e '

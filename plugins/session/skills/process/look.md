@@ -8,11 +8,13 @@ rests on. Read `core.md` and `SKILL.md` first.
 
 | stage | task file | gate | lite | std | full |
 |---|---|---|---|---|---|
+| `research` — facts, unknowns, contradictions, assumptions, verification capabilities | `ledger.md`, `evidence` | no decision-changing unknown open, contradictions closed or accepted as risk, verification capabilities listed or unverifiable written | one research bundle, no gate | yes | yes |
 | `intent` — the question, and what a good answer must settle | `intent.md` | the user confirms the question and the criteria of a good answer | written by the main session, no gate | user gate | user gate |
 | `subtasks` — the question cut into directions that can run in parallel | `subtasks.md` | every part of the question has a direction, none outside it | folded into `intent.md` | yes | yes |
 | `specification` — the unknowns, each with its class: decision-changing, verification-changing, local, nice-to-know | `specification.md` | every unknown carries a class; contradictions are named | folded into `intent.md` | yes | yes |
 | `scenarios` — what evidence would settle each unknown | `scenarios.md` | every decision-changing unknown has one | one-liners | yes | yes, with the refuting evidence named too |
 | `verification-plan` — where that evidence can come from | `verification-plan.md` | every unknown has a source row, `existing`, `missing` or `no possible` | folded into `intent.md` | yes | yes |
+| `implementation-plan` — the plan of the work | `implementation-plan.md` | the steps and their order are named and checked against the verification plan; starts only after the verification-plan gate passed | folded into `intent.md` | yes | yes |
 | `checks` — the reads, the queries and the runs that produce facts | `tests.md` | every planned source was reached or reported unavailable | – | yes | yes, plus one run that would refute the leading answer |
 | `result` — the evidence bundles the answer will rest on | `evidence` | every fact carries a pointer; an unsettled unknown is written as one, never as an answer | yes | yes | yes |
 | `review` — the answer itself, which no run can judge | `reviews` | evidence chain over the approved aspects; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |

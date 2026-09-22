@@ -9,7 +9,7 @@
 # Fails on a dirty tree and on any missing item; never skips a check.
 set -u
 
-REL=0.16.3
+REL=0.17.0
 
 gate() {  # $1 repo root; prints one FAIL line per missing item and a summary, returns 0/1
   local repo=$1 n=0 fails=0
@@ -27,7 +27,7 @@ gate() {  # $1 repo root; prints one FAIL line per missing item and a summary, r
   ck "marketplace.json session version $REL" python3 -c 'import json,sys; m=[p["version"] for p in json.load(open(sys.argv[1]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[sys.argv[2]] else 1)' "$mj" "$REL"
   local rsec
   rsec=$(awk '/^## The 0\.16 set/{f=1; print; next} f&&/^## /{exit} f{print}' "$rd" 2>/dev/null)
-  ck "README section The 0.16 set" test -n "$rsec"
+  ck "README section The 0.17 set" test -n "$rsec"
   ck "README 0.16 section names the four workflows" bash -c 'for w in role chain make probe; do grep -q "session:$w" <<<"$1" || exit 1; done' _ "$rsec"
   ck "README 0.16 section usage-test.sh sentence" grep -Fq 'tests/workflows/usage-test.sh' <<<"$rsec"
   ck "README 0.16 section static suite sentence" grep -Fq 'tests/rebuild/all.sh' <<<"$rsec"

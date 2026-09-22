@@ -2,7 +2,7 @@
 
 The one form of the intent confirmation at `std` and `full`. The main session writes these lines
 into `intent.md` and puts the same lines to the user in chat, in this order, and asks for the
-confirmation in the same turn. Nothing is launched before the user's word.
+confirmation in the same turn. Nothing but research is launched before the user's word.
 
 ```
 Task: <what is wanted, one sentence, in the user's words>

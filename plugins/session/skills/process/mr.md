@@ -8,11 +8,13 @@ runs, never from reading. Read `core.md` and `SKILL.md` first.
 
 | stage | task file | gate | lite | std | full |
 |---|---|---|---|---|---|
+| `research` — facts, unknowns, contradictions, assumptions, verification capabilities | `ledger.md`, `evidence` | no decision-changing unknown open, contradictions closed or accepted as risk, verification capabilities listed or unverifiable written | one research bundle, no gate | yes | yes |
 | `intent` — what the ticket asked, what the change claims | `intent.md` | the user confirms the review depth and the criteria | written by the main session, no gate | user gate | user gate |
 | `subtasks` — the claims, one per changed behaviour | `subtasks.md` | every claim of the description and the commits has a row, none invented | folded into `intent.md` | yes | yes |
 | `specification` — the review contract: claim, oracle class, what proves it | `specification.md` | every claim carries `existing`, `missing` or `no possible` | folded into `intent.md` | yes | yes |
 | `scenarios` — what a claim must show to count as proven | `scenarios.md` | every claim with a missing oracle has a scenario | one-liners | yes | yes, with negatives |
 | `verification-plan` — the delta: only the checks the author did not run | `verification-plan.md` | no check re-plans what the author already proved | folded into `intent.md` | yes | yes |
+| `implementation-plan` — the plan of the work | `implementation-plan.md` | the steps and their order are named and checked against the verification plan; starts only after the verification-plan gate passed | folded into `intent.md` | yes | yes |
 | `checks` — the missing checks, built on a copy of the branch | `tests.md` | every planned check exists and runs; nothing is pushed to the author's branch | – | yes | yes, plus the negative control on the base branch |
 | `result` — the runs and the findings they produced | `changes`, `runs` | every finding reproduces on the author's side; a failure that also shows on the base branch is dropped | yes | yes | yes |
 | `review` — a claim no check can settle | `reviews` | evidence chain over the approved aspects; what stays undetermined goes to the user | 1 merged critic | 2-3 aspects | 3-5 aspects |

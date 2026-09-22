@@ -13,6 +13,15 @@ regenerates `skills/base/SKILL.md` and every other target of `lib/build-manifest
 | `session:ask` | ask without blocking: options document, Plannotator in the background, continue on reversible defaults (model-invocable) | - |
 | `session:reset-counter` | clears the statusline mode counters after a rewind (user only) | - |
 
+## The 0.17 set
+
+0.17.0: a `research` stage runs before `intent` (task file `ledger.md`: facts, unknowns,
+contradictions, assumptions, verification capabilities); at `std` and `full` nothing but research
+launches before the user confirms the intent, the gate now sitting after research; the plan stage
+splits into `verification-plan` and `implementation-plan`; the uplift rule for a no-oracle author
+moves it one slot up in its class row, never one class up; the researcher and synthesizer role
+texts carry `Sources` lines (`used:`, `wanted, unavailable:`).
+
 ## The 0.16 set
 
 0.16.0 rebuilds the plugin from zero around one rule: the class `c1`-`c5` plus its submodes is the
@@ -223,6 +232,7 @@ statusline reads it by `session_id`; `/session:reset-counter` clears it after a 
 0.15.5: poll step 5 seconds (`for i in $(seq 36); do test -f <done> && break; sleep 5; done`); a finished job is noticed within 5 s.
 0.15.6: base "Skill first, then delegate" bullet (transcripts-jsonl, shell-gotchas, workflow-reliability, harness-cost, tmux-sessions); tests/measure: S1-S9 scenarios for the 0.15 assets, driver env matrix (MODEL EFFORT CWD OUT REPEAT IDS), parser S3 scans script files only.
 0.15.7: shorter workflow descriptions; README documents workflow args; plugin-dev workflows (test-session, skill-author, memory-gc) tracked in .claude/workflows/.
+0.17.0: `research` stage before `intent` (task file `ledger.md`); at `std` and `full` nothing but research launches before the user confirms the intent; plan stage splits into `verification-plan` and `implementation-plan`; uplift moves a no-oracle author one slot up in its class row, never one class up; researcher and synthesizer role texts carry `Sources` lines (`used:`, `wanted, unavailable:`).
 0.16.3: base clause on the `Monitor` 30 min cap and its expiry notice (start the `Monitor` again or switch to the `run_in_background` until-loop); empty `reviews/` directories removed.
 0.16.2: ping state keyed on the claude pid only (dead CLAUDE_SESSION_ID path removed, test-only SESSION_PID_TEST); process skill: a returned out path counts only after a check on disk; switch-user.sh skips a memory note the user removed or rewrote; ping-test runs without a claude ancestor.
 0.16.1: fixed guide seat (son-me, ops-lo under no-sonnet, fab-lo under no-sonnet no-opus) rendered under the class table; detached-job recipe always writes the exit code and the done-file; class table fix for c3 under no-opus no-fable.
