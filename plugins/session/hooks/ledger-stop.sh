@@ -37,6 +37,16 @@ field() { printf '%s' "$INPUT" | jq -r --arg k "$1" '.[$k] // empty' 2>/dev/null
 CWD=$(field cwd); [ -n "$CWD" ] || CWD=$PWD
 ENC=$(printf '%s' "$CWD" | sed 's#[^A-Za-z0-9-]#-#g')
 CUR="$HOME/.claude/projects/$ENC/tasks/current"
+# A process skill turn can leave the session cwd inside the repository (e.g. a skill directory)
+# rather than at the repository root the pointer was written under. When the hook cwd itself names
+# no pointer, retry once from the repository root of that cwd before giving up.
+if [ ! -f "$CUR" ]; then
+  ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$ROOT" ]; then
+    RENC=$(printf '%s' "$ROOT" | sed 's#[^A-Za-z0-9-]#-#g')
+    CUR="$HOME/.claude/projects/$RENC/tasks/current"
+  fi
+fi
 [ -f "$CUR" ] || exit 0
 DIR=$(head -1 "$CUR"); [ -n "$DIR" ] && [ -d "$DIR" ] || exit 0
 AID=$(field agent_id); [ -n "$AID" ] || AID=$(field agentId)

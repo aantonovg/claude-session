@@ -20,7 +20,8 @@ The pointer to the task a session is working on:
 ~/.claude/projects/<encoded-cwd>/tasks/current
 ```
 
-One line: the absolute path of the task directory. The pointer is
+One line: the absolute path of the task directory. The pointer lives under the encoded repository
+root, which the hooks find from any cwd inside it. The pointer is
 written by the process skill when the task directory is created and
 removed by the process skill when the task is closed; no hook and no workflow writes it.
 `hooks/ledger-stop.sh` and `hooks/modes.sh` read it and nothing else: with no pointer an ordinary

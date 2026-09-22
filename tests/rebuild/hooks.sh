@@ -276,6 +276,26 @@ ledger_reset; printf '%s\n' "$HOME/no-such-task" >"$PDIR/tasks/current"
 printf '%s' "$(stop_payload a1)" | bash "$LEDGER_HOOK" >/dev/null 2>&1
 check "h2 a pointer at a missing directory writes nothing (rows: $(stops))" test "$(stops)" = 0
 
+# a stop event whose cwd sits in a subdirectory of a git repository finds the pointer written
+# under the repository root: the process skill can leave the session cwd inside the repo (a skill
+# directory) rather than at the root the pointer was written under, so the hook must retry from
+# `git -C "$CWD" rev-parse --show-toplevel` before giving up.
+rm -rf "$HOME/gitproj"; mkdir -p "$HOME/gitproj/plugins/session/skills/process"
+GITROOT=$(cd "$HOME/gitproj" && pwd -P)  # the physical path: what `git rev-parse` itself returns
+GITSUB=$GITROOT/plugins/session/skills/process
+(cd "$GITROOT" && git init -q) >/dev/null 2>&1
+GENC=$(printf '%s' "$GITROOT" | sed 's#[^A-Za-z0-9-]#-#g')
+GPDIR=$HOME/.claude/projects/$GENC
+GTASK=$HOME/gittask-2026-09-22-thing
+rm -rf "$GPDIR" "$GTASK"
+mkdir -p "$GPDIR/tasks" "$GTASK"
+printf '%s\n' "$GTASK" >"$GPDIR/tasks/current"
+launch_row a1 c3 full sonnet son-hi-code-author >"$GTASK/ledger.jsonl"
+printf '%s' "$(jq -nc --arg c "$GITSUB" --arg a a1 --arg s main-session \
+  '{hook_event_name:"SubagentStop",session_id:$s,cwd:$c,agent_id:$a}')" | bash "$LEDGER_HOOK" >/dev/null 2>&1
+GROWS=$(grep -c '"event":"stop"' "$GTASK/ledger.jsonl" 2>/dev/null || true)
+check "h2 a cwd in a subdirectory of a git repo finds the pointer at the repo root (rows: $GROWS)" test "$GROWS" = 1
+
 ledger_reset; rm -f "$TASK/ledger.jsonl"
 printf '%s' "$(stop_payload a1)" | bash "$LEDGER_HOOK" >/dev/null 2>&1
 check "h2 a task directory without a ledger writes nothing" bash -c '[ ! -f "$1/ledger.jsonl" ]' _ "$TASK"
