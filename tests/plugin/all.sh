@@ -5,7 +5,7 @@
 #   tests/plugin/all.sh
 set -u
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-ORDER="build-sync block agents contracts text hooks stale toolplugin release-gate"
+ORDER="build-sync block handback agents contracts text hooks stale toolplugin release-gate"
 ran=0; failed=
 for t in $ORDER; do
   f=$HERE/$t.sh

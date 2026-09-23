@@ -1,13 +1,16 @@
 #!/bin/bash
 # The usage block of each workflow: exactly one, right after the meta close, closed by */, 50-150
 # tokens, names every A.<arg> the script reads, its first line under 12 words; meta keys and a 1-4
-# word description; plugin.json carries one SessionStart hook per workflow plus @user and @project;
-# the collector prints one valid JSON line per script; the helper list of helper.js usage equals the
-# helpers of classes.json.
+# word description; plugin.json carries one SessionStart collector hook (--all) and no per-file or
+# per-dir one, and its output lists every plugin workflow; the collector prints one valid JSON line
+# per script; the helper list of helper.js usage equals the helpers of classes.json.
 set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 PJ=$P/.claude-plugin/plugin.json
 COL=$P/bin/workflow-usage.sh
+ALLCMD="sh \${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --all --prefix session"
+ALLOUT=$(cd "$REPO" && env -u CLAUDE_PROJECT_DIR sh "$COL" --hook --all --prefix session)
+check "--all collector prints one valid SessionStart JSON line" bash -c 'printf "%s" "$1" | python3 -c "import json,sys; t=sys.stdin.read(); assert t.count(chr(10))<=1; d=json.loads(t); assert d[\"hookSpecificOutput\"][\"hookEventName\"]==\"SessionStart\""' _ "$ALLOUT"
 for f in "$P"/workflows/*.js; do
   s=$(basename "$f" .js)
   meta=$(awk '/meta = \{/{m=1} m{print} m&&/^\}/{exit}' "$f")
@@ -37,12 +40,11 @@ for f in "$P"/workflows/*.js; do
   check "$s launches by agentType from helperOpts" grep -q 'agentType: O.agentType' "$f"
   check "$s passes model and effort explicitly" grep -q 'model: O.model, effort: O.effort, label: O.label' "$f"
   check "$s validates an absolute out" grep -q "startsWith('/')" "$f"
-  cmd="sh \${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file \${CLAUDE_PLUGIN_ROOT}/workflows/$s.js --prefix session"
-  check "$s SessionStart hook in plugin.json" python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); cs=[h["command"] for e in d["hooks"]["SessionStart"] for h in e["hooks"]]; sys.exit(0 if cs.count(sys.argv[2])==1 else 1)' "$PJ" "$cmd"
+  check "$s listed by the --all collector" grep -Fq "Workflow session:$s (launch by name; contract below; never read the script body): " <<<"$ALLOUT"
   out=$(cd "$REPO" && env -u CLAUDE_PROJECT_DIR sh "$COL" --hook --file "$f" --prefix session)
   check "$s collector prints one JSON line" bash -c 'printf "%s" "$1" | python3 -c "import json,sys; t=sys.stdin.read(); assert t.count(chr(10))<=1; d=json.loads(t); assert d[\"hookSpecificOutput\"][\"hookEventName\"]==\"SessionStart\"; assert \"Workflow session:$2 (launch by name; contract below; never read the script body): \" in d[\"hookSpecificOutput\"][\"additionalContext\"]"' _ "$out" "$s"
 done
-check "plugin.json @user and @project hooks once each" python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); cs=[h["command"] for e in d["hooks"]["SessionStart"] for h in e["hooks"]]; sys.exit(0 if sum(c.endswith("--dir @user") for c in cs)==1 and sum(c.endswith("--dir @project") for c in cs)==1 else 1)' "$PJ"
+check "plugin.json runs the collector once, as --all, never per file or per dir" python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); cs=[h["command"] for e in d["hooks"]["SessionStart"] for h in e["hooks"] if "workflow-usage.sh" in h["command"]]; sys.exit(0 if cs==[sys.argv[2]] else 1)' "$PJ" "$ALLCMD"
 check "plugin.json names no retired workflow hook" bash -c '! grep -Eq "workflows/(role|chain|make|probe)\.js" "$1"' _ "$PJ"
 check "plugin.json has no SubagentStop hook" bash -c '! grep -q SubagentStop "$1"' _ "$PJ"
 check "plugin.json version equals marketplace version" python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["version"]; m=[p["version"] for p in json.load(open(sys.argv[2]))["plugins"] if p["name"]=="session"]; sys.exit(0 if m==[v] else 1)' "$PJ" "$REPO/.claude-plugin/marketplace.json"

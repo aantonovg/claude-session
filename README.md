@@ -28,4 +28,6 @@ arriving as one SessionStart contract line, so a launch never reads a script bod
 stays the only source of a model and an effort, and the keep-warm ping monitors stay as they were.
 `tests/plugin/all.sh` runs the static oracles of the set, `tests/workflows/usage-test.sh` checks the
 contract collector, `tests/plugin/release-gate.sh` runs once, right after the release commit.
+0.18.1 adds the agent gate (only a fork goes through `Agent`; every helper goes through `session:helper`
+or `session:batch`) and the fixes of `docs/plans/2026-09-23-fork-first-review.md`.
 Details: `plugins/session/README.md`.

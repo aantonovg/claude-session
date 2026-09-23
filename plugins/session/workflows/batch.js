@@ -10,7 +10,8 @@ helper (required, as in session:helper)
 ask (the contract with {item} where the item goes; required)
 items (array of strings, required, at least 2)
 in (absolute paths array, default [])
-out (absolute result directory, required; item i lands in out/<i>-<slug>/)
+out (new absolute result directory, required; item i lands in out/<i>-<slug>/)
+skills (SKILL.md paths array, read first; default none)
 slot (main opus sonnet; default the helper's own)
 class (c1-c5, default c3)
 submodes (array: no-sonnet no-opus no-fable, default [])
@@ -263,19 +264,60 @@ function handback(text) {
   }
 }
 
-// isBlocked(text): a return that is null, or carries BLOCKED: anywhere, or hands back `blocked`.
-function isBlocked(text) {
-  if (text == null) return true
-  return /BLOCKED:/.test(String(text)) || handback(text).status === 'blocked'
+// normPath(p) -> p with repeated slashes collapsed and a trailing slash dropped: a model often
+// passes `out` with a trailing slash, and a path compared as text must not fail on that.
+function normPath(p) {
+  if (p == null) return p
+  const s = String(p).trim().replace(/\/{2,}/g, '/')
+  return s.length > 1 ? s.replace(/\/$/, '') : s
 }
 
-// batchRows(items, returns) -> [{ item, status, report, summary }]: one row per item, in the item
-// order; a null return (the agent died or was skipped) is a `failed` row, never a dropped one.
-function batchRows(items, returns) {
+// handbackAt(text, dir) -> handback(text), and `failed` when a non-failed return names a report
+// other than <dir>/result.md: a script cannot read the disk, so the path is the one check it has
+// that the report belongs to this launch and not to an earlier run.
+function handbackAt(text, dir) {
+  const h = handback(text)
+  const want = `${normPath(dir)}/result.md`
+  if (h.status !== 'failed' && normPath(h.report) !== want) {
+    return { ...h, status: 'failed', summary: `report ${h.report || 'missing'} is not ${want}` }
+  }
+  return h
+}
+
+// isBlocked(text): a return that is null, or has a line that starts with BLOCKED:, or hands back
+// `blocked`. A summary that quotes a blocked item further in its line blocks nothing.
+function isBlocked(text) {
+  if (text == null) return true
+  return /^\s*BLOCKED:/m.test(String(text)) || handback(text).status === 'blocked'
+}
+
+// launchTail(helper, dir, skills) -> the prompt lines after the contract and the inputs, the skill
+// line last. A helper whose agent is no plugin agent (the built-in guide) knows no result protocol,
+// so the lines spell it out; a plugin agent carries it in its own body.
+function launchTail(helper, dir, skills) {
+  const h = CLASSES.helpers[helper]
+  if (!h) throw new Error(`unknown helper ${helper}`)
+  const list = skills || []
+  if (list.some(p => !String(p).startsWith('/'))) throw new Error('skills holds a relative path')
+  const lines = [`Result directory: ${dir} (mkdir -p it; write result.md there; logs and attempts beside it).`]
+  if (!h.agent.startsWith('session:')) {
+    lines.push(`Result protocol: if ${dir}/result.md already exists, stop and return status blocked with summary "result directory not fresh". Otherwise write ${dir}/result.md last, with Bash (a heredoc to a temp file beside it, then mv): first line "status: <completed | partial | blocked | failed>", then the answer, a source (doc URL or file path) per fact, and what stayed unchecked. completed means the contract was carried out, not that the answer is certain.`)
+  }
+  lines.push(`Return exactly the three handback lines: status, report (${dir}/result.md), summary. No other text.`)
+  lines.push(list.length
+    ? `Read these skill files with the Read tool before starting: ${list.join(' ')} (a missing file: status blocked, its path in the summary).`
+    : 'No skills needed for this step.')
+  return lines
+}
+
+// batchRows(items, returns, dirs) -> [{ item, status, report, summary }]: one row per item, in the
+// item order; a null return (the agent died or was skipped) is a `failed` row, never a dropped one.
+// With `dirs` (the result directory of each item) a row is checked by handbackAt.
+function batchRows(items, returns, dirs) {
   return (items || []).map((item, i) => {
     const r = returns ? returns[i] : null
     if (r == null) return { item, status: 'failed', report: null, summary: 'no return' }
-    const h = handback(r)
+    const h = dirs ? handbackAt(r, dirs[i]) : handback(r)
     return { item, status: h.status, report: h.report, summary: h.summary }
   })
 }
@@ -325,7 +367,7 @@ function cellTokens(line) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     CLASSES, MODEL_NAME, EFFORT_NAME, submodes, cellFor, seatCell, cellOpts, helperOpts, helperNames,
-    handback, isBlocked, batchRows, batchCounts, cellTokens,
+    handback, handbackAt, normPath, isBlocked, launchTail, batchRows, batchCounts, cellTokens,
   }
 }
 // ---- end shared block ----
@@ -335,9 +377,10 @@ const CLS = A.class || CLASSES.defaultClass
 const SUBS = submodes(A.submodes).subs
 const HELPER = A.helper
 const ASK = A.ask
-const OUT = A.out
+const OUT = normPath(A.out)
 const ITEMS = Array.isArray(A.items) ? A.items.map(String) : null
 const IN = Array.isArray(A.in) ? A.in : (A.in ? [A.in] : [])
+const SKILLS = Array.isArray(A.skills) ? A.skills : (A.skills ? [A.skills] : [])
 if (!HELPER) throw new Error('args.helper is required')
 if (!ASK || !ASK.includes('{item}')) throw new Error('args.ask is required and must hold {item}')
 if (!ITEMS || ITEMS.length < 2) throw new Error('args.items (array of at least 2 strings) is required')
@@ -345,22 +388,22 @@ if (!OUT || !String(OUT).startsWith('/')) throw new Error('args.out (absolute re
 if (IN.some(p => !String(p).startsWith('/'))) throw new Error('args.in holds a relative path')
 
 const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'item'
+const DIRS = ITEMS.map((item, i) => `${OUT}/${i + 1}-${slug(item)}`)
 log(`c${CLS.slice(1)}${SUBS.length ? '-' + SUBS.join('-') : ''}-batch | helper=${HELPER} items=${ITEMS.length} out=${OUT}`)
 
 phase('Batch')
 const returns = await parallel(ITEMS.map((item, i) => () => {
   const O = helperOpts(CLS, SUBS, HELPER, A.slot, `${HELPER}-${i + 1}`)
-  const dir = `${OUT}/${i + 1}-${slug(item)}`
+  const dir = DIRS[i]
   const prompt = [
     `Contract:`,
     ASK.split('{item}').join(item),
     IN.length ? `Inputs (absolute paths): ${IN.join(' ')}` : 'Inputs: none beyond the contract.',
-    `Result directory: ${dir} (mkdir -p it; write result.md there; logs and attempts beside it).`,
-    `Return exactly the three handback lines: status, report, summary. No other text.`,
+    ...launchTail(HELPER, dir, SKILLS),
   ].join('\n')
   return agent(prompt, { agentType: O.agentType, model: O.model, effort: O.effort, label: O.label, phase: 'Batch' })
 }))
-const rows = batchRows(ITEMS, returns)
+const rows = batchRows(ITEMS, returns, DIRS)
 const counts = batchCounts(rows)
 const bad = rows.filter(r => r.status !== 'completed')
 if (bad.length) log(`${bad.length} of ${rows.length} items not completed: ${bad.map(r => `${r.item} (${r.status})`).join(', ')}`)

@@ -2,9 +2,13 @@
 # Plain mode (no args): one line per named workflow, "- <launch name> — <usage text>".
 #   Sources: plugin workflows (session:<stem>), $HOME/.claude/workflows and
 #   ${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows (<stem>); a project entry overrides a user entry.
-# Hook mode: --hook (--file <wf.js> | --dir <path|@user|@project>) [--prefix <plugin>]
+# Hook mode: --hook (--all | --file <wf.js> | --dir <path|@user|@project>) [--prefix <plugin>]
 #   prints one SessionStart hook JSON whose additionalContext holds one entry per workflow:
 #   "Workflow <prefix>:<stem> (launch by name; contract below; never read the script body): <usage>".
+#   --all = every plugin workflow (with the prefix), then @user, then @project, in one JSON: the one
+#   hook plugin.json runs. It names no workflow file, so a session whose hook list was fixed at an
+#   older plugin version still lists the workflows on disk after a /clear (the 0.18.0 rebuild lost
+#   session:helper and session:batch that way: the old list named role.js and chain.js, now gone).
 #   @user = $HOME/.claude/workflows minus stems present in the project dir;
 #   @project = ${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows, silent when it is the user or plugin dir.
 # stdout only, always exit 0; nothing printed when there is no entry.
@@ -51,10 +55,11 @@ if [ $# -eq 0 ]; then
   exit 0
 fi
 
-HOOK=; FILE=; WDIR=; PREFIX=
+HOOK=; ALL=; FILE=; WDIR=; PREFIX=
 while [ $# -gt 0 ]; do
   case $1 in
     --hook) HOOK=1 ;;
+    --all) ALL=1 ;;
     --file|--dir|--prefix)
       [ $# -ge 2 ] || exit 0
       case $1 in --file) FILE=$2 ;; --dir) WDIR=$2 ;; --prefix) PREFIX=$2 ;; esac
@@ -64,32 +69,40 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$HOOK" ] || exit 0
 
-entry() {  # $1 file
+entry() {  # $1 file, $2 prefix
   s=$(basename "$1" .js)
-  n=$s; [ -n "$PREFIX" ] && n="$PREFIX:$s"
+  n=$s; [ -n "$2" ] && n="$2:$s"
   printf 'Workflow %s (launch by name; contract below; never read the script body): %s\n' "$n" "$(usage_of "$1" '[ \r]+')"
 }
 
+entries() {  # $1 dir spec (path, @user, @project), $2 prefix
+  SKIP=
+  case $1 in @user|@project) RJ=$(real "$JD") ;; esac
+  case $1 in
+    @user) D=$UD
+      [ "$(real "$UD")" = "$(real "$PD")" ] && return 0
+      if [ "$RJ" != "$(real "$UD")" ] && [ "$RJ" != "$(real "$PD")" ]; then SKIP=$JD; fi ;;
+    @project) D=$JD
+      { [ "$RJ" = "$(real "$UD")" ] || [ "$RJ" = "$(real "$PD")" ]; } && return 0 ;;
+    *) D=$1 ;;
+  esac
+  [ -d "$D" ] || return 0
+  for f in "$D"/*.js; do
+    [ -f "$f" ] || continue
+    [ -n "$SKIP" ] && [ -f "$SKIP/$(basename "$f")" ] && continue
+    entry "$f" "$2"
+  done
+}
+
 {
-  if [ -n "$FILE" ]; then
-    [ -f "$FILE" ] && entry "$FILE"
+  if [ -n "$ALL" ]; then
+    entries "$PD" "$PREFIX"
+    entries @user ''
+    entries @project ''
+  elif [ -n "$FILE" ]; then
+    [ -f "$FILE" ] && entry "$FILE" "$PREFIX"
   elif [ -n "$WDIR" ]; then
-    SKIP=
-    case $WDIR in @user|@project) RJ=$(real "$JD") ;; esac
-    case $WDIR in
-      @user) D=$UD
-        if [ "$RJ" != "$(real "$UD")" ] && [ "$RJ" != "$(real "$PD")" ]; then SKIP=$JD; fi ;;
-      @project) D=$JD
-        { [ "$RJ" = "$(real "$UD")" ] || [ "$RJ" = "$(real "$PD")" ]; } && exit 0 ;;
-      *) D=$WDIR ;;
-    esac
-    if [ -d "$D" ]; then
-      for f in "$D"/*.js; do
-        [ -f "$f" ] || continue
-        [ -n "$SKIP" ] && [ -f "$SKIP/$(basename "$f")" ] && continue
-        entry "$f"
-      done
-    fi
+    entries "$WDIR" "$PREFIX"
   fi
 } 2>/dev/null | LC_ALL=C awk '
   BEGIN {

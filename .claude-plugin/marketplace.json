@@ -13,7 +13,7 @@
       "name": "session",
       "source": "./plugins/session",
       "description": "Session rules as user-invocable skills: base (main keeps the intent, a fork does the work, fresh helpers bring one result each, classes and slots), codex (codex models behind a helper), ask (non-blocking questions), the ping skills. README holds the helper catalog and the result-file protocol.",
-      "version": "0.18.0",
+      "version": "0.18.1",
       "keywords": [
         "session",
         "base",

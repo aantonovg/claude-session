@@ -3,6 +3,9 @@
   "targets": [
     { "path": "workflows/helper.js", "block": true },
     { "path": "workflows/batch.js", "block": true },
+    { "path": "../../.claude/workflows/memory-gc.js", "block": true },
+    { "path": "../../.claude/workflows/skill-author.js", "block": true },
+    { "path": "../../.claude/workflows/test-session.js", "block": true },
     { "path": "base/BASE.md", "table": true },
     {
       "path": "skills/base/SKILL.md",

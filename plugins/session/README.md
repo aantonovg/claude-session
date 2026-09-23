@@ -115,8 +115,10 @@ Each named workflow contract reaches the session as its own SessionStart `additi
 entry: `Workflow <launch name> (launch by name; contract below; never read the script body): <usage>`.
 `bin/workflow-usage.sh --hook --file <wf.js> --prefix <plugin>` prints one hook JSON for one script;
 `--hook --dir @user` covers `~/.claude/workflows`, `--hook --dir @project` covers
-`${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows` (a project stem overrides the user stem). Session's
-plugin.json declares one `--file` hook per `workflows/*.js` (`session:` prefix) plus the two dir hooks.
+`${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows` (a project stem overrides the user stem), and
+`--hook --all --prefix <plugin>` prints every plugin workflow, then `@user`, then `@project` in one
+JSON. Session's plugin.json declares that one `--all` hook: it names no script file, so a plugin
+whose workflows changed since the session started still delivers every contract after `/clear`.
 
 Another plugin exposing its own workflows: copy the collector into its `bin/` and add one group per
 script to its inline plugin.json `hooks.SessionStart` (never hooks/hooks.json):
@@ -130,8 +132,8 @@ script to its inline plugin.json `hooks.SessionStart` (never hooks/hooks.json):
 }
 ```
 
-User and project workflow dirs are already covered by session's `@user` and `@project` hooks; add no
-second `@project` hook. Contracts load at session start: after a mid-session install run
+User and project workflow dirs are already covered by session's `--all` hook; add no second
+`@user` or `@project` hook. Contracts load at session start: after a mid-session install run
 `/reload-plugins` or restart the session. A tool plugin (an MCP server with its own helper agents
 and workflows) follows `docs/tool-plugin/`.
 
@@ -175,6 +177,13 @@ body of the named file in `agents/` for `--role <name>`, user and project `CLAUD
 
 Skill description: 100 tokens. Agent description: 100 tokens. Workflow usage block: 50-150 tokens, every arg named with its type and default.
 
+## Agent gate
+
+`hooks/agent-gate.sh` (PreToolUse on `Agent|Task`) lets through only a fork: `subagent_type`
+`fork` with a name `fork-<mod>-<eff>-<job>`. Every other launch is denied, and the reason names
+`session:helper`, because a direct launch cannot set the effort and a workflow can. `agent()` calls
+inside a workflow do not reach the gate. `SESSION_AGENT_GATE=off` switches it off for an emergency.
+
 ## Session mode counters
 
 `hooks/modes.sh` writes `~/.claude/session-modes/<session_id>.json`: a JSON object keyed by
@@ -186,6 +195,7 @@ rewind. State, not an API.
 
 ## Version log
 
+0.18.1: fixes from the fork-first review (`docs/plans/2026-09-23-fork-first-review.md`): `hooks/agent-gate.sh` denies every `Agent` launch except a fork; one SessionStart hook `workflow-usage.sh --hook --all` delivers every workflow contract; helpers write a fresh `result.md` last and `handbackAt` checks the report path (slashes normalized by `normPath`); `session:helper` and `session:batch` take a `skills` argument; `checker` gets a reading procedure and search, `consumer` an isolation rule, `guide` the result protocol; the base lists when main launches a helper, allows the three scenario A checks and short quiet tests in a fork, and moves the wait recipes to `skills/base/waits.md`; the project workflows `memory-gc`, `skill-author` and `test-session` use the three-line protocol and the shared block; changed prose rewritten as one text; test `tests/plugin/handback.sh`.
 0.18.0: fork-first rebuild: main keeps the intent, a fork does every 2+ call job, a fresh helper launched by main before the fork runs only for one named result and hands back three lines (status, report, summary) with the details in `result.md`; a fork launches nothing after its first tool call and never waits; workflows `session:helper` (with a `codex` pair argument) and `session:batch` replace `role`, `chain`, `make` and `probe`; nine helper agents (`finder`, `extractor`, `web-extractor`, `runner`, `applier`, `consumer`, `checker`, `breaker`, `codex`) replace the five tool-set agents; the process skill, the verification page, the task layout, the roles, the aspects and the ledger hook are gone; `lib/classes.json` keeps the class table and adds the helper map and the `codex` seat; the codex skill is one page over the `codex` helper; tests `tests/plugin/all.sh`.
 0.15.1: chat replies in A2 English (word list, grammar, verbatim identifiers) in the base Language section; caveman uses common synonyms.
 0.15.2: self-ping rule for long commands in every Bash-capable agent (detach, then `sleep 180` per turn; no background job at turn end).
