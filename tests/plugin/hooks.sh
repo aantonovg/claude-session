@@ -2,7 +2,9 @@
 # hooks/modes.sh: records base and codex in both payload shapes, refuses the retired process skill
 # and unrelated commands, wipes on PreCompact, reset-counter and a fresh SessionStart, keeps the
 # state over a resume, seeds once from the transcript head, prunes old files, prints no context;
-# every hook command of plugin.json exists on disk; no ledger hook. Throwaway HOME, no network.
+# every hook command of plugin.json exists on disk; no ledger hook. hooks/agent-gate.sh lets through
+# only a fork with a fork-<mod>-<eff>-<job> name and denies every other Agent launch; plugin.json
+# hooks it on PreToolUse for Agent. Throwaway HOME, no network.
 set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 MODES=$P/hooks/modes.sh
@@ -81,10 +83,29 @@ ok = True
 for c in cmds:
     m = re.search(r'\$\{CLAUDE_PLUGIN_ROOT\}/([^ ]+)', c)
     if not m or not os.path.exists(os.path.join(root, m.group(1))): ok = False
-    if not ('hooks/modes.sh' in c or 'bin/workflow-usage.sh' in c): ok = False
+    if not ('hooks/modes.sh' in c or 'bin/workflow-usage.sh' in c or 'hooks/agent-gate.sh' in c): ok = False
 for ev in ('UserPromptSubmit', 'PostToolUse', 'PreCompact', 'SessionStart'):
     if not any('hooks/modes.sh' in h['command'] for e in d['hooks'].get(ev, []) for h in e['hooks']): ok = False
+pre = [(e.get('matcher', ''), h['command']) for e in d['hooks'].get('PreToolUse', []) for h in e['hooks']]
+if not any('hooks/agent-gate.sh' in c and 'Agent' in m.split('|') for m, c in pre): ok = False
 sys.exit(0 if ok else 1)
 PY
 check "no ledger hook on disk" test ! -f "$P/hooks/ledger-stop.sh"
+# the Agent gate
+GATE=$P/hooks/agent-gate.sh
+check "agent-gate.sh is executable" test -x "$GATE"
+gate() { printf '%s' "$1" | bash "$GATE" 2>/dev/null; }
+agent() { jq -nc --arg t "$1" --arg n "$2" '{hook_event_name:"PreToolUse",tool_name:"Agent",tool_input:({prompt:"x"} + (if $t == "" then {} else {subagent_type:$t} end) + (if $n == "" then {} else {name:$n} end))}'; }
+denied() { printf '%s' "$1" | jq -e '.hookSpecificOutput.hookEventName == "PreToolUse" and .hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1; }
+out=$(gate "$(agent fork fork-ops-hi-review)"); check "gate lets a named fork through (got [$out])" test -z "$out"
+for t in session:finder session:checker general-purpose Explore Plan claude-code-guide skill-reviewer ""; do
+  out=$(gate "$(agent "$t" fork-ops-hi-x)"); check "gate denies Agent subagent_type [$t]" denied "$out"
+done
+out=$(gate "$(agent session:finder "")"); check "deny reason names session:helper" bash -c 'printf "%s" "$1" | grep -q "session:helper"' _ "$out"
+for n in "" fork-x helper-ops-hi-x; do
+  out=$(gate "$(agent fork "$n")"); check "gate denies a fork named [$n]" denied "$out"
+done
+out=$(gate '{"hook_event_name":"PreToolUse","tool_name":"Task","tool_input":{"subagent_type":"Explore"}}'); check "gate covers the old tool name Task" denied "$out"
+out=$(gate '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}'); check "gate ignores other tools (got [$out])" test -z "$out"
+out=$(printf '%s' "$(agent session:finder "")" | SESSION_AGENT_GATE=off bash "$GATE"); check "SESSION_AGENT_GATE=off lets everything through" test -z "$out"
 done_with hooks

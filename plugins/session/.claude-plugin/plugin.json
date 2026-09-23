@@ -1,6 +1,6 @@
 {
   "name": "session",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "description": "Rules for the main Claude Code session: /session:base (main keeps the intent, a fork does the work, fresh helpers bring one result each through session:helper and session:batch, classes and slots, waits, style) plus the codex, ask and ping skills.",
   "keywords": [
     "session",
@@ -17,6 +17,18 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/modes.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/agent-gate.sh",
             "timeout": 5
           }
         ]
@@ -59,34 +71,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/helper.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --file ${CLAUDE_PLUGIN_ROOT}/workflows/batch.js --prefix session",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --dir @user",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --dir @project",
+            "command": "sh ${CLAUDE_PLUGIN_ROOT}/bin/workflow-usage.sh --hook --all --prefix session",
             "timeout": 5
           }
         ]

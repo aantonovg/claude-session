@@ -5,7 +5,7 @@
 #   tests/plugin/release-gate.sh --selftest   fixture test: a clean release fixture passes, a dirty
 #                                             tree and a wrong subject each fail
 set -u
-REL=0.18.0
+REL=0.18.1
 gate() {
   local repo=$1 n=0 fails=0
   local pj=$repo/plugins/session/.claude-plugin/plugin.json mj=$repo/.claude-plugin/marketplace.json rd=$repo/plugins/session/README.md

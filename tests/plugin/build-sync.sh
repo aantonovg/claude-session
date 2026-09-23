@@ -14,12 +14,14 @@ check "block.js carries the table of classes.json" bash -c 'node -e "const b=req
 check "skills/base/SKILL.md is BASE.md under its frontmatter" bash -c 'diff <(awk "NR>6" "$1") "$2" >/dev/null' _ "$P/skills/base/SKILL.md" "$P/base/BASE.md"
 check "generated skill frontmatter disables model invocation" grep -Fxq 'disable-model-invocation: true' "$P/skills/base/SKILL.md"
 T=$(mktemp -d) || exit 1; trap 'rm -rf "$T"' EXIT
-mkdir -p "$T/plugin" && cp -R "$P/bin" "$P/lib" "$P/workflows" "$P/base" "$P/skills" "$T/plugin/"
-echo '// hand edit' >> "$T/plugin/lib/block.js"
-check "--check fails on a hand edit of lib/block.js" bash -c '! bash "$1" --check >/dev/null 2>&1' _ "$T/plugin/bin/build.sh"
-bash "$T/plugin/bin/build.sh" >/dev/null
-sed -i '' 's/^| c3 |.*/| c3 | x |/' "$T/plugin/base/BASE.md"
-check "--check fails on a hand edit inside the class table" bash -c '! bash "$1" --check >/dev/null 2>&1' _ "$T/plugin/bin/build.sh"
-bash "$T/plugin/bin/build.sh" >/dev/null
-check "--check clean after a rebuild" bash "$T/plugin/bin/build.sh" --check
+mkdir -p "$T/plugins/session" && cp -R "$P/bin" "$P/lib" "$P/workflows" "$P/base" "$P/skills" "$T/plugins/session/"
+# The manifest names project workflows as ../../.claude/workflows/*.js, so the copy keeps the repo layout.
+mkdir -p "$T/.claude/workflows" && cp "$P"/../../.claude/workflows/*.js "$T/.claude/workflows/"
+echo '// hand edit' >> "$T/plugins/session/lib/block.js"
+check "--check fails on a hand edit of lib/block.js" bash -c '! bash "$1" --check >/dev/null 2>&1' _ "$T/plugins/session/bin/build.sh"
+bash "$T/plugins/session/bin/build.sh" >/dev/null
+sed -i '' 's/^| c3 |.*/| c3 | x |/' "$T/plugins/session/base/BASE.md"
+check "--check fails on a hand edit inside the class table" bash -c '! bash "$1" --check >/dev/null 2>&1' _ "$T/plugins/session/bin/build.sh"
+bash "$T/plugins/session/bin/build.sh" >/dev/null
+check "--check clean after a rebuild" bash "$T/plugins/session/bin/build.sh" --check
 done_with build-sync

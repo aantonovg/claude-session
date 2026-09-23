@@ -25,28 +25,31 @@ AskUserQuestion with the recommended option first is faster.
 1. **Classify each decision**: *reversible* (local edits, private branches, drafts,
    anything undone with one command and seen by nobody else) or *not reversible*
    (published text, review requests, releases, Jira transitions, messages to people,
-   deletions). Reversible ones proceed on the recommended option; the rest wait.
-2. **Write the document** `~/.claude/projects/<encoded-cwd>/questions/<YYYY-MM-DD-HHMM>-<slug>.md`
-   (`<encoded-cwd>` = cwd with `/` → `-`; `mkdir -p`). In English, plain words, one
-   section per decision:
+   deletions). Reversible decisions proceed on the recommended option, the default;
+   the rest are paused.
+2. **Write one document per batch**, never one per question:
+   `~/.claude/projects/<encoded-cwd>/questions/<YYYY-MM-DD-HHMM>-<slug>.md`
+   (`<encoded-cwd>` = the cwd with every character outside `[A-Za-z0-9-]` replaced by `-`;
+   `mkdir -p`). In English, plain words, one section per decision, the recommended
+   option first and marked; the document says which default is already in motion:
 
    ```
-   # Вопросы: <тема>, <дата>
+   # Questions: <topic>, <date>
 
-   ## 1. <вопрос в одну строку>
-   Контекст: 2-4 строки, что известно и почему это важно.
-   Варианты: A) … (рекомендую, потому что …) B) … C) …
-   Обратимо: да, продолжаю по варианту A / нет, жду ответа.
+   ## 1. <the question in one line>
+   Context: 2-4 lines, what is known and why it matters.
+   Options: A) … (recommended, because …) B) … C) …
+   Reversible: yes, continuing with A / no, waiting for the answer.
 
    ## 2. …
    ```
 
 3. **Open it in the background**: Bash `plannotator annotate <file>` with
-   `run_in_background: true` (never synchronously: a synchronous call blocks the turn
-   the same way a dialog does). Tell the user in one line where the document is and
+   `run_in_background: true`, never synchronously: a synchronous call blocks the turn
+   the same way a dialog does. Tell the user in one line where the document is and
    that the browser tab is open.
-4. **Continue** the reversible work on the defaults; for the blocked items say what is
-   paused and end the turn normally so the pings keep the cache alive.
+4. **Continue** the reversible work on the defaults; say what is paused and end the
+   turn normally so the pings keep the cache alive.
 5. **When the background command finishes** (the user submitted or closed the tab),
    read its output file: it holds the feedback per section ("# File Feedback" with
    quotes). Apply each answer: keep or redo the reversible choices, unblock or drop
@@ -55,8 +58,7 @@ AskUserQuestion with the recommended option first is faster.
 
 ## Rules
 
-- One document per batch, never one per question.
-- Recommended option first and marked; the document says which default is already in
-  motion.
+- Steps 2-3 are an exception to the base's one-own-call rule: main writes the document and
+  opens it itself, because the questions live in its own context.
 - Never re-ask the same question with AskUserQuestion after it went to a document.
 - The document stays on disk as the record of the decision.
