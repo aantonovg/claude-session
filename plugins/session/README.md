@@ -9,7 +9,7 @@ block of the two workflows from `lib/classes.json` and `lib/block.src.js`.
 | skill | what it does |
 |---|---|
 | `session:base` | every session: main keeps the intent and the state, a fork does the work, a fresh helper brings one result for a named reason; classes and slots, waits, language, style |
-| `session:codex` | on top of the base: helper jobs of named kinds go to the codex CLI (luna, terra as executors; sol, astra for a narrow analysis) |
+| `session:codex` | on top of the base: helper jobs of named kinds go to the codex CLI (luna as executor; sol, astra for a narrow analysis) |
 | `session:ask` | ask without blocking: options document, Plannotator in the background, continue on reversible defaults (model-invocable) |
 | `session:start-ping`, `session:stop-ping`, `session:resume-ping` | the keep-warm ping monitor of a session |
 | `session:reset-counter` | clears the statusline mode counters after a rewind (user only) |

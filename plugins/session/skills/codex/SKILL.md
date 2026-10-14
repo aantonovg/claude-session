@@ -1,6 +1,6 @@
 ---
 name: codex
-description: Loaded on top of the session base: sends helper jobs of named kinds to the codex CLI (luna, terra as executors; sol, astra for a narrow analysis, alone or paired with the Claude helper) through the codex helper of this plugin.
+description: Loaded on top of the session base: sends helper jobs of named kinds to the codex CLI (luna as executor; sol, astra for a narrow analysis, alone or paired with the Claude helper) through the codex helper of this plugin.
 disable-model-invocation: true
 ---
 
@@ -21,13 +21,18 @@ Two axes, multiplied. Executor axis: the jobs of the cost helpers (`runner`, `ap
 |---|---|
 | `none`: Claude helpers as in the base | `none`: the same |
 | `sol`: replace `checker` and `breaker` with `helper: codex` on `sol-medium`, `sol-high` for the hardest one | `luna`: cost-helper jobs as `helper: codex` on `luna-high` |
-| `astra`: the same on `astra-medium`, `astra-high`; sol not used | `terra`: as luna, plus the heavy executor jobs on `terra-high` |
+| `astra`: the same on `astra-medium`, `astra-high`; sol not used | |
 | `+sol`: pair: the Claude `checker` or `breaker` launch carries `codex: sol-medium` (or `sol-high`) | |
 | `+astra`: the same pair with astra | |
 
-Single axis: `luna`, `terra`, `sol`, `astra`, `+sol`, `+astra`. Combos `<heavy>-<exec>`:
-`sol-luna`, `sol-terra`, `astra-luna`, `astra-terra`, `+sol-luna`, `+sol-terra`, `+astra-luna`,
-`+astra-terra`. Invocation `/session:codex <mode>`, at any point of the session.
+Single axis: `luna`, `sol`, `astra`, `+sol`, `+astra`. Combos `<heavy>-<exec>`: `sol-luna`,
+`astra-luna`, `+sol-luna`, `+astra-luna`. Invocation `/session:codex <mode>`, at any point of the
+session.
+
+Codex models, one per tier: `astra` = GPT-6 Astra (`gpt-6-astra`), `sol` = GPT-6.1 Sol
+(`gpt-6.1-sol`), `luna` = GPT-6.6 Luna (`gpt-6.6-luna`). Tier to Claude slot: astra stands where
+the main slot (fable) stands, sol where the opus slot and the sonnet slot stand (sol prices like
+sonnet), luna where haiku stands. No terra tier any more.
 
 ## Start (do this now)
 
@@ -35,7 +40,7 @@ Single axis: `luna`, `terra`, `sol`, `astra`, `+sol`, `+astra`. Combos `<heavy>-
    `luna` = heavy `none`, exec `luna`; `+sol` = pair, exec `none`. With an argument, ask the user
    nothing. Without one, ask two questions with `AskUserQuestion`, recommended option first: who
    does the narrow checks (Claude helpers; Claude paired with sol or astra; sol or astra alone) and
-   who does the executor jobs (Claude helpers; luna; terra).
+   who does the executor jobs (Claude helpers; luna).
 2. One Bash call; a missing wrapper is BLOCKED, say so:
    ```
    codex --version; for d in $(ls -d ~/.claude/plugins/cache/claude-session/session/*/bin 2>/dev/null | sort -rV) ~/projects/claude-session/plugins/session/bin ~/.claude/bin; do [ -x "$d/codex-exec-logged.sh" ] && CODEX_BIN=$d && break; done; ls "$CODEX_BIN/codex-exec-logged.sh" "$CODEX_BIN/codex-style.md"
@@ -46,7 +51,7 @@ Single axis: `luna`, `terra`, `sol`, `astra`, `+sol`, `+astra`. Combos `<heavy>-
 
 ## How a codex job runs
 
-### Alone (`sol`, `astra`, `luna`, `terra`)
+### Alone (`sol`, `astra`, `luna`)
 
 Main launches `session:helper` with `helper: codex` and `ask` opening with this header block:
 

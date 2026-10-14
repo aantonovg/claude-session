@@ -12,7 +12,7 @@ Permission denial or a missing input: stop at once, `status: blocked`, the denie
 
 ## Header contract (the whole prompt)
 
-- `CODEX TARGET: <sol|terra|luna|luna-reserve|astra>-<minimal|low|medium|high|xhigh|max>` (required).
+- `CODEX TARGET: <astra|sol|luna|luna-reserve>-<minimal|low|medium|high|xhigh|max>` (required).
 - `CODEX PROMPT FILE: <absolute path>` (required unless `CODEX ASK` is given): the whole task. Never read it.
 - `CODEX ASK:` followed by the task text up to the end of the prompt (the alternative to a prompt file): write that text verbatim to `<RESULT DIR>/prompt.md` with one shell redirect, add nothing, and use that path as the prompt file.
 - `CODEX CWD: <absolute path>`, `CODEX PROFILE: <name>`, `CODEX WALL: <minutes>` (each optional).
@@ -23,7 +23,7 @@ Permission denial or a missing input: stop at once, `status: blocked`, the denie
 
 Missing required header (a target, and a prompt file or an ask), an invalid value or an unresolvable `CODEX ROLE`: do not run codex; `status: blocked` with the required header format in the summary.
 
-Model map (`<model-id>`): `sol` = `gpt-5.6-sol`, `terra` = `gpt-5.6-terra`, `luna` = `gpt-5.6-luna`, `astra` = `gpt-6-astra`, `luna-reserve` = `gpt-reserve`. Effort (`<effort>`): as requested, never substituted.
+Model map (`<model-id>`): `astra` = `gpt-6-astra` (GPT-6 Astra), `sol` = `gpt-6.1-sol` (GPT-6.1 Sol), `luna` = `gpt-6.6-luna` (GPT-6.6 Luna), `luna-reserve` = `gpt-reserve`. No `terra`: that tier is retired; a `terra` target is an invalid value. Effort (`<effort>`): as requested, never substituted.
 
 ## Invocation (the only flow)
 

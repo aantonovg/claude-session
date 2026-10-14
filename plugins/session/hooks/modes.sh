@@ -93,9 +93,8 @@ mode_valid() {
     codex)
       case "$2" in
         "") printf 'codex' ;;
-        luna|terra|sol|astra|+sol|+astra|\
-sol-luna|sol-terra|astra-luna|astra-terra|\
-+sol-luna|+sol-terra|+astra-luna|+astra-terra) mode_fmt codex "$2" ;;
+        luna|sol|astra|+sol|+astra|\
+sol-luna|astra-luna|+sol-luna|+astra-luna) mode_fmt codex "$2" ;;
       esac ;;
   esac
 }
