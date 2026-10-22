@@ -1,6 +1,6 @@
 {
   "name": "session",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "Rules for the main Claude Code session: /session:base (main keeps the intent, a fork does the work, fresh helpers bring one result each through session:helper and session:batch, classes and slots, waits, style) plus the codex, ask and ping skills.",
   "keywords": [
     "session",

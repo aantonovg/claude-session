@@ -23,7 +23,7 @@ Permission denial or a missing input: stop at once, `status: blocked`, the denie
 
 Missing required header (a target, and a prompt file or an ask), an invalid value or an unresolvable `CODEX ROLE`: do not run codex; `status: blocked` with the required header format in the summary.
 
-Model map (`<model-id>`): `astra` = `gpt-6-astra` (GPT-6 Astra), `sol` = `gpt-6.1-sol` (GPT-6.1 Sol), `luna` = `gpt-6.6-luna` (GPT-6.6 Luna), `luna-reserve` = `gpt-reserve`. No `terra`: that tier is retired; a `terra` target is an invalid value. Effort (`<effort>`): as requested, never substituted.
+Model map (`<model-id>`): `astra` = `gpt-6-astra` (GPT-6 Astra), `sol` = `gpt-6.1-sol` (GPT-6.1 Sol), `luna` = `gpt-6-luna` (GPT-6 Luna), `luna-reserve` = `gpt-reserve`. No `terra`: that tier is retired; a `terra` target is an invalid value. Effort (`<effort>`): as requested, never substituted.
 
 ## Invocation (the only flow)
 

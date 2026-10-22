@@ -30,7 +30,7 @@ Single axis: `luna`, `sol`, `astra`, `+sol`, `+astra`. Combos `<heavy>-<exec>`: 
 session.
 
 Codex models, one per tier: `astra` = GPT-6 Astra (`gpt-6-astra`), `sol` = GPT-6.1 Sol
-(`gpt-6.1-sol`), `luna` = GPT-6.6 Luna (`gpt-6.6-luna`). Tier to Claude slot: astra stands where
+(`gpt-6.1-sol`), `luna` = GPT-6 Luna (`gpt-6-luna`). Tier to Claude slot: astra stands where
 the main slot (fable) stands, sol where the opus slot and the sonnet slot stand (sol prices like
 sonnet), luna where haiku stands. No terra tier any more.
 

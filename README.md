@@ -30,4 +30,5 @@ stays the only source of a model and an effort, and the keep-warm ping monitors 
 contract collector, `tests/plugin/release-gate.sh` runs once, right after the release commit.
 0.18.1 adds the agent gate (only a fork goes through `Agent`; every helper goes through `session:helper`
 or `session:batch`) and the fixes of `docs/plans/2026-09-23-fork-first-review.md`.
+0.18.2 replaces the codex tier terra with astra, sol and luna (`gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna`).
 Details: `plugins/session/README.md`.
