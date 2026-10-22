@@ -31,4 +31,5 @@ contract collector, `tests/plugin/release-gate.sh` runs once, right after the re
 0.18.1 adds the agent gate (only a fork goes through `Agent`; every helper goes through `session:helper`
 or `session:batch`) and the fixes of `docs/plans/2026-09-23-fork-first-review.md`.
 0.18.2 replaces the codex tier terra with astra, sol and luna (`gpt-6-astra`, `gpt-6.1-sol`, `gpt-6-luna`).
+0.18.3 updates the price tables of the cost tools for Sonnet 5.5, Haiku 5.5 and the gpt-6 codex models.
 Details: `plugins/session/README.md`.

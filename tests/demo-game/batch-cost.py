@@ -37,7 +37,7 @@ def scan(path):
     return rows, effort, first, last, calls
 
 def price(model, inp, out, cr, w5, w1):
-    p, key = price_for(model)
+    p, key = price_for(model, inp + cr + w5 + w1)
     return key or model, (inp * p[0], out * p[1], cr * p[2], w5 * p[3] + w1 * p[4])
 
 def run_report(run, codex_rows):
@@ -80,7 +80,7 @@ def run_report(run, codex_rows):
         r = add(rows[0][0], eff, kind, rows)
         if kind == "codex":
             tot = [sum(x[k] for x in rows) for k in (1, 2, 3, 4, 5)]
-            _, usd = price(rows[0][0], *tot)
+            usd = [sum(price(rows[0][0], *x[1:6])[1]) for x in rows]  # per turn: Haiku 5.5 tiers by prompt
             shims.append(dict(agent=os.path.basename(f)[6:-6], model=rows[0][0], turns=len(rows), inp=tot[0], out=tot[1], cr=tot[2], cw=tot[3] + tot[4], usd=sum(usd),
                               codex_cmds=len(codex_calls), targets=[re.search(r"-m (\S+)", c).group(1) for _, c in codex_calls if re.search(r"-m (\S+)", c)],
                               t0=min(t for t, _ in codex_calls), t1=la))
@@ -92,7 +92,7 @@ def run_report(run, codex_rows):
         for sh in shims:
             if row["model"] in sh["targets"] and ts(sh["t0"]) - timedelta(seconds=5) <= ts(row["ts"]) <= ts(sh["t1"]) + timedelta(minutes=5) and not row.get("run"):
                 row["run"] = run
-                p = CODEX_PRICES.get(row["model"], CODEX_PRICES["gpt-5.6-sol"])
+                p = CODEX_PRICES.get(row["model"], CODEX_PRICES["gpt-6.1-sol"])
                 k = codex.setdefault(f"{row['model']}-{row['effort']}", dict(calls=0, inp=0, cached=0, out=0, usd=0.0))
                 k["calls"] += 1; k["inp"] += row["input"] - row["cached_input"]; k["cached"] += row["cached_input"]; k["out"] += row["output"]
                 k["usd"] += (row["input"] - row["cached_input"]) * p[0] + row["cached_input"] * p[1] + row["output"] * p[2]

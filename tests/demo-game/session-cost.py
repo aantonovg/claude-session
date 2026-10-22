@@ -43,7 +43,7 @@ def main():
     for f in files:
         prev = None
         for ts, model, u in usage_rows(f):
-            p, key = price_for(model or "")
+            p, key = price_for(model or "", u["input"] + u["read"] + u["w5"] + u["w1"])
             row = per.setdefault(key or model or "?", dict(input=0, output=0, read=0, w5=0, w1=0, usd=0.0, turns=0, miss=0))
             usd = u["input"]*p[0] + u["output"]*p[1] + u["read"]*p[2] + u["w5"]*p[3] + u["w1"]*p[4]
             for k in ("input", "output", "read", "w5", "w1"):

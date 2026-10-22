@@ -52,14 +52,19 @@ PRICES = {
     "claude-opus-5": (5e-6, 25e-6, 5e-7, 6.25e-6, 10e-6),
     "claude-opus-4-8": (5e-6, 25e-6, 5e-7, 6.25e-6, 10e-6),
     "claude-opus-4-7": (5e-6, 25e-6, 5e-7, 6.25e-6, 10e-6),
+    "claude-sonnet-5-5": (2e-6, 10e-6, 1e-7, 2.5e-6, 4e-6),
     "claude-sonnet-5": (2e-6, 10e-6, 2e-7, 2.5e-6, 4e-6),
     "claude-sonnet-4-5": (3e-6, 15e-6, 3e-7, 3.75e-6, 6e-6),
+    "claude-haiku-5-5": (1e-7, 5e-7, 1e-8, 1.25e-7, 2e-7),
     "claude-haiku-4-5": (1e-6, 5e-6, 1e-7, 1.25e-6, 2e-6),
 }
 DEFAULT_PRICE_KEY = "claude-opus-4-8"
+# Haiku 5.5 is priced by prompt length: a request whose prompt (input + cache read + cache
+# write) is over the threshold pays the long row for every field, output included.
+LONG_PROMPT = {"claude-haiku-5-5": (100_000, (5e-7, 2.5e-6, 5e-8, 6.25e-7, 1e-6))}
 # The codex-proxy shim runs on fixed haiku medium; its transcript is priced per entry from
 # message.model, this constant only when an entry carries no model.
-SHIM_DEFAULT_MODEL = "claude-haiku-4-5"
+SHIM_DEFAULT_MODEL = "claude-haiku-5-5"
 # codex row label <mod>-<eff>-<tier>-<job> (hai-me-luna-research). Mod and effort codes are
 # the Claude launch-naming codes of base/BASE.md ("Launch naming" and "Label prefix" lines):
 # models fab ops son hai, efforts lo me hi xh mx.
@@ -70,9 +75,16 @@ CODEX_PRICES = {
     "gpt-5.6-terra": (2e-6, 2e-7, 12e-6),
     "gpt-5.6-luna": (2e-7, 2e-8, 1.2e-6),
     "gpt-reserve": (2e-7, 2e-8, 1.2e-6),  # luna billed against the reserve quota
+    # developers.openai.com/api/docs/pricing (2026-10-22), standard rows up to 272K input tokens;
+    # a ledger record sums a whole run, so the long-context rows are not applied.
+    "gpt-6.1-sol": (2e-6, 1e-7, 10e-6),
+    "gpt-6-luna": (1e-7, 1e-8, 5e-7),
+    "gpt-6-astra": (10e-6, 1e-6, 50e-6),
 }
-CODEX_TIERS = {"sol": "gpt-5.6-sol", "terra": "gpt-5.6-terra", "luna": "gpt-5.6-luna",
-               "luna-reserve": "gpt-reserve", "astra": "gpt-6-astra"}  # astra: no price yet
+# Tier to ledger model ids: the first id is the current one, later ids match older ledger rows.
+CODEX_TIERS = {"astra": ("gpt-6-astra",), "sol": ("gpt-6.1-sol", "gpt-5.6-sol"),
+               "luna": ("gpt-6-luna", "gpt-5.6-luna"), "luna-reserve": ("gpt-reserve",),
+               "terra": ("gpt-5.6-terra",)}
 CODEX_USAGE = os.path.expanduser("~/.codex/proxy-usage.jsonl")
 CODEX_WINDOW_S = 4 * 3600
 CODEX_LEAD_S = 120          # a usage record may be stamped up to 2 min before its ledger row
@@ -88,13 +100,17 @@ def normalise_model(model):
     return re.sub(r"-\d{8}$", "", model or "")
 
 
-def price_for(model):
+def price_for(model, prompt=0):
     best = ""
     model = normalise_model(model)
     for k in PRICES:
         if model and model.startswith(k) and len(k) > len(best):
             best = k
-    return PRICES[best or DEFAULT_PRICE_KEY], best or None
+    key = best or DEFAULT_PRICE_KEY
+    tier = LONG_PROMPT.get(key)
+    if tier and prompt > tier[0]:
+        return tier[1], best or None
+    return PRICES[key], best or None
 
 
 def parse_ts(s):
@@ -143,7 +159,7 @@ def add_turns(acc, turns, model_hint=None):
     model = model_hint
     for _ts, m, u in turns:
         model = m or model
-        p, _ = price_for(model)
+        p, _ = price_for(model, u["input"] + u["read"] + u["w5"] + u["w1"])
         for f in FIELDS:
             acc[f] += u[f]
         acc["turns"] += 1
@@ -189,7 +205,7 @@ def add_codex(acc, recs, model_hint):
     Returns False when the model has no price (usd stays 0 and the row shows ?)."""
     priced = True
     for _ts, m, _e, inp, cached, out in recs:
-        p = codex_price(m or CODEX_TIERS.get(model_hint or "", ""))
+        p = codex_price(m or CODEX_TIERS.get(model_hint or "", ("",))[0])
         acc["input"] += inp - cached
         acc["read"] += cached
         acc["output"] += out
@@ -397,12 +413,12 @@ def compute(rows, stops, main_lines, agent_lines, codex_recs=None, labels=None, 
                 res["known"] = False
             else:
                 start, end = windows.get(id(r), (None, None))
-                tier = CODEX_TIERS.get(r.get("model") or "", "")
+                tiers = CODEX_TIERS.get(r.get("model") or "", ())
                 eff = r.get("effort") or ""
                 cand = [x for x in codex_recs if start is not None and start <= x[0] <= end
                         and id(x) not in codex_used]
-                mine = [x for x in cand if (not tier or x[1] == tier) and (not eff or x[2] == eff)]
-                if not mine and not (tier or eff):
+                mine = [x for x in cand if (not tiers or x[1] in tiers) and (not eff or x[2] == eff)]
+                if not mine and not (tiers or eff):
                     mine = cand
                 for x in mine:
                     codex_used.add(id(x))
@@ -411,7 +427,7 @@ def compute(rows, stops, main_lines, agent_lines, codex_recs=None, labels=None, 
                     warnings.append(f"codex row {r.get('stage')}/{r.get('step')}: no usage record in its window")
                 res["known"] = bool(mine) and priced
                 if mine and not priced:
-                    warnings.append(f"codex row {r.get('stage')}/{r.get('step')}: model without price (astra?)")
+                    warnings.append(f"codex row {r.get('stage')}/{r.get('step')}: model without price")
                 for f in list(FIELDS) + ["miss", "turns"]:
                     totals["session"][f] += acc[f]
                 totals["session"]["usd"] += acc["usd"]
@@ -644,7 +660,12 @@ def selftest():
     assert res[5]["turns"] == 2 and res[5]["known"] and abs(res[5]["usd"] - exp_codex) < 1e-9, res[5]
     exp_luna = 10_000 * 2e-7 + 10_000 * 2e-8 + 500 * 1.2e-6
     assert res[6]["turns"] == 1 and res[6]["known"] and abs(res[6]["usd"] - exp_luna) < 1e-9, res[6]  # model filter
-    assert codex_price("gpt-6-astra") is None and codex_price("gpt-reserve") == CODEX_PRICES["gpt-reserve"]
+    assert codex_price("gpt-6-astra") == (10e-6, 1e-6, 50e-6) and codex_price("gpt-reserve") == CODEX_PRICES["gpt-reserve"]
+    assert codex_price("gpt-6.1-sol") == (2e-6, 1e-7, 10e-6) and codex_price("gpt-6-luna") == (1e-7, 1e-8, 5e-7)
+    r_new, _w, _t = compute([dict(rows[5])], {"a7": stops["a7"]}, None, {}, [
+        (parse_ts("2026-09-05T10:52:00Z"), "gpt-6.1-sol", "high", 100_000, 60_000, 2_000)])
+    exp_new = 40_000 * 2e-6 + 60_000 * 1e-7 + 2_000 * 10e-6
+    assert r_new[0]["known"] and abs(r_new[0]["usd"] - exp_new) < 1e-9, r_new[0]  # current sol id in the sol tier
     res_nofile, warns_nofile, _t = compute(rows, stops, main_lines, agents, None)
     assert res_nofile[5]["known"] is False and res_nofile[6]["known"] is False and any("proxy-usage" in w for w in warns_nofile), warns_nofile
     assert res[3]["turns"] == 1 and res[3]["read"] == 120_000, res[3]
@@ -658,6 +679,11 @@ def selftest():
     assert abs(totals["session"]["usd"] - attributed - totals["unattributed"]["usd"]) < 1e-9, totals
     assert price_for("claude-fable-5-1[1m]")[1] == "claude-fable-5-1"
     assert price_for("claude-unknown")[1] is None
+    assert price_for("claude-sonnet-5-5[1m]") == (PRICES["claude-sonnet-5-5"], "claude-sonnet-5-5")
+    assert price_for("claude-sonnet-5")[0][2] == 2e-7 and PRICES["claude-sonnet-5-5"][2] == 1e-7
+    assert price_for("claude-haiku-5-5", 100_000)[0] == PRICES["claude-haiku-5-5"]
+    assert price_for("claude-haiku-5-5", 100_001)[0] == LONG_PROMPT["claude-haiku-5-5"][1]
+    assert price_for("claude-opus-5-5", 900_000)[0] == PRICES["claude-opus-5-5"]
     buf, old = io.StringIO(), sys.stdout
     sys.stdout = buf
     try:
@@ -700,7 +726,13 @@ def selftest():
     usd, w_s = shim_cost("claude-haiku-4-5-20251001")
     assert abs(usd - (1000 * 1e-6 + 1000 * 5e-6)) < 1e-12 and not w_s, (usd, w_s)
     usd, w_s = shim_cost(None)
-    assert abs(usd - (1000 * 1e-6 + 1000 * 5e-6)) < 1e-12 and not w_s, (usd, w_s)
+    assert abs(usd - (1000 * 1e-7 + 1000 * 5e-7)) < 1e-12 and not w_s, (usd, w_s)
+    usd, w_s = shim_cost("claude-haiku-5-5")
+    assert abs(usd - (1000 * 1e-7 + 1000 * 5e-7)) < 1e-12 and not w_s, (usd, w_s)
+    r_l, _w, _t = compute([dict(rows[5])], {"a7": stops["a7"]}, None,
+                          {"a7": [entry("s8", "2026-09-05T10:52:00Z", "claude-haiku-5-5", 1000, 1000, 99_000, 1000)]}, codex_recs)
+    exp_l = 1000 * 5e-7 + 1000 * 2.5e-6 + 99_000 * 5e-8 + 1000 * 6.25e-7
+    assert abs(r_l[0]["shim_usd"] - exp_l) < 1e-12, (r_l[0]["shim_usd"], exp_l)  # prompt 101K: long row
     usd, w_s = shim_cost("claude-mystery-9")
     assert w_s == ["codex row final-review/codex: shim model claude-mystery-9 not in prices"], w_s
     # Codex window: a record 90 s before the row joins; a retry after the next non-codex row

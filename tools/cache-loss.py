@@ -15,10 +15,12 @@ import os
 import sys
 import time
 
-PRICES = {  # 5m write, 1h write, per MTok
+PRICES = {  # 5m write, 1h write, per MTok; longest prefix wins
     "claude-fable": (12.5, 20.0),
+    "claude-opus-5-5": (5.0, 8.0),
     "claude-opus": (6.25, 10.0),
     "claude-sonnet": (2.5, 4.0),
+    "claude-haiku-5-5": (0.125, 0.2),  # prompts up to 100K; a longer prompt pays 0.625 / 1
     "claude-haiku": (1.25, 2.0),
 }
 MISS_DROP = 20_000
@@ -26,10 +28,11 @@ MISS_WRITE = 20_000
 
 
 def price(model):
-    for k, v in PRICES.items():
-        if model and model.startswith(k):
-            return v
-    return PRICES["claude-opus"]
+    best = ""
+    for k in PRICES:
+        if model and model.startswith(k) and len(k) > len(best):
+            best = k
+    return PRICES[best or "claude-opus"]
 
 
 def scan(path):
